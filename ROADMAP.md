@@ -93,3 +93,12 @@ This document tracks planned future functionality, architectural changes, and us
   - Modify `renderMediaLists` in the UI frontend application script.
   - When list matches for either TV or Movies is empty, apply the `.hidden` helper class to the container wrappers `#section-tv` or `#section-movies` rather than just printing an empty text state.
 - **Code files involved**: [xarrtools/templates/app.js](file:///d:/Workspaces/Projects/xarrtools/xarrtools/app.js), [xarrtools/templates/index.html](file:///d:/Workspaces/Projects/xarrtools/xarrtools/templates/index.html).
+
+## 11. Load Cached Discoveries on Initial Startup
+- **Goal**: Instead of greeting the user with a blank welcome panel on browser load, immediately pull and render non-filtered, cached discoveries from the local SQLite database that match the current date filters.
+- **Implementation Strategy**:
+  - Expose a parameter like `skip_scrape=true` on `/api/discover` or create a new endpoint `/api/cache/list`.
+  - On page load (`DOMContentLoaded`), run a fast API request to retrieve cached items within the selected past/future window from `xarrtools.db`.
+  - Render the cache hits immediately, transitioning the UI out of the welcome state automatically.
+  - The "Scan New Releases" button can then be used explicitly to force-pull fresh scraper indexes and sync updates.
+- **Code files involved**: [xarrtools/server.py](file:///d:/Workspaces/Projects/xarrtools/xarrtools/server.py), [xarrtools/templates/app.js](file:///d:/Workspaces/Projects/xarrtools/xarrtools/templates/app.js).
