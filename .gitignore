@@ -24,5 +24,3 @@ xarrtools.db-wal
 *.sln
 *.swp
 
-# Redundant duplicate directories
-xarrtoools/
