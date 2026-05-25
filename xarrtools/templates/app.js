@@ -637,11 +637,82 @@ function openSettingsModal() {
         document.getElementById("input-show-library").checked = appSettings.default_show_library === "1";
         document.getElementById("input-show-archived").checked = appSettings.default_show_archived === "1";
     }
+    
+    // Reset active tab to Servers
+    const firstTabBtn = document.querySelector(".settings-tab-btn[data-tab='panel-connections']");
+    if (firstTabBtn) {
+        firstTabBtn.click();
+    }
+    
+    // Refresh stats
+    loadCacheStats();
+    
     settingsOverlay.classList.remove("hidden");
 }
 
 function closeSettingsModal() {
     settingsOverlay.classList.add("hidden");
+}
+
+async function loadCacheStats() {
+    try {
+        const response = await fetch("/api/cache/stats");
+        if (response.ok) {
+            const data = await response.json();
+            document.getElementById("stat-total-cache").textContent = data.total_discoveries;
+            document.getElementById("stat-archived-cache").textContent = data.archived_discoveries;
+            document.getElementById("stat-db-size").textContent = data.database_size;
+        }
+    } catch (error) {
+        console.error("Failed to load cache stats:", error);
+    }
+}
+
+async function pruneCacheManually() {
+    if (!confirm("Are you sure you want to run cache pruning? This deletes cached releases older than 12 months.")) {
+        return;
+    }
+    
+    try {
+        const response = await fetch("/api/cache/prune", { method: "POST" });
+        const data = await response.json();
+        if (response.ok && data.status === "success") {
+            addNotification(data.message, "success");
+            await loadCacheStats();
+        } else {
+            addNotification(`Pruning failed: ${data.message}`, "error");
+        }
+    } catch (error) {
+        addNotification(`Connection error: ${error.message}`, "error");
+    }
+}
+
+async function wipeCacheManually() {
+    if (!confirm("🚨 WARNING: Are you sure you want to wipe all discoveries from the local cache? This will clear all data, and you will need to re-scan to view them.")) {
+        return;
+    }
+    
+    try {
+        const response = await fetch("/api/cache/clear", { method: "POST" });
+        const data = await response.json();
+        if (response.ok && data.status === "success") {
+            addNotification(data.message, "success");
+            await loadCacheStats();
+            
+            // Clear current view
+            currentDiscoveries.tv = [];
+            currentDiscoveries.movies = [];
+            renderMediaLists();
+            
+            // If they are wiped, show the welcome state again since there's no data
+            document.getElementById("content-area").classList.add("hidden");
+            document.getElementById("welcome-state").classList.remove("hidden");
+        } else {
+            addNotification(`Wipe failed: ${data.message}`, "error");
+        }
+    } catch (error) {
+        addNotification(`Connection error: ${error.message}`, "error");
+    }
 }
 
 function applyTabFilter() {
@@ -692,6 +763,31 @@ function setupEventListeners() {
     settingsClose.addEventListener("click", closeSettingsModal);
     btnSettingsCancel.addEventListener("click", closeSettingsModal);
     btnSettingsSave.addEventListener("click", saveSettings);
+
+    // Tab switching inside settings
+    const settingsTabButtons = document.querySelectorAll(".settings-tab-btn");
+    const settingsTabPanels = document.querySelectorAll(".settings-tab-panel");
+    
+    settingsTabButtons.forEach(btn => {
+        btn.addEventListener("click", (e) => {
+            const targetTab = e.target.getAttribute("data-tab");
+            
+            settingsTabButtons.forEach(b => b.classList.remove("active"));
+            e.target.classList.add("active");
+            
+            settingsTabPanels.forEach(p => {
+                if (p.id === targetTab) {
+                    p.classList.remove("hidden");
+                } else {
+                    p.classList.add("hidden");
+                }
+            });
+        });
+    });
+
+    // Maintenance button clicks
+    document.getElementById("btn-cache-prune").addEventListener("click", pruneCacheManually);
+    document.getElementById("btn-cache-clear").addEventListener("click", wipeCacheManually);
 
     // Tab buttons
     tabButtons.forEach(btn => {

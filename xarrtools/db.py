@@ -268,3 +268,40 @@ def clean_expired_cache():
     conn.close()
     if deleted > 0:
         print(f"Purged {deleted} expired entries from cache.")
+
+def get_cache_stats() -> dict:
+    """Returns row counts and disk space diagnostics of the cache."""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    cursor.execute("SELECT COUNT(*) FROM cache")
+    total = cursor.fetchone()[0]
+    
+    cursor.execute("SELECT COUNT(*) FROM cache WHERE is_archived = 1")
+    archived = cursor.fetchone()[0]
+    
+    conn.close()
+    
+    # Calculate disk size of database
+    try:
+        size_bytes = os.path.getsize(DB_PATH)
+        if size_bytes < 1024 * 1024:
+            size_str = f"{size_bytes / 1024:.1f} KB"
+        else:
+            size_str = f"{size_bytes / (1024 * 1024):.2f} MB"
+    except Exception:
+        size_str = "Unknown"
+        
+    return {
+        "total_discoveries": total,
+        "archived_discoveries": archived,
+        "database_size": size_str
+    }
+
+def clear_all_cache():
+    """Wipes all cached discovery details from the database."""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM cache")
+    conn.commit()
+    conn.close()

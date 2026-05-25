@@ -202,55 +202,100 @@
                 <h2>Application Settings</h2>
                 <button id="settings-close" class="btn-close">&times;</button>
             </div>
-            <div class="modal-body" style="max-height: 450px; overflow-y: auto;">
-                <form id="settings-form">
-                    <h3 style="font-family:'Outfit', sans-serif; font-size:14px; color:var(--accent-magenta); text-transform:uppercase; margin-bottom:12px; border-bottom:1px solid var(--border-color); padding-bottom:4px;">Radarr Server</h3>
-                    <div class="form-group">
-                        <label for="input-radarr-url">Radarr URL</label>
-                        <input type="text" id="input-radarr-url" placeholder="e.g. http://localhost:7878/">
-                    </div>
-                    <div class="form-group">
-                        <label for="input-radarr-key">Radarr API Key</label>
-                        <input type="text" id="input-radarr-key" placeholder="API Key">
-                    </div>
-                    
-                    <h3 style="font-family:'Outfit', sans-serif; font-size:14px; color:var(--accent-blue); text-transform:uppercase; margin-top:20px; margin-bottom:12px; border-bottom:1px solid var(--border-color); padding-bottom:4px;">Sonarr Server</h3>
-                    <div class="form-group">
-                        <label for="input-sonarr-url">Sonarr URL</label>
-                        <input type="text" id="input-sonarr-url" placeholder="e.g. http://localhost:8989/">
-                    </div>
-                    <div class="form-group">
-                        <label for="input-sonarr-key">Sonarr API Key</label>
-                        <input type="text" id="input-sonarr-key" placeholder="API Key">
-                    </div>
-                    
-                    <h3 style="font-family:'Outfit', sans-serif; font-size:14px; color:var(--accent-green); text-transform:uppercase; margin-top:20px; margin-bottom:12px; border-bottom:1px solid var(--border-color); padding-bottom:4px;">Scan & View Defaults</h3>
-                    <div style="display: flex; gap: 12px; margin-bottom: 12px;">
-                        <div class="form-group" style="flex: 1; margin-bottom: 0;">
-                            <label for="input-past-months">Default Past Months</label>
-                            <input type="number" id="input-past-months" min="0" max="12" value="1" style="background:rgba(0, 0, 0, 0.3); border:1px solid var(--border-color); border-radius:8px; padding:10px 12px; color:var(--text-primary); font-size:14px; width:100%; outline:none;">
+            <div class="modal-body" style="max-height: 450px; overflow-y: auto; padding: 0;">
+                <!-- Tab Buttons Header -->
+                <div class="settings-tabs-header">
+                    <button type="button" class="settings-tab-btn active" data-tab="panel-connections">🔌 Servers</button>
+                    <button type="button" class="settings-tab-btn" data-tab="panel-scanning">📅 Scanning</button>
+                    <button type="button" class="settings-tab-btn" data-tab="panel-view">👁️ View</button>
+                    <button type="button" class="settings-tab-btn" data-tab="panel-system">⚙️ System</button>
+                </div>
+                
+                <form id="settings-form" style="padding: 20px 24px;">
+                    <!-- Tab Panel 1: Connections -->
+                    <div id="panel-connections" class="settings-tab-panel">
+                        <h3 style="font-family:'Outfit', sans-serif; font-size:14px; color:var(--accent-magenta); text-transform:uppercase; margin-bottom:12px; border-bottom:1px solid var(--border-color); padding-bottom:4px;">Radarr Server</h3>
+                        <div class="form-group">
+                            <label for="input-radarr-url">Radarr URL</label>
+                            <input type="text" id="input-radarr-url" placeholder="e.g. http://localhost:7878/">
                         </div>
-                        <div class="form-group" style="flex: 1; margin-bottom: 0;">
-                            <label for="input-future-months">Default Future Months</label>
-                            <input type="number" id="input-future-months" min="0" max="12" value="2" style="background:rgba(0, 0, 0, 0.3); border:1px solid var(--border-color); border-radius:8px; padding:10px 12px; color:var(--text-primary); font-size:14px; width:100%; outline:none;">
+                        <div class="form-group">
+                            <label for="input-radarr-key">Radarr API Key</label>
+                            <input type="text" id="input-radarr-key" placeholder="API Key">
+                        </div>
+                        
+                        <h3 style="font-family:'Outfit', sans-serif; font-size:14px; color:var(--accent-blue); text-transform:uppercase; margin-top:20px; margin-bottom:12px; border-bottom:1px solid var(--border-color); padding-bottom:4px;">Sonarr Server</h3>
+                        <div class="form-group">
+                            <label for="input-sonarr-url">Sonarr URL</label>
+                            <input type="text" id="input-sonarr-url" placeholder="e.g. http://localhost:8989/">
+                        </div>
+                        <div class="form-group">
+                            <label for="input-sonarr-key">Sonarr API Key</label>
+                            <input type="text" id="input-sonarr-key" placeholder="API Key">
                         </div>
                     </div>
-                    <div class="checkbox-group" style="margin-top: 12px; margin-bottom: 12px;">
-                        <label class="checkbox-container">
-                            <input type="checkbox" id="input-show-returning">
-                            <span class="checkmark"></span>
-                            Default Show Returning Seasons
-                        </label>
-                        <label class="checkbox-container">
-                            <input type="checkbox" id="input-show-library">
-                            <span class="checkmark"></span>
-                            Default Show Library Items
-                        </label>
-                        <label class="checkbox-container">
-                            <input type="checkbox" id="input-show-archived">
-                            <span class="checkmark"></span>
-                            Default Show Archived Items
-                        </label>
+
+                    <!-- Tab Panel 2: Scanning -->
+                    <div id="panel-scanning" class="settings-tab-panel hidden">
+                        <h3 style="font-family:'Outfit', sans-serif; font-size:14px; color:var(--accent-green); text-transform:uppercase; margin-bottom:12px; border-bottom:1px solid var(--border-color); padding-bottom:4px;">Scan Ranges</h3>
+                        <div style="display: flex; gap: 12px; margin-bottom: 12px;">
+                            <div class="form-group" style="flex: 1; margin-bottom: 0;">
+                                <label for="input-past-months">Default Past Months</label>
+                                <input type="number" id="input-past-months" min="0" max="12" value="1" style="background:rgba(0, 0, 0, 0.3); border:1px solid var(--border-color); border-radius:8px; padding:10px 12px; color:var(--text-primary); font-size:14px; width:100%; outline:none;">
+                            </div>
+                            <div class="form-group" style="flex: 1; margin-bottom: 0;">
+                                <label for="input-future-months">Default Future Months</label>
+                                <input type="number" id="input-future-months" min="0" max="12" value="2" style="background:rgba(0, 0, 0, 0.3); border:1px solid var(--border-color); border-radius:8px; padding:10px 12px; color:var(--text-primary); font-size:14px; width:100%; outline:none;">
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Tab Panel 3: View Options -->
+                    <div id="panel-view" class="settings-tab-panel hidden">
+                        <h3 style="font-family:'Outfit', sans-serif; font-size:14px; color:var(--accent-blue); text-transform:uppercase; margin-bottom:12px; border-bottom:1px solid var(--border-color); padding-bottom:4px;">Default Filter Settings</h3>
+                        <div class="checkbox-group" style="margin-top: 12px; margin-bottom: 12px;">
+                            <label class="checkbox-container">
+                                <input type="checkbox" id="input-show-returning">
+                                <span class="checkmark"></span>
+                                Default Show Returning Seasons
+                            </label>
+                            <label class="checkbox-container">
+                                <input type="checkbox" id="input-show-library">
+                                <span class="checkmark"></span>
+                                Default Show Library Items
+                            </label>
+                            <label class="checkbox-container">
+                                <input type="checkbox" id="input-show-archived">
+                                <span class="checkmark"></span>
+                                Default Show Archived Items
+                            </label>
+                        </div>
+                    </div>
+
+                    <!-- Tab Panel 4: System -->
+                    <div id="panel-system" class="settings-tab-panel hidden">
+                        <h3 style="font-family:'Outfit', sans-serif; font-size:14px; color:var(--accent-magenta); text-transform:uppercase; margin-bottom:12px; border-bottom:1px solid var(--border-color); padding-bottom:4px;">Database Diagnostics</h3>
+                        
+                        <div class="stats-grid" style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin-bottom: 20px;">
+                            <div class="stat-box" style="background: rgba(255,255,255,0.02); border: 1px solid var(--border-color); padding: 12px; border-radius: 8px;">
+                                <div style="font-size: 11px; color: var(--text-secondary); text-transform: uppercase;">Cached Discoveries</div>
+                                <div id="stat-total-cache" style="font-size: 20px; font-weight: 700; color: var(--text-primary); margin-top: 4px;">0</div>
+                            </div>
+                            <div class="stat-box" style="background: rgba(255,255,255,0.02); border: 1px solid var(--border-color); padding: 12px; border-radius: 8px;">
+                                <div style="font-size: 11px; color: var(--text-secondary); text-transform: uppercase;">Archived Entries</div>
+                                <div id="stat-archived-cache" style="font-size: 20px; font-weight: 700; color: var(--accent-magenta); margin-top: 4px;">0</div>
+                            </div>
+                            <div class="stat-box" style="background: rgba(255,255,255,0.02); border: 1px solid var(--border-color); padding: 12px; border-radius: 8px; grid-column: span 2;">
+                                <div style="font-size: 11px; color: var(--text-secondary); text-transform: uppercase;">Database Disk Size</div>
+                                <div id="stat-db-size" style="font-size: 18px; font-weight: 700; color: var(--accent-blue); margin-top: 4px;">0 KB</div>
+                            </div>
+                        </div>
+
+                        <h3 style="font-family:'Outfit', sans-serif; font-size:14px; color:var(--accent-green); text-transform:uppercase; margin-bottom:12px; border-bottom:1px solid var(--border-color); padding-bottom:4px;">Maintenance Controls</h3>
+                        <div style="display: flex; flex-direction: column; gap: 10px;">
+                            <button type="button" id="btn-cache-prune" class="btn btn-secondary" style="font-size:12px; padding:8px 12px; display: block; width: 100%;">🧹 Prune Expired Cache (>12 months)</button>
+                            <button type="button" id="btn-cache-clear" class="btn" style="background: rgba(255, 42, 133, 0.1); border: 1px solid rgba(255, 42, 133, 0.3); color: var(--accent-magenta); font-size:12px; padding:8px 12px; display: block; width: 100%;">🚨 Wipe Discovery Cache</button>
+                        </div>
                     </div>
                 </form>
             </div>

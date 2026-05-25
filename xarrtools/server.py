@@ -15,7 +15,9 @@ from xarrtools.db import (
     add_cached_item,
     archive_cached_item,
     get_all_settings,
-    set_setting
+    set_setting,
+    get_cache_stats,
+    clear_all_cache
 )
 
 # Initialize Database and Prune Expired cache entries
@@ -105,6 +107,32 @@ def archive_media():
     try:
         archive_cached_item(type_, title, int(year), archive, raw_item)
         return jsonify({"status": "success", "message": f"Successfully updated archive status."})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+@app.route("/api/cache/stats", methods=["GET"])
+def cache_stats():
+    """Returns row counts and database size diagnostics."""
+    try:
+        return jsonify(get_cache_stats())
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+@app.route("/api/cache/prune", methods=["POST"])
+def cache_prune():
+    """Manually triggers pruning of cache entries older than 12 months."""
+    try:
+        clean_expired_cache()
+        return jsonify({"status": "success", "message": "Manual cache pruning completed."})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+@app.route("/api/cache/clear", methods=["POST"])
+def cache_clear():
+    """Manually wipes all discoveries from the cache table."""
+    try:
+        clear_all_cache()
+        return jsonify({"status": "success", "message": "All cached discoveries wiped successfully."})
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
 
