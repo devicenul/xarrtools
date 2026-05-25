@@ -102,3 +102,11 @@ This document tracks planned future functionality, architectural changes, and us
   - Render the cache hits immediately, transitioning the UI out of the welcome state automatically.
   - The "Scan New Releases" button can then be used explicitly to force-pull fresh scraper indexes and sync updates.
 - **Code files involved**: [xarrtools/server.py](file:///d:/Workspaces/Projects/xarrtools/xarrtools/server.py), [xarrtools/templates/app.js](file:///d:/Workspaces/Projects/xarrtools/xarrtools/templates/app.js).
+
+## 12. Media Rating Badges (Rotten Tomatoes / Metacritic / IMDb)
+- **Goal**: Scrape and display aggregate critics and user score ratings directly on the discovery cards.
+- **Implementation Strategy**:
+  - Update `enricher.py` to extract Metacritic score values (often available in the scraped calendar feeds) or leverage API sources (like OMDb or TMDB) to pull Rotten Tomatoes percentage ratings and IMDb ratings.
+  - Add rating fields to the SQLite cache table schema and store these scores.
+  - Render visually styled rating pills (e.g. green tomato/red tomato icons, or color-coded numeric badges) inside the card badges container.
+- **Code files involved**: [xarrtools/enricher.py](file:///d:/Workspaces/Projects/xarrtools/xarrtools/enricher.py), [xarrtools/db.py](file:///d:/Workspaces/Projects/xarrtools/xarrtools/db.py), [xarrtools/templates/app.js](file:///d:/Workspaces/Projects/xarrtools/xarrtools/templates/app.js).
