@@ -190,6 +190,7 @@ def discover_releases():
                     "genres": json.loads(cached["genres"]) if cached["genres"] else [],
                     "trailer": cached["trailer"],
                     "tvdbId": cached["tvdb_id"],
+                    "imdbId": cached["imdb_id"],
                     "network": cached["network"],
                     "is_in_library": False,
                     "is_archived": bool(cached["is_archived"]),
@@ -221,6 +222,7 @@ def discover_releases():
             item["cast"] = "Cast details not available."
             item["genres"] = []
             item["tvdbId"] = None
+            item["imdbId"] = None
             item["is_in_library"] = False
             item["is_archived"] = False
             item["raw_metadata"] = None

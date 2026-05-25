@@ -87,6 +87,7 @@ def enrich_tv_show(title: str, year: int, sonarr_client: Optional[SonarrClient] 
         "genres": [],
         "trailer": f"https://www.youtube.com/results?search_query={urllib.parse.quote(title + ' ' + str(year) + ' tv show trailer')}",
         "tvdbId": None,
+        "imdbId": None,
         "network": "Unknown Network",
         "is_in_library": False,
         "raw_metadata": None
@@ -142,6 +143,8 @@ def enrich_tv_show(title: str, year: int, sonarr_client: Optional[SonarrClient] 
                     data["is_in_library"] = True
                 if best_match.get("tvdbId"):
                     data["tvdbId"] = best_match.get("tvdbId")
+                if best_match.get("imdbId"):
+                    data["imdbId"] = best_match.get("imdbId")
                 if not data["genres"] and best_match.get("genres"):
                     data["genres"] = best_match.get("genres")
                 if (not data["plot"] or len(data["plot"]) < 50) and best_match.get("overview"):

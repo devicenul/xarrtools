@@ -390,6 +390,26 @@ function createMediaCard(item, type, index) {
     // Dynamic Archive classes
     const archiveBtnClass = item.is_archived ? "btn btn-archive archived" : "btn btn-archive";
     const archiveBtnLabel = item.is_archived ? "📁 Unarchive" : "🗄️ Archive";
+    
+    // Construct source chips
+    let chipsHtml = "";
+    if (item.href) {
+        chipsHtml += `<a href="${item.href}" target="_blank" class="chip chip-metacritic">Metacritic</a>`;
+    }
+    const imdbId = item.imdbId || item.imdb_id;
+    if (imdbId) {
+        chipsHtml += `<a href="https://www.imdb.com/title/${imdbId}/" target="_blank" class="chip chip-imdb">IMDb</a>`;
+    }
+    const tmdbId = item.tmdbId || item.tmdb_id;
+    if (type === "movie" && tmdbId) {
+        chipsHtml += `<a href="https://www.themoviedb.org/movie/${tmdbId}" target="_blank" class="chip chip-tmdb">TMDB</a>`;
+    }
+    const tvdbId = item.tvdbId || item.tvdb_id;
+    if (type === "tv" && tvdbId) {
+        chipsHtml += `<a href="https://thetvdb.com/dereferrer/series/${tvdbId}" target="_blank" class="chip chip-tvdb">TVDB</a>`;
+    }
+    const searchString = encodeURIComponent(`${item.title} ${item.year} ${type === 'tv' ? 'tv show' : 'movie'}`);
+    chipsHtml += `<a href="https://www.google.com/search?q=${searchString}" target="_blank" class="chip chip-google">Google Search 🔍</a>`;
         
     card.innerHTML = `
         <div class="card-title-row">
@@ -405,7 +425,16 @@ function createMediaCard(item, type, index) {
         <div class="genres-list">${genres}</div>
         <div class="card-cast"><strong>Cast:</strong> <span>${item.cast}</span></div>
         <div class="card-plot">${plotHtml}</div>
-        <div class="card-actions">
+        
+        <div class="details-toggle-row" style="margin-top: auto; border-top: 1px dashed var(--border-color); padding-top: 8px; display: flex; justify-content: space-between; align-items: center;">
+            <span style="font-size: 11px; color: var(--text-secondary); font-weight: 500;">External Sources</span>
+            <button type="button" class="btn-details-toggle" style="background: transparent; border: none; color: var(--accent-blue); font-size: 12px; cursor: pointer; display: flex; align-items: center; gap: 4px; padding: 0; outline: none; font-weight: 600; transition: var(--transition-smooth);">Show ▾</button>
+        </div>
+        <div class="card-details-panel hidden" style="margin-top: 8px; display: flex; flex-wrap: wrap; gap: 6px;">
+            ${chipsHtml}
+        </div>
+
+        <div class="card-actions" style="margin-top: 0;">
             <a href="${item.trailer}" target="_blank" class="btn btn-trailer">🎬 Trailer</a>
             <button class="${archiveBtnClass}">${archiveBtnLabel}</button>
             <button class="${buttonClass}" ${isAdded ? 'disabled' : ''} onclick="openAddModal('${type}', ${index})">
@@ -436,6 +465,24 @@ function createMediaCard(item, type, index) {
         });
     }
     
+    // Bind click event on Details Toggle
+    const toggleBtn = card.querySelector(".btn-details-toggle");
+    const detailsPanel = card.querySelector(".card-details-panel");
+    if (toggleBtn && detailsPanel) {
+        toggleBtn.addEventListener("click", () => {
+            const isHidden = detailsPanel.classList.contains("hidden");
+            if (isHidden) {
+                detailsPanel.classList.remove("hidden");
+                toggleBtn.textContent = "Hide ▴";
+                toggleBtn.style.color = "var(--accent-magenta)";
+            } else {
+                detailsPanel.classList.add("hidden");
+                toggleBtn.textContent = "Show ▾";
+                toggleBtn.style.color = "var(--accent-blue)";
+            }
+        });
+    }
+
     // Bind click event on Archive
     const archiveBtn = card.querySelector(".btn-archive");
     if (archiveBtn) {

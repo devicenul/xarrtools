@@ -1156,3 +1156,72 @@ select option {
     border-color: rgba(255, 255, 255, 0.15);
     background: rgba(255, 255, 255, 0.04);
 }
+
+/* Source Chips Styling */
+.chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 10px;
+    border-radius: 20px;
+    font-size: 11px;
+    font-weight: 600;
+    text-decoration: none;
+    transition: var(--transition-smooth);
+    border: 1px solid var(--border-color);
+}
+
+.chip:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3);
+}
+
+.chip-metacritic {
+    background: rgba(255, 204, 0, 0.04);
+    color: #ffcc00;
+    border-color: rgba(255, 204, 0, 0.2);
+}
+.chip-metacritic:hover {
+    background: rgba(255, 204, 0, 0.12);
+    border-color: #ffcc00;
+}
+
+.chip-imdb {
+    background: rgba(245, 197, 24, 0.04);
+    color: #f5c518;
+    border-color: rgba(245, 197, 24, 0.2);
+}
+.chip-imdb:hover {
+    background: rgba(245, 197, 24, 0.12);
+    border-color: #f5c518;
+}
+
+.chip-tmdb {
+    background: rgba(1, 180, 228, 0.04);
+    color: #01b4e4;
+    border-color: rgba(1, 180, 228, 0.2);
+}
+.chip-tmdb:hover {
+    background: rgba(1, 180, 228, 0.12);
+    border-color: #01b4e4;
+}
+
+.chip-tvdb {
+    background: rgba(63, 169, 245, 0.04);
+    color: #3fa9f5;
+    border-color: rgba(63, 169, 245, 0.2);
+}
+.chip-tvdb:hover {
+    background: rgba(63, 169, 245, 0.12);
+    border-color: #3fa9f5;
+}
+
+.chip-google {
+    background: rgba(255, 255, 255, 0.04);
+    color: #ffffff;
+    border-color: rgba(255, 255, 255, 0.15);
+}
+.chip-google:hover {
+    background: rgba(255, 255, 255, 0.1);
+    border-color: #ffffff;
+}
