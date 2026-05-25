@@ -79,3 +79,17 @@ This document tracks planned future functionality, architectural changes, and us
   - Add a **"Track Collection / Add Box Set"** checkbox options flag in the add form.
   - Pass the tracking parameters to `RadarrClient.add_movie` to leverage Radarr's collections mapping rules.
 - **Code files involved**: [xarrtools/client.py](file:///d:/Workspaces/Projects/xarrtools/xarrtools/client.py), [xarrtools/enricher.py](file:///d:/Workspaces/Projects/xarrtools/xarrtools/enricher.py), [xarrtools/templates/app.js](file:///d:/Workspaces/Projects/xarrtools/xarrtools/templates/app.js).
+
+## 9. In-Library Detection Improvements
+- **Goal**: Ensure 100% accuracy for automatically tagging items already present in Sonarr/Radarr, even when explicit TVDB/TMDB IDs are missing or mismatched.
+- **Implementation Strategy**:
+  - Enhance status checking functions to compare normalized titles, release years (allowing ±1 year margin), and clean punctuation.
+  - Query alternative metadata sites to resolve ID mismatches if the primary calendar crawler lacks TVDB/TMDB links.
+- **Code files involved**: [xarrtools/server.py](file:///d:/Workspaces/Projects/xarrtools/xarrtools/server.py), [xarrtools/client.py](file:///d:/Workspaces/Projects/xarrtools/xarrtools/client.py).
+
+## 10. Collapse Empty Sections in UI
+- **Goal**: Automatically hide the TV Shows or Movies section containers in the Web UI if active search inputs, tab selections, or filters yield zero visible cards.
+- **Implementation Strategy**:
+  - Modify `renderMediaLists` in the UI frontend application script.
+  - When list matches for either TV or Movies is empty, apply the `.hidden` helper class to the container wrappers `#section-tv` or `#section-movies` rather than just printing an empty text state.
+- **Code files involved**: [xarrtools/templates/app.js](file:///d:/Workspaces/Projects/xarrtools/xarrtools/app.js), [xarrtools/templates/index.html](file:///d:/Workspaces/Projects/xarrtools/xarrtools/templates/index.html).
