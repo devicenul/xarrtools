@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>xarrtools - Discover & Add Releases</title>
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <!-- Stylesheet -->
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Sidebar / Header -->
+        <header class="app-header">
+            <div class="logo-area">
+                <div class="logo-icon">🎦</div>
+                <div class="logo-text">
+                    <h1>xarrtools</h1>
+                    <span>Media Discovery Center</span>
+                </div>
+                <button id="btn-settings" class="btn-settings-trigger" title="Settings">⚙️</button>
+            </div>
+            
+            <!-- Connection Badges -->
+            <div class="status-panel">
+                <div id="status-radarr" class="status-badge status-offline">
+                    <span class="indicator"></span> Radarr
+                </div>
+                <div id="status-sonarr" class="status-badge status-offline">
+                    <span class="indicator"></span> Sonarr
+                </div>
+            </div>
+ 
+            <!-- Controls Panel -->
+            <div class="controls-card">
+                <h3>Scan Settings</h3>
+                <div class="control-group">
+                    <div class="slider-header">
+                        <label for="slider-past">Months in Past</label>
+                        <span id="val-past">1</span>
+                    </div>
+                    <input type="range" id="slider-past" min="0" max="12" value="1" class="slider-input">
+                </div>
+                <div class="control-group">
+                    <div class="slider-header">
+                        <label for="slider-future">Months in Future</label>
+                        <span id="val-future">2</span>
+                    </div>
+                    <input type="range" id="slider-future" min="0" max="12" value="2" class="slider-input">
+                </div>
+                <button id="btn-scan" class="btn btn-primary">Scan New Releases</button>
+            </div>
+ 
+            <!-- Client Filter -->
+            <div class="filter-card">
+                <h3>Filter View</h3>
+                <input type="text" id="search-bar" placeholder="Search by title, cast, network...">
+                <div class="view-tabs">
+                    <button class="tab-btn active" data-tab="all">All Releases</button>
+                    <button class="tab-btn" data-tab="tv">TV Shows</button>
+                    <button class="tab-btn" data-tab="movies">Movies</button>
+                </div>
+                <div class="filter-checkbox-group">
+                    <label class="checkbox-container">
+                        <input type="checkbox" id="check-show-returning">
+                        <span class="checkmark"></span>
+                        Show Returning Seasons
+                    </label>
+                    <label class="checkbox-container">
+                        <input type="checkbox" id="check-show-library">
+                        <span class="checkmark"></span>
+                        Show Library Items
+                    </label>
+                    <label class="checkbox-container">
+                        <input type="checkbox" id="check-show-archived">
+                        <span class="checkmark"></span>
+                        Show Archived Items
+                    </label>
+                </div>
+            </div>
+
+            <!-- Notifications Card -->
+            <div class="notifications-card">
+                <h3>Recent Activity</h3>
+                <div id="notifications-list" class="notifications-list">
+                    <div class="notification-item empty">No recent activity.</div>
+                </div>
+            </div>
+        </header>
+ 
+        <!-- Main Display Content -->
+        <main class="app-main">
+            <!-- Loading Indicator -->
+            <div id="loading-overlay" class="hidden">
+                <div class="spinner-container">
+                    <div class="loading-spinner"></div>
+                    <h2 id="loading-text">Scanning feeds...</h2>
+                    <p>Fetching releases and enriching metadata, please wait.</p>
+                </div>
+            </div>
+ 
+            <!-- Empty State / Welcome -->
+            <div id="welcome-state" class="empty-state">
+                <div class="empty-icon">🍿</div>
+                <h2>Ready to Scan</h2>
+                <p>Click "Scan New Releases" in the left panel to scan Metacritic's TV & Movie calendars for new items released in the chosen timeframe.</p>
+            </div>
+ 
+            <!-- Content Area -->
+            <div id="content-area" class="hidden">
+                <!-- TV Shows Section -->
+                <section id="section-tv" class="media-section">
+                    <h2 class="section-title">📺 New TV Shows <span>(Newly Starting)</span></h2>
+                    <div id="grid-tv" class="cards-grid"></div>
+                </section>
+ 
+                <!-- Movies Section -->
+                <section id="section-movies" class="media-section">
+                    <h2 class="section-title">🎬 New Movies <span>(Released)</span></h2>
+                    <div id="grid-movies" class="cards-grid"></div>
+                </section>
+            </div>
+        </main>
+    </div>
+ 
+    <!-- Add Options Modal (Overlay) -->
+    <div id="modal-overlay" class="modal-overlay hidden">
+        <div class="modal-card">
+            <div class="modal-header">
+                <h2 id="modal-title">Configure Download</h2>
+                <button id="modal-close" class="btn-close">&times;</button>
+            </div>
+            <div class="modal-body">
+                <!-- Step 1: Match Selection -->
+                <div id="modal-step-search" class="modal-step">
+                    <p class="step-instruction">Select the correct match from indexers:</p>
+                    <div id="lookup-loading" class="lookup-status">
+                        <div class="spinner-small"></div> Searching indexers...
+                    </div>
+                    <div id="lookup-results-list" class="lookup-results-list"></div>
+                </div>
+ 
+                <!-- Step 2: Download Options (Hidden by default) -->
+                <div id="modal-step-options" class="modal-step hidden">
+                    <form id="add-form">
+                        <input type="hidden" id="modal-media-type">
+                        <input type="hidden" id="modal-media-index">
+                        
+                        <div class="form-group">
+                            <label for="select-folder">Root Folder / Destination Path</label>
+                            <select id="select-folder" required>
+                                <!-- Populated dynamically -->
+                            </select>
+                        </div>
+ 
+                        <div class="form-group">
+                            <label for="select-profile">Quality Profile</label>
+                            <select id="select-profile" required>
+                                <!-- Populated dynamically -->
+                            </select>
+                        </div>
+ 
+                        <div class="form-group hidden" id="group-lang-profile">
+                            <label for="select-lang-profile">Language Profile (Sonarr)</label>
+                            <select id="select-lang-profile">
+                                <!-- Populated dynamically -->
+                            </select>
+                        </div>
+ 
+                        <div class="checkbox-group">
+                            <label class="checkbox-container">
+                                <input type="checkbox" id="check-monitored" checked>
+                                <span class="checkmark"></span>
+                                Monitor Release
+                            </label>
+                            <label class="checkbox-container">
+                                <input type="checkbox" id="check-search" checked>
+                                <span class="checkmark"></span>
+                                Search Immediately
+                            </label>
+                        </div>
+                    </form>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button id="btn-modal-back" class="btn btn-secondary hidden">Back</button>
+                <button id="btn-modal-cancel" class="btn btn-secondary">Cancel</button>
+                <button id="btn-modal-confirm" class="btn btn-success hidden">Start Download</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Settings Modal (Overlay) -->
+    <div id="settings-overlay" class="modal-overlay hidden">
+        <div class="modal-card">
+            <div class="modal-header">
+                <h2>Application Settings</h2>
+                <button id="settings-close" class="btn-close">&times;</button>
+            </div>
+            <div class="modal-body" style="max-height: 450px; overflow-y: auto;">
+                <form id="settings-form">
+                    <h3 style="font-family:'Outfit', sans-serif; font-size:14px; color:var(--accent-magenta); text-transform:uppercase; margin-bottom:12px; border-bottom:1px solid var(--border-color); padding-bottom:4px;">Radarr Server</h3>
+                    <div class="form-group">
+                        <label for="input-radarr-url">Radarr URL</label>
+                        <input type="text" id="input-radarr-url" placeholder="e.g. http://localhost:7878/">
+                    </div>
+                    <div class="form-group">
+                        <label for="input-radarr-key">Radarr API Key</label>
+                        <input type="text" id="input-radarr-key" placeholder="API Key">
+                    </div>
+                    
+                    <h3 style="font-family:'Outfit', sans-serif; font-size:14px; color:var(--accent-blue); text-transform:uppercase; margin-top:20px; margin-bottom:12px; border-bottom:1px solid var(--border-color); padding-bottom:4px;">Sonarr Server</h3>
+                    <div class="form-group">
+                        <label for="input-sonarr-url">Sonarr URL</label>
+                        <input type="text" id="input-sonarr-url" placeholder="e.g. http://localhost:8989/">
+                    </div>
+                    <div class="form-group">
+                        <label for="input-sonarr-key">Sonarr API Key</label>
+                        <input type="text" id="input-sonarr-key" placeholder="API Key">
+                    </div>
+                    
+                    <h3 style="font-family:'Outfit', sans-serif; font-size:14px; color:var(--accent-green); text-transform:uppercase; margin-top:20px; margin-bottom:12px; border-bottom:1px solid var(--border-color); padding-bottom:4px;">Scan & View Defaults</h3>
+                    <div style="display: flex; gap: 12px; margin-bottom: 12px;">
+                        <div class="form-group" style="flex: 1; margin-bottom: 0;">
+                            <label for="input-past-months">Default Past Months</label>
+                            <input type="number" id="input-past-months" min="0" max="12" value="1" style="background:rgba(0, 0, 0, 0.3); border:1px solid var(--border-color); border-radius:8px; padding:10px 12px; color:var(--text-primary); font-size:14px; width:100%; outline:none;">
+                        </div>
+                        <div class="form-group" style="flex: 1; margin-bottom: 0;">
+                            <label for="input-future-months">Default Future Months</label>
+                            <input type="number" id="input-future-months" min="0" max="12" value="2" style="background:rgba(0, 0, 0, 0.3); border:1px solid var(--border-color); border-radius:8px; padding:10px 12px; color:var(--text-primary); font-size:14px; width:100%; outline:none;">
+                        </div>
+                    </div>
+                    <div class="checkbox-group" style="margin-top: 12px; margin-bottom: 12px;">
+                        <label class="checkbox-container">
+                            <input type="checkbox" id="input-show-returning">
+                            <span class="checkmark"></span>
+                            Default Show Returning Seasons
+                        </label>
+                        <label class="checkbox-container">
+                            <input type="checkbox" id="input-show-library">
+                            <span class="checkmark"></span>
+                            Default Show Library Items
+                        </label>
+                        <label class="checkbox-container">
+                            <input type="checkbox" id="input-show-archived">
+                            <span class="checkmark"></span>
+                            Default Show Archived Items
+                        </label>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button id="btn-settings-cancel" class="btn btn-secondary">Cancel</button>
+                <button id="btn-settings-save" class="btn btn-success">Save Settings</button>
+            </div>
+        </div>
+    </div>
+ 
+    <!-- Script Entry -->
+    <script src="/static/app.js"></script>
+</body>
+</html>

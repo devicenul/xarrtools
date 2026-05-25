@@ -1,0 +1,28 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.venv/
+env/
+venv/
+ENV/
+
+# Configuration and Database
+.env
+xarrtools.db
+xarrtools.db-journal
+xarrtools.db-shm
+xarrtools.db-wal
+
+# IDE / Editor config
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.swp
+
+# Redundant duplicate directories
+xarrtoools/
