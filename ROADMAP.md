@@ -110,3 +110,11 @@ This document tracks planned future functionality, architectural changes, and us
   - Add rating fields to the SQLite cache table schema and store these scores.
   - Render visually styled rating pills (e.g. green tomato/red tomato icons, or color-coded numeric badges) inside the card badges container.
 - **Code files involved**: [xarrtools/enricher.py](file:///d:/Workspaces/Projects/xarrtools/xarrtools/enricher.py), [xarrtools/db.py](file:///d:/Workspaces/Projects/xarrtools/xarrtools/db.py), [xarrtools/templates/app.js](file:///d:/Workspaces/Projects/xarrtools/xarrtools/templates/app.js).
+
+## 13. Global Search for Online Media Items
+- **Goal**: Allow users to query and look up any arbitrary movie or TV show globally (beyond Metacritic or DVD calendars) directly from the Web dashboard to queue it, matching the manual search features of the CLI.
+- **Implementation Strategy**:
+  - Add a persistent search/lookup bar in the dashboard top header.
+  - When a query is executed, call the Sonarr/Radarr indexer search APIs via `/api/lookup` and display matched search items in a temporary search result overlay grid.
+  - Show quick indicators detailing if the movie/show is already in library, and let users configure quality/paths and add it directly.
+- **Code files involved**: [xarrtools/server.py](file:///d:/Workspaces/Projects/xarrtools/xarrtools/server.py), [xarrtools/templates/index.html](file:///d:/Workspaces/Projects/xarrtools/xarrtools/templates/index.html), [xarrtools/templates/app.js](file:///d:/Workspaces/Projects/xarrtools/xarrtools/templates/app.js).
