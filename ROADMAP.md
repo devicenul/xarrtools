@@ -6,9 +6,10 @@ This document tracks planned future functionality, architectural changes, and us
 
 ## Planned Enhancements
 
-### 1. Python Compilation to Binary (Windows, macOS, Linux)
-- **Goal**: Enable users to run the web server and CLI directly on Windows, macOS, and Linux without installing Python, setting up virtual environments, or managing dependencies manually.
+### 1. Cross-Platform Launcher Scripts and Compilation (Windows, macOS, Linux)
+- **Goal**: Enable users to run the web server and CLI directly on Windows, macOS, and Linux, either via automated launch scripts (`run.bat` / `run.sh` handling virtual environment setups) or by compile bundling.
 - **Implementation Strategy**:
+  - Create automated bash launcher setup scripts (`run.sh`) mirroring `run.bat` to handle virtual environments and dependencies on Unix-based systems.
   - Configure `PyInstaller` to bundle the workspace on each respective operating system:
     ```bash
     pyinstaller --onefile --add-data "xarrtools/templates:xarrtools/templates" main.py  # macOS/Linux
@@ -16,7 +17,7 @@ This document tracks planned future functionality, architectural changes, and us
     ```
   - Modify file path references (e.g., database path, templates folder) to check for `sys._MEIPASS` when running compiled.
   - Incorporate the compiled binary output workflow into automated build pipeline scripts (e.g., `build.bat`, `build.sh`).
-- **Code files involved**: [main.py](file:///d:/Workspaces/Projects/xarrtools/main.py), [xarrtools/server.py](file:///d:/Workspaces/Projects/xarrtools/xarrtools/server.py), [xarrtools/db.py](file:///d:/Workspaces/Projects/xarrtools/xarrtools/db.py).
+- **Code files involved**: [main.py](file:///d:/Workspaces/Projects/xarrtools/main.py), [xarrtools/server.py](file:///d:/Workspaces/Projects/xarrtools/xarrtools/server.py), [xarrtools/db.py](file:///d:/Workspaces/Projects/xarrtools/xarrtools/db.py), [run.sh](file:///d:/Workspaces/Projects/xarrtools/run.sh) [NEW].
 
 ### 2. Dockerization for NAS/Server Hosting
 - **Goal**: Allow running the application inside a lightweight container on NAS systems (Synology, Unraid, QNAP) or homelab servers.
@@ -36,49 +37,46 @@ This document tracks planned future functionality, architectural changes, and us
   - Log scan statistics and broadcast a notification update payload to the UI sidebar (using simple long-polling or WebSockets).
 - **Code files involved**: [xarrtools/server.py](file:///d:/Workspaces/Projects/xarrtools/xarrtools/server.py), [xarrtools/templates/app.js](file:///d:/Workspaces/Projects/xarrtools/xarrtools/templates/app.js).
 
-### 4. macOS and Linux Launch Scripts
-- **Goal**: Create automated bash setup launcher scripts (`run.sh`) mirroring `run.bat` to handle venv creation, package installation, environment variables setup, and server execution seamlessly on Unix-based systems.
-- **Code files involved**: [run.sh](file:///d:/Workspaces/Projects/xarrtools/run.sh) [NEW].
-
-### 5. In-Library Detection Improvements
+### 4. In-Library Detection Improvements
 - **Goal**: Ensure 100% accuracy for automatically tagging items already present in Sonarr/Radarr, even when explicit TVDB/TMDB IDs are missing or mismatched.
 - **Implementation Strategy**:
   - Enhance status checking functions to compare normalized titles, release years (allowing ±1 year margin), and clean punctuation.
   - Query alternative metadata sites to resolve ID mismatches if the primary calendar crawler lacks TVDB/TMDB links.
 - **Code files involved**: [xarrtools/server.py](file:///d:/Workspaces/Projects/xarrtools/xarrtools/server.py), [xarrtools/client.py](file:///d:/Workspaces/Projects/xarrtools/xarrtools/client.py).
 
-### 6. Clean up Directory Structure
+### 5. Clean up Directory Structure
 - **Goal**: Clean up project assets, configuration locations, and temporary folders to prepare the codebase for formal Python packaging and distributing.
 - **Implementation Strategy**:
   - Move template assets to standard location hierarchies, organize dev scratch scripts, and ensure proper packaging standards.
 
-### 7. Unit Tests
+### 6. Unit Tests
 - **Goal**: Implement a robust suite of unit and integration tests to ensure logic stability and prevent regressions during updates.
 - **Implementation Strategy**:
   - Set up a test framework (using `unittest` or `pytest`).
   - Mock Radarr/Sonarr client API calls, SQLite DB connection tables, and HTML scraper inputs to validate data parsing.
 - **Code files involved**: [tests/](file:///d:/Workspaces/Projects/xarrtools/tests) [NEW].
 
-### 8. User-Defined Media Feeds
+### 7. User-Defined Media Feeds
 - **Goal**: Support custom media discovery calendars/feeds beyond the pre-configured Metacritic and DVD calendar schedules.
 - **Implementation Strategy**:
   - Allow users to enter custom feed URLs (RSS feeds, JSON feeds, or scrape-able HTML) in Settings.
   - Support setting a basic schema mapping or custom parsing regex pattern to ingest titles, dates, descriptions, and IDs.
 - **Code files involved**: [xarrtools/db.py](file:///d:/Workspaces/Projects/xarrtools/xarrtools/db.py), [xarrtools/server.py](file:///d:/Workspaces/Projects/xarrtools/xarrtools/server.py), [xarrtools/templates/app.js](file:///d:/Workspaces/Projects/xarrtools/xarrtools/templates/app.js).
 
-### 9. Code and Agentic Review
+### 8. Code and Agentic Review
 - **Goal**: Complete a thorough security and performance review of database locks, scraper concurrency, and exception mapping layers.
 
-### 10. GitHub Builds and Releases Setup
+### 9. GitHub Builds and Releases Setup
 - **Goal**: Automate PyInstaller compilation and packaging workflows on GitHub tag triggers, distributing binary builds directly via GitHub Releases.
 
-### 11. GPL v3 License Integration
+### 10. GPL v3 License Integration
 - **Goal**: Commit a standard GPL v3.0 license file to the repository.
 - **Code files involved**: [LICENSE](file:///d:/Workspaces/Projects/xarrtools/LICENSE) [NEW].
 
-### 12. Standalone Desktop App UI (Captive Browser Window)
+### 11. Standalone Desktop App UI (Captive Browser Window)
 - **Goal**: Enable running the application as a standalone desktop program using a captive web-view wrapper (like `pywebview` or `PyQtWebEngine`) to run the server in the background and display the UI inside a dedicated application frame.
 - **Code files involved**: [main.py](file:///d:/Workspaces/Projects/xarrtools/main.py), [xarrtools/gui.py](file:///d:/Workspaces/Projects/xarrtools/xarrtools/gui.py) [NEW].
+
 
 ---
 
