@@ -20,7 +20,8 @@ from xarrtools.db import (
     set_setting,
     get_cache_stats,
     clear_all_cache,
-    get_cached_discoveries
+    get_cached_discoveries,
+    update_cached_library_status
 )
 
 # Initialize Database and Prune Expired cache entries
@@ -178,16 +179,22 @@ def discover_releases():
     
     radarr_client, sonarr_client = get_clients()
     
-    # 1. Fetch libraries in single queries to optimize check
-    radarr_library_ids = set()
-    sonarr_library_ids = set()
+    # 1. Fetch libraries in single queries to optimize check (collecting TVDB/TMDB and IMDb sets)
+    radarr_tmdb_ids = set()
+    radarr_imdb_ids = set()
+    sonarr_tvdb_ids = set()
+    sonarr_imdb_ids = set()
     
     if radarr_client:
         try:
             radarr_lib = radarr_client.get_library()
             for movie in radarr_lib:
                 if movie.get("tmdbId"):
-                    radarr_library_ids.add(movie["tmdbId"])
+                    radarr_tmdb_ids.add(int(movie["tmdbId"]))
+                if movie.get("imdbId"):
+                    imdb = str(movie["imdbId"]).strip().lower()
+                    if imdb:
+                        radarr_imdb_ids.add(imdb)
         except Exception as e:
             app.logger.error(f"Error fetching Radarr library: {e}")
             
@@ -196,7 +203,11 @@ def discover_releases():
             sonarr_lib = sonarr_client.get_library()
             for show in sonarr_lib:
                 if show.get("tvdbId"):
-                    sonarr_library_ids.add(show["tvdbId"])
+                    sonarr_tvdb_ids.add(int(show["tvdbId"]))
+                if show.get("imdbId"):
+                    imdb = str(show["imdbId"]).strip().lower()
+                    if imdb:
+                        sonarr_imdb_ids.add(imdb)
         except Exception as e:
             app.logger.error(f"Error fetching Sonarr library: {e}")
             
@@ -212,6 +223,22 @@ def discover_releases():
         tv_rows, movie_rows = get_cached_discoveries(start_date, end_date)
         
         for row in tv_rows:
+            tvdb_id = row["tvdb_id"]
+            imdb_id = row["imdb_id"]
+            
+            in_library = False
+            if sonarr_client:
+                has_tvdb_match = (tvdb_id and int(tvdb_id) in sonarr_tvdb_ids)
+                clean_imdb = str(imdb_id).strip().lower() if imdb_id else ""
+                has_imdb_match = (clean_imdb and clean_imdb in sonarr_imdb_ids)
+                in_library = has_tvdb_match or has_imdb_match
+                
+                # Sync status if changed
+                if in_library != bool(row["is_in_library"]):
+                    update_cached_library_status("tv", row["title"], row["year"], in_library, imdb_id)
+            else:
+                in_library = bool(row["is_in_library"])
+                
             data = {
                 "title": row["title"],
                 "year": row["year"],
@@ -220,10 +247,10 @@ def discover_releases():
                 "genres": json.loads(row["genres"]) if row["genres"] else [],
                 "trailer": row["trailer"],
                 "poster_url": row["poster_url"] or "",
-                "tvdbId": row["tvdb_id"],
-                "imdbId": row["imdb_id"],
+                "tvdbId": tvdb_id,
+                "imdbId": imdb_id,
                 "network": row["network"],
-                "is_in_library": False,
+                "is_in_library": in_library,
                 "is_archived": bool(row["is_archived"]),
                 "is_returning": bool(row["is_returning"]),
                 "date_str": row["date_str"],
@@ -232,11 +259,25 @@ def discover_releases():
                 "rating_metacritic": row.get("rating_metacritic", "") or "",
                 "rating_rt": row.get("rating_rt", "") or ""
             }
-            if data["tvdbId"] and data["tvdbId"] in sonarr_library_ids:
-                data["is_in_library"] = True
             enriched_tv.append(data)
             
         for row in movie_rows:
+            tmdb_id = row["tmdb_id"]
+            imdb_id = row["imdb_id"]
+            
+            in_library = False
+            if radarr_client:
+                has_tmdb_match = (tmdb_id and int(tmdb_id) in radarr_tmdb_ids)
+                clean_imdb = str(imdb_id).strip().lower() if imdb_id else ""
+                has_imdb_match = (clean_imdb and clean_imdb in radarr_imdb_ids)
+                in_library = has_tmdb_match or has_imdb_match
+                
+                # Sync status if changed
+                if in_library != bool(row["is_in_library"]):
+                    update_cached_library_status("movie", row["title"], row["year"], in_library, imdb_id)
+            else:
+                in_library = bool(row["is_in_library"])
+                
             data = {
                 "title": row["title"],
                 "year": row["year"],
@@ -245,10 +286,10 @@ def discover_releases():
                 "genres": json.loads(row["genres"]) if row["genres"] else [],
                 "trailer": row["trailer"],
                 "poster_url": row["poster_url"] or "",
-                "tmdbId": row["tmdb_id"],
-                "imdbId": row["imdb_id"],
+                "tmdbId": tmdb_id,
+                "imdbId": imdb_id,
                 "network": row["network"],
-                "is_in_library": False,
+                "is_in_library": in_library,
                 "is_archived": bool(row["is_archived"]),
                 "date_str": row["date_str"],
                 "raw_metadata": None,
@@ -256,8 +297,6 @@ def discover_releases():
                 "rating_metacritic": row.get("rating_metacritic", "") or "",
                 "rating_rt": row.get("rating_rt", "") or ""
             }
-            if data["tmdbId"] and data["tmdbId"] in radarr_library_ids:
-                data["is_in_library"] = True
             enriched_movies.append(data)
             
         return jsonify({
@@ -303,6 +342,22 @@ def discover_releases():
                         is_incomplete = False
                 
                 if cached and not is_incomplete:
+                    # Check library
+                    in_library = False
+                    tvdb_val = cached["tvdb_id"]
+                    imdb_val = cached["imdb_id"]
+                    if sonarr_client:
+                        has_tvdb_match = (tvdb_val and int(tvdb_val) in sonarr_tvdb_ids)
+                        clean_imdb = str(imdb_val).strip().lower() if imdb_val else ""
+                        has_imdb_match = (clean_imdb and clean_imdb in sonarr_imdb_ids)
+                        in_library = has_tvdb_match or has_imdb_match
+                        
+                        # Sync status if changed
+                        if in_library != bool(cached["is_in_library"]):
+                            update_cached_library_status("tv", cached["title"], cached["year"], in_library, imdb_val)
+                    else:
+                        in_library = bool(cached["is_in_library"])
+                        
                     data = {
                         "title": cached["title"],
                         "year": cached["year"],
@@ -311,19 +366,16 @@ def discover_releases():
                         "genres": json.loads(cached["genres"]) if cached["genres"] else [],
                         "trailer": cached["trailer"],
                         "poster_url": cached["poster_url"] or "",
-                        "tvdbId": cached["tvdb_id"],
-                        "imdbId": cached["imdb_id"],
+                        "tvdbId": tvdb_val,
+                        "imdbId": imdb_val,
                         "network": cached["network"],
-                        "is_in_library": False,
+                        "is_in_library": in_library,
                         "is_archived": bool(cached["is_archived"]),
                         "raw_metadata": None,
                         "rating_imdb": cached.get("rating_imdb", "") or "",
                         "rating_metacritic": cached.get("rating_metacritic", "") or "",
                         "rating_rt": cached.get("rating_rt", "") or ""
                     }
-                    # Check library
-                    if data["tvdbId"] and data["tvdbId"] in sonarr_library_ids:
-                        data["is_in_library"] = True
                 else:
                     data = enrich_tv_show(item["title"], item["date_obj"].year, sonarr_client)
                     if not data["plot"] or data["plot"] == "No plot summary available.":
@@ -331,10 +383,19 @@ def discover_releases():
                     data["is_returning"] = item.get("is_returning", False)
                     data["is_archived"] = bool(cached["is_archived"]) if cached else False
                     
-                    # Check library
-                    if data.get("tvdbId") and data["tvdbId"] in sonarr_library_ids:
-                        data["is_in_library"] = True
-                    
+                    # Resolve library status
+                    in_library = False
+                    tvdb_val = data.get("tvdbId")
+                    imdb_val = data.get("imdbId")
+                    if sonarr_client:
+                        has_tvdb_match = (tvdb_val and int(tvdb_val) in sonarr_tvdb_ids)
+                        clean_imdb = str(imdb_val).strip().lower() if imdb_val else ""
+                        has_imdb_match = (clean_imdb and clean_imdb in sonarr_imdb_ids)
+                        in_library = has_tvdb_match or has_imdb_match
+                    else:
+                        in_library = bool(cached["is_in_library"]) if cached else False
+                        
+                    data["is_in_library"] = in_library
                     data["date_str"] = item.get("date_str", "")
                     data["date_obj"] = item.get("date_obj")
                     data["href"] = item.get("href", "")
@@ -386,6 +447,22 @@ def discover_releases():
                         is_incomplete = False
                 
                 if cached and not is_incomplete:
+                    # Check library
+                    in_library = False
+                    tmdb_val = cached["tmdb_id"]
+                    imdb_val = cached["imdb_id"]
+                    if radarr_client:
+                        has_tmdb_match = (tmdb_val and int(tmdb_val) in radarr_tmdb_ids)
+                        clean_imdb = str(imdb_val).strip().lower() if imdb_val else ""
+                        has_imdb_match = (clean_imdb and clean_imdb in radarr_imdb_ids)
+                        in_library = has_tmdb_match or has_imdb_match
+                        
+                        # Sync status if changed
+                        if in_library != bool(cached["is_in_library"]):
+                            update_cached_library_status("movie", cached["title"], cached["year"], in_library, imdb_val)
+                    else:
+                        in_library = bool(cached["is_in_library"])
+                        
                     data = {
                         "title": cached["title"],
                         "year": cached["year"],
@@ -394,19 +471,16 @@ def discover_releases():
                         "genres": json.loads(cached["genres"]) if cached["genres"] else [],
                         "trailer": cached["trailer"],
                         "poster_url": cached["poster_url"] or "",
-                        "tmdbId": cached["tmdb_id"],
-                        "imdbId": cached["imdb_id"],
+                        "tmdbId": tmdb_val,
+                        "imdbId": imdb_val,
                         "network": cached["network"],
-                        "is_in_library": False,
+                        "is_in_library": in_library,
                         "is_archived": bool(cached["is_archived"]),
                         "raw_metadata": None,
                         "rating_imdb": cached.get("rating_imdb", "") or "",
                         "rating_metacritic": cached.get("rating_metacritic", "") or "",
                         "rating_rt": cached.get("rating_rt", "") or ""
                     }
-                    # Check library
-                    if data["tmdbId"] and data["tmdbId"] in radarr_library_ids:
-                        data["is_in_library"] = True
                 else:
                     data = enrich_movie(item["title"], item["date_obj"].year, radarr_client, item.get("imdbId"))
                     if not data["plot"] or data["plot"] == "No plot summary available.":
@@ -415,10 +489,19 @@ def discover_releases():
                         data["imdbId"] = item.get("imdbId")
                     data["is_archived"] = bool(cached["is_archived"]) if cached else False
                     
-                    # Check library
-                    if data.get("tmdbId") and data.get("tmdbId") in radarr_library_ids:
-                        data["is_in_library"] = True
-                    
+                    # Resolve library status
+                    in_library = False
+                    tmdb_val = data.get("tmdbId")
+                    imdb_val = data.get("imdbId")
+                    if radarr_client:
+                        has_tmdb_match = (tmdb_val and int(tmdb_val) in radarr_tmdb_ids)
+                        clean_imdb = str(imdb_val).strip().lower() if imdb_val else ""
+                        has_imdb_match = (clean_imdb and clean_imdb in radarr_imdb_ids)
+                        in_library = has_tmdb_match or has_imdb_match
+                    else:
+                        in_library = bool(cached["is_in_library"]) if cached else False
+                        
+                    data["is_in_library"] = in_library
                     data["date_str"] = item.get("date_str", "")
                     data["date_obj"] = item.get("date_obj")
                     data["href"] = item.get("href", "")
@@ -480,14 +563,28 @@ def cache_refresh_item():
                 refreshed["href"] = existing.get("href")
                 if "is_returning" in existing:
                     refreshed["is_returning"] = bool(existing["is_returning"])
-            if sonarr_client and refreshed.get("tvdbId"):
+                    
+            # Resolve library status strictly
+            in_library = False
+            if sonarr_client:
                 try:
                     series = sonarr_client.get_library()
-                    tvdb_set = {s["tvdbId"] for s in series if s.get("tvdbId")}
-                    if refreshed["tvdbId"] in tvdb_set:
-                        refreshed["is_in_library"] = True
+                    tvdb_set = {int(s["tvdbId"]) for s in series if s.get("tvdbId")}
+                    imdb_set = {str(s["imdbId"]).strip().lower() for s in series if s.get("imdbId")}
+                    
+                    tvdb_val = refreshed.get("tvdbId")
+                    imdb_val = refreshed.get("imdbId")
+                    
+                    has_tvdb_match = (tvdb_val and int(tvdb_val) in tvdb_set)
+                    clean_imdb = str(imdb_val).strip().lower() if imdb_val else ""
+                    has_imdb_match = (clean_imdb and clean_imdb in imdb_set)
+                    in_library = has_tvdb_match or has_imdb_match
                 except Exception:
                     pass
+            else:
+                in_library = bool(existing["is_in_library"]) if existing else False
+                
+            refreshed["is_in_library"] = in_library
             add_cached_item("tv", refreshed)
         elif type_ == "movie":
             refreshed = enrich_movie(title, int(year), radarr_client, imdb_id)
@@ -496,14 +593,28 @@ def cache_refresh_item():
                 refreshed["date_str"] = existing.get("date_str")
                 refreshed["date_obj"] = existing.get("date_obj")
                 refreshed["href"] = existing.get("href")
-            if radarr_client and refreshed.get("tmdbId"):
+                
+            # Resolve library status strictly
+            in_library = False
+            if radarr_client:
                 try:
                     movies = radarr_client.get_library()
-                    tmdb_set = {m["tmdbId"] for m in movies if m.get("tmdbId")}
-                    if refreshed["tmdbId"] in tmdb_set:
-                        refreshed["is_in_library"] = True
+                    tmdb_set = {int(m["tmdbId"]) for m in movies if m.get("tmdbId")}
+                    imdb_set = {str(m["imdbId"]).strip().lower() for m in movies if m.get("imdbId")}
+                    
+                    tmdb_val = refreshed.get("tmdbId")
+                    imdb_val = refreshed.get("imdbId")
+                    
+                    has_tmdb_match = (tmdb_val and int(tmdb_val) in tmdb_set)
+                    clean_imdb = str(imdb_val).strip().lower() if imdb_val else ""
+                    has_imdb_match = (clean_imdb and clean_imdb in imdb_set)
+                    in_library = has_tmdb_match or has_imdb_match
                 except Exception:
                     pass
+            else:
+                in_library = bool(existing["is_in_library"]) if existing else False
+                
+            refreshed["is_in_library"] = in_library
             add_cached_item("movie", refreshed)
         else:
             return jsonify({"status": "error", "message": "Invalid media type"}), 400
@@ -556,6 +667,24 @@ def add_media():
     if not type_ or not raw_meta or not folder or not profile_id:
         return jsonify({"status": "error", "message": "Missing required fields (type, raw_metadata, folder, profile_id)"}), 400
         
+    is_demo = bool(req_data.get("demo") or req_data.get("is_demo"))
+    
+    if is_demo:
+        # Simulate addition in sandbox mode by updating cache table directly
+        try:
+            title = raw_meta.get("title")
+            year = int(raw_meta.get("year", 0))
+            imdb_id = raw_meta.get("imdbId") or raw_meta.get("imdb_id")
+            existing = get_cached_item(type_, title, year, imdb_id)
+            if existing:
+                update_cached_library_status(type_, title, year, True, imdb_id)
+            else:
+                raw_meta["is_in_library"] = True
+                add_cached_item(type_, raw_meta)
+            return jsonify({"status": "success", "message": f"[Demo Sandbox] Successfully added { 'TV Show' if type_ == 'tv' else 'Movie' } '{title}' to sandbox library!"})
+        except Exception as e:
+            return jsonify({"status": "error", "message": str(e)}), 500
+            
     radarr_client, sonarr_client = get_clients()
     
     if type_ == "tv" and not sonarr_client:
@@ -573,6 +702,16 @@ def add_media():
                 search_now=search_now,
                 language_profile_id=int(lang_profile_id) if lang_profile_id else None
             )
+            # Update cache table immediately
+            title = res.get("title") or raw_meta.get("title")
+            year = res.get("year") or raw_meta.get("year", 0)
+            imdb_id = res.get("imdbId") or raw_meta.get("imdbId")
+            existing = get_cached_item("tv", title, year, imdb_id)
+            if existing:
+                update_cached_library_status("tv", title, year, True, imdb_id)
+            else:
+                raw_meta["is_in_library"] = True
+                add_cached_item("tv", raw_meta)
             return jsonify({"status": "success", "message": f"Successfully added TV Show '{res.get('title')}'!"})
         else:
             res = radarr_client.add_movie(
@@ -583,9 +722,20 @@ def add_media():
                 search_now=search_now,
                 add_collection=bool(add_collection)
             )
+            # Update cache table immediately
+            title = res.get("title") or raw_meta.get("title")
+            year = res.get("year") or raw_meta.get("year", 0)
+            imdb_id = res.get("imdbId") or raw_meta.get("imdbId")
+            existing = get_cached_item("movie", title, year, imdb_id)
+            if existing:
+                update_cached_library_status("movie", title, year, True, imdb_id)
+            else:
+                raw_meta["is_in_library"] = True
+                add_cached_item("movie", raw_meta)
             return jsonify({"status": "success", "message": f"Successfully added Movie '{res.get('title')}'!"})
     except ArrAPIError as e:
         return jsonify({"status": "error", "message": str(e)}), 500
+
 
 import threading
 import time

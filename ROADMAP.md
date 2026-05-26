@@ -37,43 +37,36 @@ This document tracks planned future functionality, architectural changes, and us
   - Log scan statistics and broadcast a notification update payload to the UI sidebar (using simple long-polling or WebSockets).
 - **Code files involved**: [xarrtools/server.py](file:///d:/Workspaces/Projects/xarrtools/xarrtools/server.py), [xarrtools/templates/app.js](file:///d:/Workspaces/Projects/xarrtools/xarrtools/templates/app.js).
 
-### 4. In-Library Detection Improvements
-- **Goal**: Ensure 100% accuracy for automatically tagging items already present in Sonarr/Radarr, even when explicit TVDB/TMDB IDs are missing or mismatched.
-- **Implementation Strategy**:
-  - Enhance status checking functions to compare normalized titles, release years (allowing ±1 year margin), and clean punctuation.
-  - Query alternative metadata sites to resolve ID mismatches if the primary calendar crawler lacks TVDB/TMDB links.
-- **Code files involved**: [xarrtools/server.py](file:///d:/Workspaces/Projects/xarrtools/xarrtools/server.py), [xarrtools/client.py](file:///d:/Workspaces/Projects/xarrtools/xarrtools/client.py).
-
-### 5. Clean up Directory Structure
+### 4. Clean up Directory Structure
 - **Goal**: Clean up project assets, configuration locations, and temporary folders to prepare the codebase for formal Python packaging and distributing.
 - **Implementation Strategy**:
   - Move template assets to standard location hierarchies, organize dev scratch scripts, and ensure proper packaging standards.
 
-### 6. Unit Tests
+### 5. Unit Tests
 - **Goal**: Implement a robust suite of unit and integration tests to ensure logic stability and prevent regressions during updates.
 - **Implementation Strategy**:
   - Set up a test framework (using `unittest` or `pytest`).
   - Mock Radarr/Sonarr client API calls, SQLite DB connection tables, and HTML scraper inputs to validate data parsing.
 - **Code files involved**: [tests/](file:///d:/Workspaces/Projects/xarrtools/tests) [NEW].
 
-### 7. User-Defined Media Feeds
+### 6. User-Defined Media Feeds
 - **Goal**: Support custom media discovery calendars/feeds beyond the pre-configured Metacritic and DVD calendar schedules.
 - **Implementation Strategy**:
   - Allow users to enter custom feed URLs (RSS feeds, JSON feeds, or scrape-able HTML) in Settings.
   - Support setting a basic schema mapping or custom parsing regex pattern to ingest titles, dates, descriptions, and IDs.
 - **Code files involved**: [xarrtools/db.py](file:///d:/Workspaces/Projects/xarrtools/xarrtools/db.py), [xarrtools/server.py](file:///d:/Workspaces/Projects/xarrtools/xarrtools/server.py), [xarrtools/templates/app.js](file:///d:/Workspaces/Projects/xarrtools/xarrtools/templates/app.js).
 
-### 8. Code and Agentic Review
+### 7. Code and Agentic Review
 - **Goal**: Complete a thorough security and performance review of database locks, scraper concurrency, and exception mapping layers.
 
-### 9. GitHub Builds and Releases Setup
+### 8. GitHub Builds and Releases Setup
 - **Goal**: Automate PyInstaller compilation and packaging workflows on GitHub tag triggers, distributing binary builds directly via GitHub Releases.
 
-### 10. GPL v3 License Integration
+### 9. GPL v3 License Integration
 - **Goal**: Commit a standard GPL v3.0 license file to the repository.
 - **Code files involved**: [LICENSE](file:///d:/Workspaces/Projects/xarrtools/LICENSE) [NEW].
 
-### 11. Standalone Desktop App UI (Captive Browser Window)
+### 10. Standalone Desktop App UI (Captive Browser Window)
 - **Goal**: Enable running the application as a standalone desktop program using a captive web-view wrapper (like `pywebview` or `PyQtWebEngine`) to run the server in the background and display the UI inside a dedicated application frame.
 - **Code files involved**: [main.py](file:///d:/Workspaces/Projects/xarrtools/main.py), [xarrtools/gui.py](file:///d:/Workspaces/Projects/xarrtools/xarrtools/gui.py) [NEW].
 
@@ -81,6 +74,9 @@ This document tracks planned future functionality, architectural changes, and us
 ---
 
 ## Completed Features
+
+### ✓ Persistent & Strict In-Library Detection
+Added a persistent `is_in_library` column inside the SQLite database cache, enabling cached status retention across reloads. Implemented strict ID-based matching (TVDB/TMDB ID or IMDb ID) against live Radarr and Sonarr libraries during scans, metadata updates, and additions. Supports unconfigured Sandbox/Demo mode additions by simulating and persisting in-library states directly within the SQLite database cache.
 
 ### ✓ Standalone Demo Mode (Run Without Configuration)
 Provides an interactive sandbox flow with simulated indexer lookups, options configuration (folders and quality profiles), and global search capability when Radarr/Sonarr servers are unconfigured. Adds a glowing magenta "Demo Active" badge to the sidebar indicators.

@@ -72,6 +72,13 @@ def init_db():
     if "rating_rt" not in columns:
         cursor.execute("ALTER TABLE cache ADD COLUMN rating_rt TEXT")
         conn.commit()
+        
+    # 2d. Add is_in_library column to cache table if not present (migration for existing database)
+    cursor.execute("PRAGMA table_info(cache)")
+    columns = [col[1] for col in cursor.fetchall()]
+    if "is_in_library" not in columns:
+        cursor.execute("ALTER TABLE cache ADD COLUMN is_in_library INTEGER DEFAULT 0")
+        conn.commit()
     
     # 3. Migrate from .env if settings table is empty
     cursor.execute("SELECT COUNT(*) FROM settings")
@@ -197,6 +204,7 @@ def add_cached_item(type_: str, item: dict):
     genres_json = json.dumps(item.get("genres", []))
     tvdb_id = item.get("tvdbId") or item.get("tvdb_id")
     tmdb_id = item.get("tmdbId") or item.get("tmdb_id")
+    is_in_lib = 1 if item.get("is_in_library") else 0
     
     date_obj_str = ""
     if item.get("date_obj"):
@@ -211,7 +219,7 @@ def add_cached_item(type_: str, item: dict):
                 date_str = ?, date_obj = ?, description = ?, href = ?, imdb_id = ?,
                 tvdb_id = ?, tmdb_id = ?, genres = ?, cast = ?, network = ?, trailer = ?,
                 poster_url = ?, is_returning = ?, added_at = ?,
-                rating_imdb = ?, rating_metacritic = ?, rating_rt = ?
+                rating_imdb = ?, rating_metacritic = ?, rating_rt = ?, is_in_library = ?
             WHERE id = ?
         ''', (
             item.get("date_str", ""),
@@ -231,6 +239,7 @@ def add_cached_item(type_: str, item: dict):
             item.get("rating_imdb", ""),
             item.get("rating_metacritic", ""),
             item.get("rating_rt", ""),
+            is_in_lib,
             existing["id"]
         ))
     else:
@@ -238,8 +247,8 @@ def add_cached_item(type_: str, item: dict):
             INSERT INTO cache (
                 type, title, year, date_str, date_obj, description, href, imdb_id,
                 tvdb_id, tmdb_id, genres, cast, network, trailer, poster_url, is_returning, is_archived, added_at,
-                rating_imdb, rating_metacritic, rating_rt
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                rating_imdb, rating_metacritic, rating_rt, is_in_library
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ''', (
             type_,
             item["title"],
@@ -261,7 +270,8 @@ def add_cached_item(type_: str, item: dict):
             datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             item.get("rating_imdb", ""),
             item.get("rating_metacritic", ""),
-            item.get("rating_rt", "")
+            item.get("rating_rt", ""),
+            is_in_lib
         ))
     conn.commit()
     conn.close()
@@ -298,8 +308,8 @@ def archive_cached_item(type_: str, title: str, year: int, is_archived: bool = T
                 INSERT INTO cache (
                     type, title, year, date_str, date_obj, description, href, imdb_id,
                     tvdb_id, tmdb_id, genres, cast, network, trailer, poster_url, is_returning, is_archived, added_at,
-                    rating_imdb, rating_metacritic, rating_rt
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    rating_imdb, rating_metacritic, rating_rt, is_in_library
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ''', (
                 type_, title, year,
                 raw_item.get("date_str", ""),
@@ -319,7 +329,8 @@ def archive_cached_item(type_: str, title: str, year: int, is_archived: bool = T
                 datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                 raw_item.get("rating_imdb", ""),
                 raw_item.get("rating_metacritic", ""),
-                raw_item.get("rating_rt", "")
+                raw_item.get("rating_rt", ""),
+                1 if raw_item.get("is_in_library") else 0
             ))
         else:
             cursor.execute('''
@@ -405,3 +416,13 @@ def get_cached_discoveries(start_date: str, end_date: str) -> tuple:
     
     conn.close()
     return [dict(row) for row in tv_rows], [dict(row) for row in movie_rows]
+
+def update_cached_library_status(type_: str, title: str, year: int, is_in_library: bool, imdb_id: str = None):
+    """Updates the is_in_library status for a cached item in the database."""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    existing = get_cached_item(type_, title, year, imdb_id, conn=conn)
+    if existing:
+        cursor.execute("UPDATE cache SET is_in_library = ? WHERE id = ?", (1 if is_in_library else 0, existing["id"]))
+        conn.commit()
+    conn.close()

@@ -341,33 +341,51 @@ async function addMediaItem() {
         loadingOverlay.classList.remove("hidden");
         loadingText.textContent = `[Demo Mode] Adding '${rawMeta.title}'...`;
         
-        setTimeout(() => {
+        try {
+            const response = await fetch("/api/add", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    type: type,
+                    raw_metadata: rawMeta,
+                    folder: "demo",
+                    profile_id: 1,
+                    demo: true
+                })
+            });
+            const resData = await response.json();
             loadingOverlay.classList.add("hidden");
-            addNotification(`[Demo Sandbox] Successfully added ${type === 'tv' ? 'TV Show' : 'Movie'} '${rawMeta.title}' to sandbox library!`, "success");
-            
-            if (discoveryItem) {
-                discoveryItem.is_in_library = true;
-                renderMediaLists();
-            }
-            
-            if (searchCard) {
-                const addBtn = searchCard.querySelector(".btn-search-add");
-                if (addBtn) {
-                    addBtn.textContent = "In Library";
-                    addBtn.disabled = true;
-                    addBtn.className = "btn btn-secondary btn-added btn-search-add";
+            if (response.ok && resData.status === "success") {
+                addNotification(resData.message || `[Demo Sandbox] Successfully added ${type === 'tv' ? 'TV Show' : 'Movie'} '${rawMeta.title}' to sandbox library!`, "success");
+                if (discoveryItem) {
+                    discoveryItem.is_in_library = true;
+                    renderMediaLists();
                 }
-                const badges = searchCard.querySelector(".card-badges");
-                if (badges && !badges.querySelector(".badge-in-library")) {
-                    const badge = document.createElement("span");
-                    badge.className = "badge badge-in-library";
-                    badge.textContent = "In Library";
-                    badges.appendChild(badge);
+                if (searchCard) {
+                    const addBtn = searchCard.querySelector(".btn-search-add");
+                    if (addBtn) {
+                        addBtn.textContent = "In Library";
+                        addBtn.disabled = true;
+                        addBtn.className = "btn btn-secondary btn-added btn-search-add";
+                    }
+                    const badges = searchCard.querySelector(".card-badges");
+                    if (badges && !badges.querySelector(".badge-in-library")) {
+                        const badge = document.createElement("span");
+                        badge.className = "badge badge-in-library";
+                        badge.textContent = "In Library";
+                        badges.appendChild(badge);
+                    }
                 }
+            } else {
+                addNotification(`Failed to add '${rawMeta.title}': ${resData.message || "Unknown error."}`, "error");
             }
-        }, 800);
+        } catch (error) {
+            loadingOverlay.classList.add("hidden");
+            addNotification(`Connection error: ${error.message}`, "error");
+        }
         return;
     }
+
 
     const checkTrackCollection = document.getElementById("check-track-collection");
     const payload = {

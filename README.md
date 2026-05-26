@@ -14,7 +14,7 @@ An interactive web-based and CLI media discovery manager designed to scrape upco
 6. **Missing Data Healing on Scans**: During new scans, the backend automatically detects incomplete cached entries (e.g. missing posters, ratings, or IDs) and re-enriches them from live APIs. A 24-hour rate limit check prevents redundant lookups.
 7. **Interactive Match Selector**: First-click on "Add" initiates a search across indexers, highlights the best matches, and lets you choose the exact movie or series to add.
 8. **Radarr Movie Collection / Box Set Exposure**: Exposes whether a movie belongs to a TMDb collection (e.g., *The Matrix Collection*) with styled badges, allowing you to monitor the entire box set in Radarr via a "Track Collection" option.
-9. **Dynamic Library Checking**: Automatically checks your existing Radarr/Sonarr libraries in batch queries to label items already in your possession.
+9. **Dynamic & Persistent Library Checking**: Automatically matches discovery items against live Radarr/Sonarr libraries using strict ID matching (matching TVDB/TMDB ID or IMDb ID) to guarantee 100% accuracy. Library statuses are persisted in the local SQLite database cache, defaulting to the cached states when offline or running in Sandbox/Demo mode.
 10. **Archive Feature**: Archive release discoveries to hide clutter without affecting your Sonarr/Radarr indexers.
 11. **Global Search next to status badges**: Locate any movie or show globally using a glowing, cyan-themed navigation button next to the Radarr and Sonarr status badges in the sidebar.
 12. **Interactive Filter Controls**: 
