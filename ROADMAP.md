@@ -96,6 +96,14 @@ This document tracks planned future functionality, architectural changes, and us
 - **Goal**: Enable running the application as a standalone desktop program using a captive web-view wrapper (like `pywebview` or `PyQtWebEngine`) to run the server in the background and display the UI inside a dedicated application frame.
 - **Code files involved**: [main.py](file:///d:/Workspaces/Projects/xarrtools/main.py), [xarrtools/gui.py](file:///d:/Workspaces/Projects/xarrtools/xarrtools/gui.py) [NEW].
 
+### 17. Run Without Configuration (Try Basic UI)
+- **Goal**: Enable users to search, view, and test the discovery UI without configuring Sonarr or Radarr. Display friendly placeholders or demo mode when credentials are missing.
+- **Code files involved**: [xarrtools/templates/app.js](file:///d:/Workspaces/Projects/xarrtools/xarrtools/templates/app.js), [xarrtools/server.py](file:///d:/Workspaces/Projects/xarrtools/xarrtools/server.py).
+
+### 18. Auto-Open Settings Modal on Missing Config
+- **Goal**: Detect if Radarr/Sonarr are unconfigured when the app is first opened in the browser, and automatically display the settings modal focused on the server configuration tab.
+- **Code files involved**: [xarrtools/templates/app.js](file:///d:/Workspaces/Projects/xarrtools/xarrtools/templates/app.js).
+
 ---
 
 ## Completed Features
