@@ -419,8 +419,9 @@ select option {
 /* Media Cards Grid */
 .cards-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
-    gap: 24px;
+    grid-template-columns: repeat(auto-fill, minmax(520px, 1fr));
+    gap: 28px;
+    align-items: start;
 }
 
 @media (max-width: 600px) {
@@ -435,14 +436,75 @@ select option {
     border: 1px solid var(--border-color);
     border-radius: 16px;
     padding: 20px;
-    display: flex;
-    flex-direction: column;
-    gap: 16px;
+    display: grid;
+    grid-template-columns: 160px 1fr;
+    gap: 20px;
     box-shadow: var(--shadow-premium);
     backdrop-filter: blur(12px);
     transition: var(--transition-smooth);
     position: relative;
     overflow: hidden;
+}
+
+.card-info-content {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    height: 100%;
+}
+
+/* Poster Artwork Styles */
+.card-poster {
+    width: 160px;
+    height: 240px;
+    border-radius: 10px;
+    overflow: hidden;
+    background: rgba(0, 0, 0, 0.2);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+    position: relative;
+}
+
+.poster-img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    transition: var(--transition-smooth);
+}
+
+.media-card:hover .poster-img {
+    transform: scale(1.05);
+}
+
+.poster-fallback {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    background: linear-gradient(135deg, rgba(22, 22, 38, 0.8), rgba(10, 10, 20, 0.9));
+    color: var(--text-secondary);
+    text-align: center;
+}
+
+.poster-fallback span {
+    font-size: 32px;
+}
+
+@media (max-width: 650px) {
+    .media-card {
+        grid-template-columns: 1fr;
+        gap: 16px;
+    }
+    .card-poster {
+        width: 100%;
+        height: 280px;
+    }
 }
 
 .media-card:hover {
@@ -504,6 +566,89 @@ select option {
     color: var(--accent-green);
     border: 1px solid rgba(0, 255, 135, 0.25);
     margin-left: auto;
+}
+
+/* Rating Badges */
+.rating-badges {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+    align-items: center;
+}
+
+.badge-rating {
+    font-size: 11px;
+    font-weight: 700;
+    padding: 3px 8px;
+    border-radius: 6px;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    letter-spacing: 0.3px;
+    white-space: nowrap;
+}
+
+.badge-rating .rating-label {
+    font-weight: 600;
+    opacity: 0.85;
+    font-size: 10px;
+}
+
+.badge-rating .rating-value {
+    font-weight: 800;
+}
+
+/* IMDb Gold */
+.badge-rating-imdb {
+    background: rgba(245, 197, 24, 0.12);
+    color: #f5c518;
+    border: 1px solid rgba(245, 197, 24, 0.25);
+}
+
+/* Metacritic - color varies by score */
+.badge-rating-mc {
+    border: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.badge-rating-mc.mc-good {
+    background: rgba(102, 204, 51, 0.12);
+    color: #66cc33;
+    border-color: rgba(102, 204, 51, 0.25);
+}
+
+.badge-rating-mc.mc-mixed {
+    background: rgba(255, 204, 51, 0.12);
+    color: #ffcc33;
+    border-color: rgba(255, 204, 51, 0.25);
+}
+
+.badge-rating-mc.mc-bad {
+    background: rgba(255, 0, 0, 0.1);
+    color: #ff4444;
+    border-color: rgba(255, 0, 0, 0.2);
+}
+
+/* Rotten Tomatoes */
+.badge-rating-rt {
+    border: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.badge-rating-rt.rt-fresh {
+    background: rgba(250, 50, 10, 0.1);
+    color: #fa320a;
+    border-color: rgba(250, 50, 10, 0.2);
+}
+
+.badge-rating-rt.rt-certified {
+    background: rgba(250, 50, 10, 0.15);
+    color: #fa320a;
+    border-color: rgba(250, 50, 10, 0.3);
+}
+
+.badge-rating-rt.rt-rotten {
+    background: rgba(10, 200, 10, 0.08);
+    color: #0ac80a;
+    border-color: rgba(10, 200, 10, 0.18);
 }
 
 /* Genres */
@@ -939,6 +1084,9 @@ select option {
 
 /* Filter Checkbox Group in Filter Card */
 .filter-checkbox-group {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
     margin-top: 12px;
     padding-top: 12px;
     border-top: 1px solid var(--border-color);
@@ -1225,3 +1373,247 @@ select option {
     background: rgba(255, 255, 255, 0.1);
     border-color: #ffffff;
 }
+
+/* Year and Refresh icon layout */
+.card-year-refresh {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    align-self: center;
+}
+
+/* Refresh Button in Card Header */
+.btn-refresh-icon {
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    font-size: 14px;
+    padding: 4px;
+    margin: 0;
+    line-height: 1;
+    border-radius: 4px;
+    transition: var(--transition-smooth);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    outline: none;
+}
+
+.btn-refresh-icon:hover {
+    background: rgba(255, 255, 255, 0.08);
+    transform: scale(1.15) rotate(180deg);
+}
+
+@keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
+.btn-refresh-icon.loading {
+    animation: spin 1s linear infinite;
+    pointer-events: none;
+}
+
+/* Search Input Wrapper and Clear Button */
+.search-input-wrapper {
+    position: relative;
+    width: 100%;
+}
+
+.search-input-wrapper input {
+    padding-right: 36px !important;
+}
+
+.btn-clear-input {
+    position: absolute;
+    right: 12px;
+    top: 50%;
+    transform: translateY(-50%);
+    background: transparent;
+    border: none;
+    color: var(--text-secondary);
+    font-size: 20px;
+    cursor: pointer;
+    line-height: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    transition: var(--transition-smooth);
+    padding: 0;
+    outline: none;
+}
+
+.btn-clear-input:hover {
+    color: var(--accent-magenta);
+    background: rgba(255, 255, 255, 0.08);
+}
+
+.btn-clear-input.hidden {
+    display: none !important;
+}
+
+/* Multiselect Dropdowns Styles */
+.dropdown-filters-row {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-top: 12px;
+    width: 100%;
+}
+
+.multiselect-dropdown {
+    position: relative;
+    flex: 1;
+}
+
+.multiselect-btn {
+    background: rgba(0, 0, 0, 0.3);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 10px 12px;
+    color: var(--text-primary);
+    font-size: 13px;
+    text-align: left;
+    width: 100%;
+    cursor: pointer;
+    outline: none;
+    transition: var(--transition-smooth);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-weight: 500;
+}
+
+.multiselect-btn::after {
+    content: "▾";
+    font-size: 10px;
+    color: var(--text-secondary);
+    margin-left: 6px;
+    transition: var(--transition-smooth);
+}
+
+.multiselect-btn.active {
+    border-color: var(--accent-blue);
+    color: var(--accent-blue);
+    background: rgba(0, 210, 255, 0.05);
+}
+
+.multiselect-dropdown:focus-within .multiselect-btn {
+    border-color: var(--accent-blue);
+}
+
+.multiselect-content {
+    position: absolute;
+    top: calc(100% + 6px);
+    left: 0;
+    width: 240px;
+    background: #0d0d18;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 10px;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.7);
+    z-index: 150;
+    display: flex;
+    flex-direction: column;
+    max-height: 260px;
+    animation: fadeIn 0.2s ease;
+}
+
+.multiselect-content.hidden {
+    display: none !important;
+}
+
+.multiselect-actions {
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--border-color);
+    display: flex;
+    justify-content: flex-end;
+    background: rgba(0, 0, 0, 0.2);
+    border-radius: 9px 9px 0 0;
+}
+
+.btn-clear-multiselect {
+    background: transparent;
+    border: none;
+    color: var(--accent-magenta);
+    font-size: 11px;
+    font-weight: 600;
+    cursor: pointer;
+    padding: 2px 6px;
+    outline: none;
+    border-radius: 4px;
+    transition: var(--transition-smooth);
+}
+
+.btn-clear-multiselect:hover {
+    background: rgba(255, 42, 133, 0.1);
+}
+
+.multiselect-options {
+    overflow-y: auto;
+    padding: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.multiselect-option {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 10px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 13px;
+    color: var(--text-secondary);
+    transition: var(--transition-smooth);
+}
+
+.multiselect-option:hover {
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--text-primary);
+}
+
+.multiselect-option input[type="checkbox"] {
+    cursor: pointer;
+    accent-color: var(--accent-blue);
+    width: 15px;
+    height: 15px;
+    border-radius: 4px;
+    border: 1px solid var(--border-color);
+    background: rgba(0,0,0,0.3);
+}
+
+.multiselect-option span {
+    user-select: none;
+}
+
+/* Sidebar Search Badge styling */
+.search-badge {
+    background: rgba(0, 210, 255, 0.04) !important;
+    border-color: rgba(0, 210, 255, 0.2) !important;
+    color: var(--accent-blue) !important;
+    cursor: pointer;
+    transition: var(--transition-smooth);
+    border-radius: 20px;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.search-badge:hover {
+    background: rgba(0, 210, 255, 0.1) !important;
+    border-color: var(--accent-blue) !important;
+    box-shadow: 0 0 10px rgba(0, 210, 255, 0.3) !important;
+}
+
+.search-badge.active {
+    background: rgba(0, 210, 255, 0.15) !important;
+    border-color: var(--accent-blue) !important;
+    color: #ffffff !important;
+    box-shadow: 0 0 12px rgba(0, 210, 255, 0.5) !important;
+}
+
+

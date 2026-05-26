@@ -45,12 +45,33 @@ def init_db():
             cast TEXT,
             network TEXT,
             trailer TEXT,
+            poster_url TEXT,
             is_returning INTEGER DEFAULT 0,
             is_archived INTEGER DEFAULT 0,
             added_at TEXT
         )
     ''')
     conn.commit()
+    
+    # 2b. Add poster_url to cache table if not present (migration for existing database)
+    cursor.execute("PRAGMA table_info(cache)")
+    columns = [col[1] for col in cursor.fetchall()]
+    if "poster_url" not in columns:
+        cursor.execute("ALTER TABLE cache ADD COLUMN poster_url TEXT")
+        conn.commit()
+    
+    # 2c. Add rating columns to cache table if not present (migration for existing database)
+    cursor.execute("PRAGMA table_info(cache)")
+    columns = [col[1] for col in cursor.fetchall()]
+    if "rating_imdb" not in columns:
+        cursor.execute("ALTER TABLE cache ADD COLUMN rating_imdb TEXT")
+        conn.commit()
+    if "rating_metacritic" not in columns:
+        cursor.execute("ALTER TABLE cache ADD COLUMN rating_metacritic TEXT")
+        conn.commit()
+    if "rating_rt" not in columns:
+        cursor.execute("ALTER TABLE cache ADD COLUMN rating_rt TEXT")
+        conn.commit()
     
     # 3. Migrate from .env if settings table is empty
     cursor.execute("SELECT COUNT(*) FROM settings")
@@ -66,12 +87,28 @@ def init_db():
             "default_future_months": "2",
             "default_show_returning": "0",
             "default_show_library": "0",
-            "default_show_archived": "0"
+            "default_show_archived": "0",
+            "default_match_ignore_year": "1"
         }
         for key, val in env_settings.items():
             if val is not None:
                 cursor.execute("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", (key, str(val)))
         conn.commit()
+        
+    # 4. Ensure any missing default settings are seeded (e.g. if database already exists)
+    default_settings = {
+        "default_past_months": "1",
+        "default_future_months": "2",
+        "default_show_returning": "0",
+        "default_show_library": "0",
+        "default_show_archived": "0",
+        "default_match_ignore_year": "1"
+    }
+    for key, val in default_settings.items():
+        cursor.execute("SELECT COUNT(*) FROM settings WHERE key = ?", (key,))
+        if cursor.fetchone()[0] == 0:
+            cursor.execute("INSERT INTO settings (key, value) VALUES (?, ?)", (key, val))
+    conn.commit()
         
     conn.close()
 
@@ -105,22 +142,41 @@ def normalize_title(title: str) -> str:
     """Normalizes title for comparison (same as scraper.py)."""
     return re.sub(r'[^a-z0-9]', '', title.lower())
 
-def get_cached_item(type_: str, title: str, year: int, imdb_id: str = None) -> dict:
-    """Retrieves a cached movie or TV show by IMDb ID or normalized title + year."""
-    conn = get_db_connection()
+def get_cached_item(type_: str, title: str, year: int, imdb_id: str = None, conn = None) -> dict:
+    """Retrieves a cached movie or TV show by IMDb ID or normalized title (ignoring year if setting enabled)."""
+    local_conn = False
+    if conn is None:
+        conn = get_db_connection()
+        local_conn = True
+        
     cursor = conn.cursor()
     
+    # 1. Match by IMDb ID if available
     if imdb_id:
         cursor.execute("SELECT * FROM cache WHERE imdb_id = ?", (imdb_id,))
         row = cursor.fetchone()
         if row:
-            conn.close()
+            if local_conn:
+                conn.close()
             return dict(row)
             
-    cursor.execute("SELECT * FROM cache WHERE type = ? AND year = ?", (type_, year))
+    # 2. Check default_match_ignore_year setting
+    cursor.execute("SELECT value FROM settings WHERE key = 'default_match_ignore_year'")
+    row_setting = cursor.fetchone()
+    ignore_year = True # default on
+    if row_setting:
+        ignore_year = (row_setting[0] == "1")
+        
+    # 3. Query based on year constraint setting
+    if ignore_year:
+        cursor.execute("SELECT * FROM cache WHERE type = ?", (type_,))
+    else:
+        cursor.execute("SELECT * FROM cache WHERE type = ? AND year >= ? AND year <= ?", (type_, year - 1, year + 1))
+        
     rows = cursor.fetchall()
-    conn.close()
-    
+    if local_conn:
+        conn.close()
+        
     norm_title = normalize_title(title)
     for row in rows:
         if normalize_title(row["title"]) == norm_title:
@@ -133,12 +189,12 @@ def add_cached_item(type_: str, item: dict):
     conn = get_db_connection()
     cursor = conn.cursor()
     
-    # Check if already exists in cache
-    cursor.execute("SELECT id FROM cache WHERE type = ? AND title = ? AND year = ?", (type_, item["title"], item["year"]))
-    row = cursor.fetchone()
+    imdb_id = item.get("imdbId") or item.get("imdb_id")
+    
+    # Check if already exists in cache using our robust lookup
+    existing = get_cached_item(type_, item["title"], item["year"], imdb_id, conn=conn)
     
     genres_json = json.dumps(item.get("genres", []))
-    imdb_id = item.get("imdbId") or item.get("imdb_id")
     tvdb_id = item.get("tvdbId") or item.get("tvdb_id")
     tmdb_id = item.get("tmdbId") or item.get("tmdb_id")
     
@@ -149,12 +205,13 @@ def add_cached_item(type_: str, item: dict):
         else:
             date_obj_str = str(item["date_obj"])
             
-    if row:
+    if existing:
         cursor.execute('''
             UPDATE cache SET
                 date_str = ?, date_obj = ?, description = ?, href = ?, imdb_id = ?,
                 tvdb_id = ?, tmdb_id = ?, genres = ?, cast = ?, network = ?, trailer = ?,
-                is_returning = ?, added_at = ?
+                poster_url = ?, is_returning = ?, added_at = ?,
+                rating_imdb = ?, rating_metacritic = ?, rating_rt = ?
             WHERE id = ?
         ''', (
             item.get("date_str", ""),
@@ -168,16 +225,21 @@ def add_cached_item(type_: str, item: dict):
             item.get("cast", "Cast details not available."),
             item.get("network", "Unknown"),
             item.get("trailer", ""),
+            item.get("poster_url", ""),
             1 if item.get("is_returning") else 0,
             datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-            row[0]
+            item.get("rating_imdb", ""),
+            item.get("rating_metacritic", ""),
+            item.get("rating_rt", ""),
+            existing["id"]
         ))
     else:
         cursor.execute('''
             INSERT INTO cache (
                 type, title, year, date_str, date_obj, description, href, imdb_id,
-                tvdb_id, tmdb_id, genres, cast, network, trailer, is_returning, is_archived, added_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                tvdb_id, tmdb_id, genres, cast, network, trailer, poster_url, is_returning, is_archived, added_at,
+                rating_imdb, rating_metacritic, rating_rt
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ''', (
             type_,
             item["title"],
@@ -193,9 +255,13 @@ def add_cached_item(type_: str, item: dict):
             item.get("cast", "Cast details not available."),
             item.get("network", "Unknown"),
             item.get("trailer", ""),
+            item.get("poster_url", ""),
             1 if item.get("is_returning") else 0,
             1 if item.get("is_archived") else 0,
-            datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            item.get("rating_imdb", ""),
+            item.get("rating_metacritic", ""),
+            item.get("rating_rt", "")
         ))
     conn.commit()
     conn.close()
@@ -205,17 +271,19 @@ def archive_cached_item(type_: str, title: str, year: int, is_archived: bool = T
     conn = get_db_connection()
     cursor = conn.cursor()
     
-    cursor.execute("SELECT id FROM cache WHERE type = ? AND title = ? AND year = ?", (type_, title, year))
-    row = cursor.fetchone()
+    imdb_id = None
+    if raw_item:
+        imdb_id = raw_item.get("imdbId") or raw_item.get("imdb_id")
+        
+    existing = get_cached_item(type_, title, year, imdb_id, conn=conn)
     
     archived_val = 1 if is_archived else 0
     
-    if row:
-        cursor.execute("UPDATE cache SET is_archived = ? WHERE id = ?", (archived_val, row[0]))
+    if existing:
+        cursor.execute("UPDATE cache SET is_archived = ? WHERE id = ?", (archived_val, existing["id"]))
     else:
         if raw_item:
             genres_json = json.dumps(raw_item.get("genres", []))
-            imdb_id = raw_item.get("imdbId") or raw_item.get("imdb_id")
             tvdb_id = raw_item.get("tvdbId") or raw_item.get("tvdb_id")
             tmdb_id = raw_item.get("tmdbId") or raw_item.get("tmdb_id")
             
@@ -229,8 +297,9 @@ def archive_cached_item(type_: str, title: str, year: int, is_archived: bool = T
             cursor.execute('''
                 INSERT INTO cache (
                     type, title, year, date_str, date_obj, description, href, imdb_id,
-                    tvdb_id, tmdb_id, genres, cast, network, trailer, is_returning, is_archived, added_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    tvdb_id, tmdb_id, genres, cast, network, trailer, poster_url, is_returning, is_archived, added_at,
+                    rating_imdb, rating_metacritic, rating_rt
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ''', (
                 type_, title, year,
                 raw_item.get("date_str", ""),
@@ -244,9 +313,13 @@ def archive_cached_item(type_: str, title: str, year: int, is_archived: bool = T
                 raw_item.get("cast", "Cast details not available."),
                 raw_item.get("network", "Unknown"),
                 raw_item.get("trailer", ""),
+                raw_item.get("poster_url", ""),
                 1 if raw_item.get("is_returning") else 0,
                 archived_val,
-                datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                raw_item.get("rating_imdb", ""),
+                raw_item.get("rating_metacritic", ""),
+                raw_item.get("rating_rt", "")
             ))
         else:
             cursor.execute('''
@@ -258,11 +331,16 @@ def archive_cached_item(type_: str, title: str, year: int, is_archived: bool = T
     conn.close()
 
 def clean_expired_cache():
-    """Removes cached discoveries older than 12 months (365 days)."""
+    """Removes cached discoveries older than 12 months (365 days) from premiere/release date."""
     conn = get_db_connection()
     cursor = conn.cursor()
-    limit = (datetime.now() - timedelta(days=365)).strftime("%Y-%m-%d %H:%M:%S")
-    cursor.execute("DELETE FROM cache WHERE added_at < ?", (limit,))
+    limit_date = (datetime.now() - timedelta(days=365)).strftime("%Y-%m-%d")
+    limit_added = (datetime.now() - timedelta(days=365)).strftime("%Y-%m-%d %H:%M:%S")
+    cursor.execute('''
+        DELETE FROM cache 
+        WHERE (date_obj IS NOT NULL AND date_obj != "" AND date_obj NOT LIKE '1900-01-01%' AND date_obj < ?)
+           OR ((date_obj IS NULL OR date_obj = "" OR date_obj LIKE '1900-01-01%') AND added_at < ?)
+    ''', (limit_date, limit_added))
     deleted = cursor.rowcount
     conn.commit()
     conn.close()
@@ -305,3 +383,25 @@ def clear_all_cache():
     cursor.execute("DELETE FROM cache")
     conn.commit()
     conn.close()
+
+def get_cached_discoveries(start_date: str, end_date: str) -> tuple:
+    """Retrieves cached TV shows and movies with release dates in the specified range YYYY-MM-DD."""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    # TV shows
+    cursor.execute(
+        "SELECT * FROM cache WHERE type = 'tv' AND date_obj >= ? AND date_obj <= ?",
+        (start_date, end_date)
+    )
+    tv_rows = cursor.fetchall()
+    
+    # Movies
+    cursor.execute(
+        "SELECT * FROM cache WHERE type = 'movie' AND date_obj >= ? AND date_obj <= ?",
+        (start_date, end_date)
+    )
+    movie_rows = cursor.fetchall()
+    
+    conn.close()
+    return [dict(row) for row in tv_rows], [dict(row) for row in movie_rows]

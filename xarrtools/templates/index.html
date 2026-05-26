@@ -34,6 +34,9 @@
                 <div id="status-sonarr" class="status-badge status-offline">
                     <span class="indicator"></span> Sonarr
                 </div>
+                <button type="button" class="tab-btn status-badge search-badge" data-tab="search" title="Global Search">
+                    🔎 Search
+                </button>
             </div>
  
             <!-- Controls Panel -->
@@ -59,12 +62,37 @@
             <!-- Client Filter -->
             <div class="filter-card">
                 <h3>Filter View</h3>
-                <input type="text" id="search-bar" placeholder="Search by title, cast, network...">
+                <div class="search-input-wrapper">
+                    <input type="text" id="search-bar" placeholder="Search by title, cast, network...">
+                    <button type="button" id="btn-clear-search" class="btn-clear-input hidden" title="Clear search">&times;</button>
+                </div>
                 <div class="view-tabs">
                     <button class="tab-btn active" data-tab="all">All Releases</button>
                     <button class="tab-btn" data-tab="tv">TV Shows</button>
                     <button class="tab-btn" data-tab="movies">Movies</button>
                 </div>
+                
+                <div class="dropdown-filters-row">
+                    <div class="multiselect-dropdown" id="dropdown-genres">
+                        <button type="button" class="multiselect-btn" id="btn-genres-filter">Genres (All)</button>
+                        <div class="multiselect-content hidden" id="content-genres-filter">
+                            <div class="multiselect-actions">
+                                <button type="button" class="btn-clear-multiselect" id="clear-genres-filter">Clear All</button>
+                            </div>
+                            <div class="multiselect-options" id="options-genres-filter"></div>
+                        </div>
+                    </div>
+                    <div class="multiselect-dropdown" id="dropdown-networks">
+                        <button type="button" class="multiselect-btn" id="btn-networks-filter">Studios/Nets (All)</button>
+                        <div class="multiselect-content hidden" id="content-networks-filter">
+                            <div class="multiselect-actions">
+                                <button type="button" class="btn-clear-multiselect" id="clear-networks-filter">Clear All</button>
+                            </div>
+                            <div class="multiselect-options" id="options-networks-filter"></div>
+                        </div>
+                    </div>
+                </div>
+
                 <div class="filter-checkbox-group">
                     <label class="checkbox-container">
                         <input type="checkbox" id="check-show-returning">
@@ -112,7 +140,29 @@
             </div>
  
             <!-- Content Area -->
-            <div id="content-area" class="hidden">
+             <div id="content-area" class="hidden">
+                <!-- Global Search Section -->
+                <section id="section-search" class="media-section hidden">
+                    <h2 class="section-title">🔍 Global Media Search <span>(Look up movies & TV shows)</span></h2>
+                    <div class="global-search-bar-row" style="display: flex; gap: 12px; margin-bottom: 24px; max-width: 600px; align-items: center;">
+                        <div class="search-input-wrapper" style="flex: 1;">
+                            <input type="text" id="global-search-input" placeholder="Enter movie or show title..." style="background: rgba(0, 0, 0, 0.3); border: 1px solid var(--border-color); border-radius: 8px; padding: 10px 12px; color: var(--text-primary); font-size: 14px; outline: none; width: 100%;">
+                            <button type="button" id="btn-clear-global-search" class="btn-clear-input hidden" title="Clear search">&times;</button>
+                        </div>
+                        <select id="global-search-type" style="width: 140px; background: rgba(0, 0, 0, 0.3); border: 1px solid var(--border-color); border-radius: 8px; padding: 10px 12px; color: var(--text-primary); font-size: 14px; outline: none;">
+                            <option value="movie">Movies</option>
+                            <option value="tv">TV Shows</option>
+                        </select>
+                        <button id="btn-global-search" class="btn btn-primary" style="width: 100px; padding: 10px 20px; font-size: 14px; font-weight: 600; cursor: pointer; border-radius: 8px; margin: 0; outline: none; border: none;">Search</button>
+                    </div>
+                    <div id="grid-search-results" class="cards-grid">
+                        <div class="empty-state" style="height: 30vh; margin: 0 auto; grid-column: 1 / -1;">
+                            <div class="empty-icon" style="font-size: 40px; margin-bottom: 12px;">🔎</div>
+                            <p>Search for any movie or TV show globally using the bar above.</p>
+                        </div>
+                    </div>
+                </section>
+
                 <!-- TV Shows Section -->
                 <section id="section-tv" class="media-section">
                     <h2 class="section-title">📺 New TV Shows <span>(Newly Starting)</span></h2>
@@ -124,6 +174,13 @@
                     <h2 class="section-title">🎬 New Movies <span>(Released)</span></h2>
                     <div id="grid-movies" class="cards-grid"></div>
                 </section>
+
+                <!-- Global No Results Message -->
+                <div id="no-results-container" class="empty-state hidden" style="margin-top: 40px;">
+                    <div class="empty-icon">🔍</div>
+                    <h2>No Matching Releases</h2>
+                    <p>Try adjusting your search query, default time ranges, or check/uncheck filters in the sidebar.</p>
+                </div>
             </div>
         </main>
     </div>
@@ -182,6 +239,11 @@
                                 <input type="checkbox" id="check-search" checked>
                                 <span class="checkmark"></span>
                                 Search Immediately
+                            </label>
+                            <label class="checkbox-container hidden" id="group-track-collection">
+                                <input type="checkbox" id="check-track-collection">
+                                <span class="checkmark"></span>
+                                Track Collection / Add Box Set (<span id="lbl-collection-name"></span>)
                             </label>
                         </div>
                     </form>
@@ -247,6 +309,15 @@
                                 <label for="input-future-months">Default Future Months</label>
                                 <input type="number" id="input-future-months" min="0" max="12" value="2" style="background:rgba(0, 0, 0, 0.3); border:1px solid var(--border-color); border-radius:8px; padding:10px 12px; color:var(--text-primary); font-size:14px; width:100%; outline:none;">
                             </div>
+                        </div>
+                        
+                        <h3 style="font-family:'Outfit', sans-serif; font-size:14px; color:var(--accent-green); text-transform:uppercase; margin-top:20px; margin-bottom:12px; border-bottom:1px solid var(--border-color); padding-bottom:4px;">Matching Options</h3>
+                        <div class="checkbox-group" style="margin-top: 12px; margin-bottom: 12px;">
+                            <label class="checkbox-container">
+                                <input type="checkbox" id="input-match-ignore-year">
+                                <span class="checkmark"></span>
+                                Match same title regardless of year if unique ID is not available
+                            </label>
                         </div>
                     </div>
 

@@ -89,8 +89,12 @@ def enrich_tv_show(title: str, year: int, sonarr_client: Optional[SonarrClient] 
         "tvdbId": None,
         "imdbId": None,
         "network": "Unknown Network",
+        "poster_url": "",
         "is_in_library": False,
-        "raw_metadata": None
+        "raw_metadata": None,
+        "rating_imdb": "",
+        "rating_metacritic": "",
+        "rating_rt": ""
     }
     
     # 1. Query TVMaze
@@ -102,6 +106,10 @@ def enrich_tv_show(title: str, year: int, sonarr_client: Optional[SonarrClient] 
             data["genres"] = maze_data.get("genres", [])
             data["plot"] = clean_html(maze_data.get("summary", ""))
             
+            # Extract TVMaze poster image
+            if maze_data.get("image"):
+                data["poster_url"] = maze_data["image"].get("medium") or maze_data["image"].get("original") or ""
+                
             # Extract TVDB ID
             tvdb_id = maze_data.get("externals", {}).get("thetvdb")
             if tvdb_id:
@@ -112,6 +120,10 @@ def enrich_tv_show(title: str, year: int, sonarr_client: Optional[SonarrClient] 
                 data["network"] = maze_data["network"].get("name", "Unknown Network")
             elif maze_data.get("webChannel"):
                 data["network"] = maze_data["webChannel"].get("name", "Unknown Network")
+
+            # Extract TVMaze rating
+            if maze_data.get("rating", {}).get("average"):
+                data["rating_imdb"] = str(maze_data["rating"]["average"])
 
             # Extract Cast
             cast_list = []
@@ -149,6 +161,28 @@ def enrich_tv_show(title: str, year: int, sonarr_client: Optional[SonarrClient] 
                     data["genres"] = best_match.get("genres")
                 if (not data["plot"] or len(data["plot"]) < 50) and best_match.get("overview"):
                     data["plot"] = best_match.get("overview")
+                
+                # Extract Sonarr ratings
+                sonarr_ratings = best_match.get("ratings", {})
+                if sonarr_ratings.get("value") and not data["rating_imdb"]:
+                    data["rating_imdb"] = str(sonarr_ratings["value"])
+                    
+                # Try to get poster URL from Sonarr images
+                if not data.get("poster_url"):
+                    for img in best_match.get("images", []):
+                        if img.get("coverType") == "poster":
+                            remote = img.get("remoteUrl")
+                            if remote:
+                                data["poster_url"] = remote
+                            else:
+                                url = img.get("url")
+                                if url:
+                                    if url.startswith("http"):
+                                        data["poster_url"] = url
+                                    elif sonarr_client:
+                                        base = sonarr_client.base_url.rstrip("/")
+                                        sep = "&" if "?" in url else "?"
+                                        data["poster_url"] = f"{base}{url}{sep}apikey={sonarr_client.api_key}"
         except ArrAPIError:
             pass
 
@@ -172,8 +206,12 @@ def enrich_movie(title: str, year: int, radarr_client: Optional[RadarrClient] = 
         "tmdbId": None,
         "imdbId": imdb_id,
         "network": "Unknown Studio",
+        "poster_url": "",
         "is_in_library": False,
-        "raw_metadata": None
+        "raw_metadata": None,
+        "rating_imdb": "",
+        "rating_metacritic": "",
+        "rating_rt": ""
     }
     
     # 1. Query Radarr lookup
@@ -208,6 +246,31 @@ def enrich_movie(title: str, year: int, radarr_client: Optional[RadarrClient] = 
                 
                 if best_match.get("id"):
                     data["is_in_library"] = True
+                    
+                # Try to get poster URL from Radarr images
+                for img in best_match.get("images", []):
+                    if img.get("coverType") == "poster":
+                        remote = img.get("remoteUrl")
+                        if remote:
+                            data["poster_url"] = remote
+                        else:
+                            url = img.get("url")
+                            if url:
+                                if url.startswith("http"):
+                                    data["poster_url"] = url
+                                elif radarr_client:
+                                    base = radarr_client.base_url.rstrip("/")
+                                    sep = "&" if "?" in url else "?"
+                                    data["poster_url"] = f"{base}{url}{sep}apikey={radarr_client.api_key}"
+                    
+                # Extract Radarr ratings
+                ratings = best_match.get("ratings", {})
+                if ratings.get("imdb", {}).get("value"):
+                    data["rating_imdb"] = str(ratings["imdb"]["value"])
+                if ratings.get("metacritic", {}).get("value"):
+                    data["rating_metacritic"] = str(int(ratings["metacritic"]["value"]))
+                if ratings.get("rottenTomatoes", {}).get("value"):
+                    data["rating_rt"] = str(int(ratings["rottenTomatoes"]["value"]))
                     
                 yt_id = best_match.get("youTubeTrailerId")
                 if yt_id:

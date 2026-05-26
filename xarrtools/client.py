@@ -70,7 +70,7 @@ class RadarrClient(BaseArrClient):
         """Retrieve all root folder paths configured in Radarr."""
         return self._request("GET", "rootfolder")
 
-    def add_movie(self, movie_data: Dict[str, Any], quality_profile_id: int, root_folder_path: str, monitored: bool = True, search_now: bool = True) -> Dict[str, Any]:
+    def add_movie(self, movie_data: Dict[str, Any], quality_profile_id: int, root_folder_path: str, monitored: bool = True, search_now: bool = True, add_collection: bool = False) -> Dict[str, Any]:
         """Add a movie to the Radarr library."""
         # Create a copy so we don't modify the input dict in-place
         payload = dict(movie_data)
@@ -79,7 +79,8 @@ class RadarrClient(BaseArrClient):
             "rootFolderPath": root_folder_path,
             "monitored": monitored,
             "addOptions": {
-                "searchForMovie": search_now
+                "searchForMovie": search_now,
+                "monitor": "movieAndCollection" if add_collection else "movieOnly"
             }
         })
         return self._request("POST", "movie", json_data=payload)

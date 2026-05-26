@@ -35,65 +35,50 @@ This document tracks planned future functionality, architectural changes, and us
   - Log scan statistics and broadcast a notification update payload to the UI sidebar (using simple long-polling or WebSockets).
 - **Code files involved**: [xarrtools/server.py](file:///d:/Workspaces/Projects/xarrtools/xarrtools/server.py), [xarrtools/templates/app.js](file:///d:/Workspaces/Projects/xarrtools/xarrtools/templates/app.js).
 
-### 4. Media Poster Art/Images on Cards
-- **Goal**: Elevate grid visualization by loading official movie and series poster images on each discovery card.
-- **Implementation Strategy**:
-  - Update [xarrtools/enricher.py](file:///d:/Workspaces/Projects/xarrtools/xarrtools/enricher.py) to save TMDB `poster_path` and TVDB `image` URLs during the metadata matching stage.
-  - Add a `poster_url` field to the SQLite cache table schema.
-  - Render the poster image on the left/top side of the card, incorporating a fallback loading gradient or card placeholder overlay if the image URL fails.
-- **Code files involved**: [xarrtools/db.py](file:///d:/Workspaces/Projects/xarrtools/xarrtools/db.py) (schema migration), [xarrtools/enricher.py](file:///d:/Workspaces/Projects/xarrtools/xarrtools/enricher.py), [xarrtools/templates/app.js](file:///d:/Workspaces/Projects/xarrtools/xarrtools/templates/app.js).
 
-### 5. Radarr Track Collection / Box Set Exposure
-- **Goal**: Support checking and monitoring TMDB Movie Collections (e.g. *The Matrix Trilogy*, *The Lord of the Rings Collection*) when adding a movie.
-- **Implementation Strategy**:
-  - When looking up metadata for a movie, check TMDB database returns for associated `belongs_to_collection` information.
-  - If a collection is found, display it in the match selector modal.
-  - Add a **"Track Collection / Add Box Set"** checkbox options flag in the add form.
-  - Pass the tracking parameters to `RadarrClient.add_movie` to leverage Radarr's collections mapping rules.
-- **Code files involved**: [xarrtools/client.py](file:///d:/Workspaces/Projects/xarrtools/xarrtools/client.py), [xarrtools/enricher.py](file:///d:/Workspaces/Projects/xarrtools/xarrtools/enricher.py), [xarrtools/templates/app.js](file:///d:/Workspaces/Projects/xarrtools/xarrtools/templates/app.js).
-
-### 6. In-Library Detection Improvements
+### 5. In-Library Detection Improvements
 - **Goal**: Ensure 100% accuracy for automatically tagging items already present in Sonarr/Radarr, even when explicit TVDB/TMDB IDs are missing or mismatched.
 - **Implementation Strategy**:
   - Enhance status checking functions to compare normalized titles, release years (allowing ±1 year margin), and clean punctuation.
   - Query alternative metadata sites to resolve ID mismatches if the primary calendar crawler lacks TVDB/TMDB links.
 - **Code files involved**: [xarrtools/server.py](file:///d:/Workspaces/Projects/xarrtools/xarrtools/server.py), [xarrtools/client.py](file:///d:/Workspaces/Projects/xarrtools/xarrtools/client.py).
 
-### 7. Collapse Empty Sections in UI
-- **Goal**: Automatically hide the TV Shows or Movies section containers in the Web UI if active search inputs, tab selections, or filters yield zero visible cards.
-- **Implementation Strategy**:
-  - Modify `renderMediaLists` in the UI frontend application script.
-  - When list matches for either TV or Movies is empty, apply the `.hidden` helper class to the container wrappers `#section-tv` or `#section-movies` rather than just printing an empty text state.
-- **Code files involved**: [xarrtools/templates/app.js](file:///d:/Workspaces/Projects/xarrtools/xarrtools/app.js), [xarrtools/templates/index.html](file:///d:/Workspaces/Projects/xarrtools/xarrtools/templates/index.html).
-
-### 8. Load Cached Discoveries on Initial Startup
-- **Goal**: Instead of greeting the user with a blank welcome panel on browser load, immediately pull and render non-filtered, cached discoveries from the local SQLite database that match the current date filters.
-- **Implementation Strategy**:
-  - Expose a parameter like `skip_scrape=true` on `/api/discover` or create a new endpoint `/api/cache/list`.
-  - On page load (`DOMContentLoaded`), run a fast API request to retrieve cached items within the selected past/future window from `xarrtools.db`.
-  - Render the cache hits immediately, transitioning the UI out of the welcome state automatically.
-  - The "Scan New Releases" button can then be used explicitly to force-pull fresh scraper indexes and sync updates.
-- **Code files involved**: [xarrtools/server.py](file:///d:/Workspaces/Projects/xarrtools/xarrtools/server.py), [xarrtools/templates/app.js](file:///d:/Workspaces/Projects/xarrtools/xarrtools/templates/app.js).
-
-### 9. Media Rating Badges (Rotten Tomatoes / Metacritic / IMDb)
-- **Goal**: Scrape and display aggregate critics and user score ratings directly on the discovery cards.
-- **Implementation Strategy**:
-  - Update `enricher.py` to extract Metacritic score values (often available in the scraped calendar feeds) or leverage API sources (like OMDb or TMDB) to pull Rotten Tomatoes percentage ratings and IMDb ratings.
-  - Add rating fields to the SQLite cache table schema and store these scores.
-  - Render visually styled rating pills (e.g. green tomato/red tomato icons, or color-coded numeric badges) inside the card badges container.
-- **Code files involved**: [xarrtools/enricher.py](file:///d:/Workspaces/Projects/xarrtools/xarrtools/enricher.py), [xarrtools/db.py](file:///d:/Workspaces/Projects/xarrtools/xarrtools/db.py), [xarrtools/templates/app.js](file:///d:/Workspaces/Projects/xarrtools/xarrtools/templates/app.js).
-
-### 10. Global Search for Online Media Items
-- **Goal**: Allow users to query and look up any arbitrary movie or TV show globally (beyond Metacritic or DVD calendars) directly from the Web dashboard to queue it, matching the manual search features of the CLI.
-- **Implementation Strategy**:
-  - Add a persistent search/lookup bar in the dashboard top header.
-  - When a query is executed, call the Sonarr/Radarr indexer search APIs via `/api/lookup` and display matched search items in a temporary search result overlay grid.
-  - Show quick indicators detailing if the movie/show is already in library, and let users configure quality/paths and add it directly.
-- **Code files involved**: [xarrtools/server.py](file:///d:/Workspaces/Projects/xarrtools/xarrtools/server.py), [xarrtools/templates/index.html](file:///d:/Workspaces/Projects/xarrtools/xarrtools/templates/index.html), [xarrtools/templates/app.js](file:///d:/Workspaces/Projects/xarrtools/xarrtools/templates/app.js).
-
 ---
 
 ## Completed Features
+
+### ✓ Radarr Track Collection / Box Set Exposure
+Allows users to automatically track and monitor entire TMDb Movie Collections (such as trilogies or franchise box sets) in Radarr when adding individual movies. Exposes TMDb collection status as visual badges inside movie indexer results and adds config options to enable collection monitoring when adding titles.
+
+### ✓ Global Search Relocated to Sidebar Navigation Badges Panel
+Moved the Global Search control to a dedicated cyberpunk-styled navigation button next to the Radarr and Sonarr status badges in the sidebar header. When active, it displays a glowing neon-cyan outline and switches the main window to the search panel interface.
+
+### ✓ Text Search Input Clear Option (x)
+Integrated absolute-positioned clear buttons inside the text search inputs (`#search-bar` and `#global-search-input`). The clear button dynamically shows when content is typed and clears/refocuses on click.
+
+### ✓ Stacked Genre & Studio/Network Multiselect Dropdowns
+Added vertically-stacked dropdown selectors inside the sidebar `.filter-card` to filter shows and movies by genre and network/studio. Supports multiselect checkboxes, "Clear All" controls, and filters are bypassed (inactive) when empty.
+
+### ✓ Cache Missing Data Healing on Scan/Refresh
+Scans automatically identify incomplete cache records (e.g., missing poster, ratings, or IDs) and enrich them from live metadata feeds. Preserves the `is_archived` status and uses a 24-hour rate limit check to prevent redundant API queries.
+
+### ✓ Media Rating Badges (Rotten Tomatoes / Metacritic / IMDb)
+Displays IMDb, Metacritic, and Rotten Tomatoes ratings directly as styled, color-coded badges on discovery cards and global search cards. Automatically enriches TV Maze/Sonarr average ratings for TV and Radarr IMDb/Metacritic/RT rating arrays for Movies, storing values inside SQLite cache table schema and rendering dynamically.
+
+### ✓ Media Poster Art & 2xn Card Layout
+Queries Sonarr, Radarr, and TVMaze metadata providers to locate public image links, saves them inside the local cached database, and leverages a background healer daemon thread to automatically repair existing cache tables. Redesigned discovery card styling into a split-layout design showcasing 2:3 vertical poster art on the left, scaling the card grid to a balanced 2xn screen layout.
+
+### ✓ Global Search for Online Media Items
+Added a "Global Search 🔍" tab in the sidebar that reveals a dedicated search panel. Users can query any movie or TV show title globally using Sonarr/Radarr indexer lookup APIs, view results as split-layout cards with poster art and metadata, check library status automatically, and add items directly via the existing download options modal (skipping Step 1 indexer search). Cards update in-place on successful addition.
+
+### ✓ Load Cached Discoveries on Initial Startup
+Instead of greeting the user with a blank welcome panel on browser load, immediately pull and render non-filtered, cached discoveries from the local SQLite database that match the current date filters.
+
+### ✓ Collapse Empty Sections in UI
+Automatically hide the TV Shows or Movies section containers in the Web UI if active search inputs, tab selections, or filters yield zero visible cards.
+
+### ✓ Title Matching Regardless of Year Setting
+Added a user setting (enabled by default) to match on the same title regardless of year if a unique ID is not available, which resolves matching issues for returning seasons of shows that release in different years.
 
 ### ✓ Brand App Icon and Favicon Creation
 Designed a custom neon-cyberpunk hot-magenta/cyan logo concept, built an automated `scratch/resize.ps1` helper using `System.Drawing` assemblies, and integrated resized favicon & logo PNG elements directly into the HTML index head and header.
