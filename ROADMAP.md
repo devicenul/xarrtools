@@ -64,7 +64,33 @@ This document tracks planned future functionality, architectural changes, and us
 - **Implementation Strategy**:
   - Allow users to enter custom feed URLs (RSS feeds, JSON feeds, or scrape-able HTML) in Settings.
   - Support setting a basic schema mapping or custom parsing regex pattern to ingest titles, dates, descriptions, and IDs.
-- **Code files involved**: [xarrtools/db.py](file:///d:/Workspaces/Projects/xarrtools/xarrtools/db.py), [xarrtools/server.py](file:///d:/Workspaces/Projects/xarrtools/xarrtools/server.py), [xarrtools/templates/app.js](file:///d:/Workspaces/Projects/xarrtools/xarrtools/app.js).
+- **Code files involved**: [xarrtools/db.py](file:///d:/Workspaces/Projects/xarrtools/xarrtools/db.py), [xarrtools/server.py](file:///d:/Workspaces/Projects/xarrtools/xarrtools/server.py), [xarrtools/templates/app.js](file:///d:/Workspaces/Projects/xarrtools/xarrtools/templates/app.js).
+
+### 9. Fix Refresh Icon Spinner Background
+- **Goal**: Ensure the rotating refresh icon inside discovery cards has a transparent circular background instead of a square bounding box when spinning.
+- **Code files involved**: [xarrtools/templates/style.css](file:///d:/Workspaces/Projects/xarrtools/xarrtools/templates/style.css).
+
+### 10. Better Scan Progress & Pop-over Indication
+- **Goal**: Replace the full-screen blocking loading indicator with a non-blocking pop-over/floating toast scan indicator so users can continue browsing cached releases while updates are fetched.
+- **Code files involved**: [xarrtools/templates/index.html](file:///d:/Workspaces/Projects/xarrtools/xarrtools/templates/index.html), [xarrtools/templates/app.js](file:///d:/Workspaces/Projects/xarrtools/app.js), [xarrtools/templates/style.css](file:///d:/Workspaces/Projects/xarrtools/style.css).
+
+### 11. Collapsible & Scrollable Recent Activity
+- **Goal**: Restructure the "Recent Activity" panel in the sidebar to be scrollable and collapsed by default, ensuring the logs do not push other controls off-screen.
+- **Code files involved**: [xarrtools/templates/index.html](file:///d:/Workspaces/Projects/xarrtools/xarrtools/templates/index.html), [xarrtools/templates/app.js](file:///d:/Workspaces/Projects/xarrtools/app.js).
+
+### 12. Light Mode Support with Toggle
+- **Goal**: Support a light theme option toggled via a sidebar switch, including custom color palettes and a light-mode optimized version of the neon logo.
+- **Code files involved**: [xarrtools/templates/index.html](file:///d:/Workspaces/Projects/xarrtools/xarrtools/templates/index.html), [xarrtools/templates/style.css](file:///d:/Workspaces/Projects/xarrtools/style.css), [xarrtools/templates/app.js](file:///d:/Workspaces/Projects/xarrtools/app.js).
+
+### 13. Code and Agentic Review
+- **Goal**: Complete a thorough security and performance review of database locks, scraper concurrency, and exception mapping layers.
+
+### 14. GitHub Builds and Releases Setup
+- **Goal**: Automate PyInstaller compilation and packaging workflows on GitHub tag triggers, distributing binary builds directly via GitHub Releases.
+
+### 15. GPL v3 License Integration
+- **Goal**: Commit a standard GPL v3.0 license file to the repository.
+- **Code files involved**: [LICENSE](file:///d:/Workspaces/Projects/xarrtools/LICENSE) [NEW].
 
 ---
 
