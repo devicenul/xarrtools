@@ -1,6 +1,7 @@
 import os
 import sys
 import json
+import threading
 from pathlib import Path
 from flask import Flask, jsonify, request, render_template
 from datetime import datetime, timedelta
@@ -35,6 +36,23 @@ app = Flask(
     static_folder=str(templates_dir),
     static_url_path="/static"
 )
+
+# Thread-safe global scan progress
+scan_progress = {
+    "status": "idle",
+    "message": "",
+    "current": 0,
+    "total": 0
+}
+scan_progress_lock = threading.Lock()
+
+def update_scan_progress(status, message, current=0, total=0):
+    with scan_progress_lock:
+        scan_progress["status"] = status
+        scan_progress["message"] = message
+        scan_progress["current"] = current
+        scan_progress["total"] = total
+
 
 # Initialize Radarr / Sonarr Clients
 def get_clients():
@@ -138,6 +156,11 @@ def cache_clear():
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
 
+@app.route("/api/scan/progress", methods=["GET"])
+def get_scan_progress():
+    with scan_progress_lock:
+        return jsonify(scan_progress)
+
 @app.route("/api/discover", methods=["GET"])
 def discover_releases():
     """Scrapes, caches, enriches, and resolves releases for TV and Movies."""
@@ -147,6 +170,11 @@ def discover_releases():
     
     past_days = max(0, min(365, past_months * 30))
     future_days = max(0, min(365, future_months * 30))
+    
+    if not skip_scrape:
+        with scan_progress_lock:
+            if scan_progress["status"] != "idle":
+                return jsonify({"status": "error", "message": "A scan is already in progress."}), 409
     
     radarr_client, sonarr_client = get_clients()
     
@@ -239,177 +267,190 @@ def discover_releases():
         })
         
     try:
-        tv_raw, movie_raw = get_discoveries(past_days, future_days)
-    except Exception as e:
-        return jsonify({"status": "error", "message": f"Failed to scrape releases: {e}"}), 500
-        
-    # 2. Enrich TV shows (using database cache optimization)
-    for item in tv_raw:
+        if not skip_scrape:
+            update_scan_progress("scraping", "Scraping Metacritic and DVD release calendars...", 0, 0)
+            
         try:
-            cached = get_cached_item("tv", item["title"], item["date_obj"].year)
-            
-            # Check if cache is incomplete
-            is_incomplete = True
-            if cached:
-                recently_updated = False
-                if cached.get("added_at"):
-                    try:
-                        added_dt = datetime.strptime(cached["added_at"], "%Y-%m-%d %H:%M:%S")
-                        if datetime.now() - added_dt < timedelta(hours=24):
-                            recently_updated = True
-                    except Exception:
-                        pass
-                
-                has_poster = bool(cached.get("poster_url"))
-                has_ratings = bool(cached.get("rating_imdb") or cached.get("rating_metacritic") or cached.get("rating_rt"))
-                has_ids = bool(cached.get("imdb_id") and cached.get("tvdb_id"))
-                
-                if (has_poster and has_ratings and has_ids) or (recently_updated and has_poster):
-                    is_incomplete = False
-            
-            if cached and not is_incomplete:
-                data = {
-                    "title": cached["title"],
-                    "year": cached["year"],
-                    "plot": cached["description"] or item["description"],
-                    "cast": cached["cast"],
-                    "genres": json.loads(cached["genres"]) if cached["genres"] else [],
-                    "trailer": cached["trailer"],
-                    "poster_url": cached["poster_url"] or "",
-                    "tvdbId": cached["tvdb_id"],
-                    "imdbId": cached["imdb_id"],
-                    "network": cached["network"],
-                    "is_in_library": False,
-                    "is_archived": bool(cached["is_archived"]),
-                    "raw_metadata": None,
-                    "rating_imdb": cached.get("rating_imdb", "") or "",
-                    "rating_metacritic": cached.get("rating_metacritic", "") or "",
-                    "rating_rt": cached.get("rating_rt", "") or ""
-                }
-                # Check library
-                if data["tvdbId"] and data["tvdbId"] in sonarr_library_ids:
-                    data["is_in_library"] = True
-            else:
-                data = enrich_tv_show(item["title"], item["date_obj"].year, sonarr_client)
-                if not data["plot"] or data["plot"] == "No plot summary available.":
-                    data["plot"] = item["description"]
-                data["is_returning"] = item.get("is_returning", False)
-                data["is_archived"] = bool(cached["is_archived"]) if cached else False
-                
-                # Check library
-                if data.get("tvdbId") and data["tvdbId"] in sonarr_library_ids:
-                    data["is_in_library"] = True
-                
-                data["date_str"] = item.get("date_str", "")
-                data["date_obj"] = item.get("date_obj")
-                data["href"] = item.get("href", "")
-                    
-                # Cache newly fetched details
-                add_cached_item("tv", data)
-                
-            data["date_str"] = item["date_str"]
-            data["is_returning"] = item.get("is_returning", False)
-            enriched_tv.append(data)
+            tv_raw, movie_raw = get_discoveries(past_days, future_days)
         except Exception as e:
-            app.logger.error(f"Error enriching TV show '{item['title']}': {e}")
-            item["plot"] = item["description"]
-            item["cast"] = "Cast details not available."
-            item["genres"] = []
-            item["tvdbId"] = None
-            item["imdbId"] = None
-            item["is_in_library"] = False
-            item["is_archived"] = False
-            item["raw_metadata"] = None
-            item["is_returning"] = item.get("is_returning", False)
-            enriched_tv.append(item)
+            return jsonify({"status": "error", "message": f"Failed to scrape releases: {e}"}), 500
             
-    # 3. Enrich Movies (using database cache optimization)
-    for item in movie_raw:
-        try:
-            cached = get_cached_item("movie", item["title"], item["date_obj"].year, item.get("imdbId"))
-            
-            # Check if cache is incomplete
-            is_incomplete = True
-            if cached:
-                recently_updated = False
-                if cached.get("added_at"):
-                    try:
-                        added_dt = datetime.strptime(cached["added_at"], "%Y-%m-%d %H:%M:%S")
-                        if datetime.now() - added_dt < timedelta(hours=24):
-                            recently_updated = True
-                    except Exception:
-                        pass
+        # 2. Enrich TV shows (using database cache optimization)
+        total_items = len(tv_raw) + len(movie_raw)
+        for idx, item in enumerate(tv_raw):
+            try:
+                if not skip_scrape:
+                    update_scan_progress("enriching", f"Fetching metadata for {item['title']}", idx + 1, total_items)
+                cached = get_cached_item("tv", item["title"], item["date_obj"].year)
                 
-                has_poster = bool(cached.get("poster_url"))
-                has_ratings = bool(cached.get("rating_imdb") or cached.get("rating_metacritic") or cached.get("rating_rt"))
-                has_ids = bool(cached.get("imdb_id") and cached.get("tmdb_id"))
+                # Check if cache is incomplete
+                is_incomplete = True
+                if cached:
+                    recently_updated = False
+                    if cached.get("added_at"):
+                        try:
+                            added_dt = datetime.strptime(cached["added_at"], "%Y-%m-%d %H:%M:%S")
+                            if datetime.now() - added_dt < timedelta(hours=24):
+                                recently_updated = True
+                        except Exception:
+                            pass
+                    
+                    has_poster = bool(cached.get("poster_url"))
+                    has_ratings = bool(cached.get("rating_imdb") or cached.get("rating_metacritic") or cached.get("rating_rt"))
+                    has_ids = bool(cached.get("imdb_id") and cached.get("tvdb_id"))
+                    
+                    if (has_poster and has_ratings and has_ids) or (recently_updated and has_poster):
+                        is_incomplete = False
                 
-                if (has_poster and has_ratings and has_ids) or (recently_updated and has_poster):
-                    is_incomplete = False
-            
-            if cached and not is_incomplete:
-                data = {
-                    "title": cached["title"],
-                    "year": cached["year"],
-                    "plot": cached["description"] or item["description"],
-                    "cast": cached["cast"],
-                    "genres": json.loads(cached["genres"]) if cached["genres"] else [],
-                    "trailer": cached["trailer"],
-                    "poster_url": cached["poster_url"] or "",
-                    "tmdbId": cached["tmdb_id"],
-                    "imdbId": cached["imdb_id"],
-                    "network": cached["network"],
-                    "is_in_library": False,
-                    "is_archived": bool(cached["is_archived"]),
-                    "raw_metadata": None,
-                    "rating_imdb": cached.get("rating_imdb", "") or "",
-                    "rating_metacritic": cached.get("rating_metacritic", "") or "",
-                    "rating_rt": cached.get("rating_rt", "") or ""
-                }
-                # Check library
-                if data["tmdbId"] and data["tmdbId"] in radarr_library_ids:
-                    data["is_in_library"] = True
-            else:
-                data = enrich_movie(item["title"], item["date_obj"].year, radarr_client, item.get("imdbId"))
-                if not data["plot"] or data["plot"] == "No plot summary available.":
-                    data["plot"] = item["description"]
+                if cached and not is_incomplete:
+                    data = {
+                        "title": cached["title"],
+                        "year": cached["year"],
+                        "plot": cached["description"] or item["description"],
+                        "cast": cached["cast"],
+                        "genres": json.loads(cached["genres"]) if cached["genres"] else [],
+                        "trailer": cached["trailer"],
+                        "poster_url": cached["poster_url"] or "",
+                        "tvdbId": cached["tvdb_id"],
+                        "imdbId": cached["imdb_id"],
+                        "network": cached["network"],
+                        "is_in_library": False,
+                        "is_archived": bool(cached["is_archived"]),
+                        "raw_metadata": None,
+                        "rating_imdb": cached.get("rating_imdb", "") or "",
+                        "rating_metacritic": cached.get("rating_metacritic", "") or "",
+                        "rating_rt": cached.get("rating_rt", "") or ""
+                    }
+                    # Check library
+                    if data["tvdbId"] and data["tvdbId"] in sonarr_library_ids:
+                        data["is_in_library"] = True
+                else:
+                    data = enrich_tv_show(item["title"], item["date_obj"].year, sonarr_client)
+                    if not data["plot"] or data["plot"] == "No plot summary available.":
+                        data["plot"] = item["description"]
+                    data["is_returning"] = item.get("is_returning", False)
+                    data["is_archived"] = bool(cached["is_archived"]) if cached else False
+                    
+                    # Check library
+                    if data.get("tvdbId") and data["tvdbId"] in sonarr_library_ids:
+                        data["is_in_library"] = True
+                    
+                    data["date_str"] = item.get("date_str", "")
+                    data["date_obj"] = item.get("date_obj")
+                    data["href"] = item.get("href", "")
+                        
+                    # Cache newly fetched details
+                    add_cached_item("tv", data)
+                    
+                data["date_str"] = item["date_str"]
+                data["is_returning"] = item.get("is_returning", False)
+                enriched_tv.append(data)
+            except Exception as e:
+                app.logger.error(f"Error enriching TV show '{item['title']}': {e}")
+                item["plot"] = item["description"]
+                item["cast"] = "Cast details not available."
+                item["genres"] = []
+                item["tvdbId"] = None
+                item["imdbId"] = None
+                item["is_in_library"] = False
+                item["is_archived"] = False
+                item["raw_metadata"] = None
+                item["is_returning"] = item.get("is_returning", False)
+                enriched_tv.append(item)
+                
+        # 3. Enrich Movies (using database cache optimization)
+        for idx, item in enumerate(movie_raw):
+            try:
+                if not skip_scrape:
+                    current_idx = len(tv_raw) + idx + 1
+                    update_scan_progress("enriching", f"Getting metadata for {item['title']}", current_idx, total_items)
+                cached = get_cached_item("movie", item["title"], item["date_obj"].year, item.get("imdbId"))
+                
+                # Check if cache is incomplete
+                is_incomplete = True
+                if cached:
+                    recently_updated = False
+                    if cached.get("added_at"):
+                        try:
+                            added_dt = datetime.strptime(cached["added_at"], "%Y-%m-%d %H:%M:%S")
+                            if datetime.now() - added_dt < timedelta(hours=24):
+                                recently_updated = True
+                        except Exception:
+                            pass
+                    
+                    has_poster = bool(cached.get("poster_url"))
+                    has_ratings = bool(cached.get("rating_imdb") or cached.get("rating_metacritic") or cached.get("rating_rt"))
+                    has_ids = bool(cached.get("imdb_id") and cached.get("tmdb_id"))
+                    
+                    if (has_poster and has_ratings and has_ids) or (recently_updated and has_poster):
+                        is_incomplete = False
+                
+                if cached and not is_incomplete:
+                    data = {
+                        "title": cached["title"],
+                        "year": cached["year"],
+                        "plot": cached["description"] or item["description"],
+                        "cast": cached["cast"],
+                        "genres": json.loads(cached["genres"]) if cached["genres"] else [],
+                        "trailer": cached["trailer"],
+                        "poster_url": cached["poster_url"] or "",
+                        "tmdbId": cached["tmdb_id"],
+                        "imdbId": cached["imdb_id"],
+                        "network": cached["network"],
+                        "is_in_library": False,
+                        "is_archived": bool(cached["is_archived"]),
+                        "raw_metadata": None,
+                        "rating_imdb": cached.get("rating_imdb", "") or "",
+                        "rating_metacritic": cached.get("rating_metacritic", "") or "",
+                        "rating_rt": cached.get("rating_rt", "") or ""
+                    }
+                    # Check library
+                    if data["tmdbId"] and data["tmdbId"] in radarr_library_ids:
+                        data["is_in_library"] = True
+                else:
+                    data = enrich_movie(item["title"], item["date_obj"].year, radarr_client, item.get("imdbId"))
+                    if not data["plot"] or data["plot"] == "No plot summary available.":
+                        data["plot"] = item["description"]
+                    if "imdbId" not in data or not data["imdbId"]:
+                        data["imdbId"] = item.get("imdbId")
+                    data["is_archived"] = bool(cached["is_archived"]) if cached else False
+                    
+                    # Check library
+                    if data.get("tmdbId") and data.get("tmdbId") in radarr_library_ids:
+                        data["is_in_library"] = True
+                    
+                    data["date_str"] = item.get("date_str", "")
+                    data["date_obj"] = item.get("date_obj")
+                    data["href"] = item.get("href", "")
+                        
+                    # Cache newly fetched details
+                    add_cached_item("movie", data)
+                    
+                data["date_str"] = item["date_str"]
                 if "imdbId" not in data or not data["imdbId"]:
                     data["imdbId"] = item.get("imdbId")
-                data["is_archived"] = bool(cached["is_archived"]) if cached else False
+                enriched_movies.append(data)
+            except Exception as e:
+                app.logger.error(f"Error enriching movie '{item['title']}': {e}")
+                item["plot"] = item["description"]
+                item["cast"] = "Cast details not available."
+                item["genres"] = []
+                item["tmdbId"] = None
+                item["is_in_library"] = False
+                item["is_archived"] = False
+                item["raw_metadata"] = None
+                if "imdbId" not in item or not item["imdbId"]:
+                    item["imdbId"] = item.get("imdbId")
+                enriched_movies.append(item)
                 
-                # Check library
-                if data.get("tmdbId") and data.get("tmdbId") in radarr_library_ids:
-                    data["is_in_library"] = True
-                
-                data["date_str"] = item.get("date_str", "")
-                data["date_obj"] = item.get("date_obj")
-                data["href"] = item.get("href", "")
-                    
-                # Cache newly fetched details
-                add_cached_item("movie", data)
-                
-            data["date_str"] = item["date_str"]
-            if "imdbId" not in data or not data["imdbId"]:
-                data["imdbId"] = item.get("imdbId")
-            enriched_movies.append(data)
-        except Exception as e:
-            app.logger.error(f"Error enriching movie '{item['title']}': {e}")
-            item["plot"] = item["description"]
-            item["cast"] = "Cast details not available."
-            item["genres"] = []
-            item["tmdbId"] = None
-            item["is_in_library"] = False
-            item["is_archived"] = False
-            item["raw_metadata"] = None
-            if "imdbId" not in item or not item["imdbId"]:
-                item["imdbId"] = item.get("imdbId")
-            enriched_movies.append(item)
-            
-    return jsonify({
-        "status": "success",
-        "tv": enriched_tv,
-        "movies": enriched_movies
-    })
+        return jsonify({
+            "status": "success",
+            "tv": enriched_tv,
+            "movies": enriched_movies
+        })
+    finally:
+        if not skip_scrape:
+            update_scan_progress("idle", "Idle", 0, 0)
 
 @app.route("/api/cache/refresh", methods=["POST"])
 def cache_refresh_item():

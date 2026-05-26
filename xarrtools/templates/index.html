@@ -18,12 +18,15 @@
         <!-- Sidebar / Header -->
         <header class="app-header">
             <div class="logo-area">
-                <img src="/static/favicon.png" class="logo-img" alt="xarrtools logo" style="width: 32px; height: 32px; filter: drop-shadow(0 2px 8px rgba(0, 210, 255, 0.45)); object-fit: contain;">
+                <img src="/static/favicon.png" id="app-logo" class="logo-img" alt="xarrtools logo" style="width: 32px; height: 32px; filter: drop-shadow(0 2px 8px rgba(0, 210, 255, 0.45)); object-fit: contain;">
                 <div class="logo-text">
                     <h1>xarrtools</h1>
                     <span>Media Discovery Center</span>
                 </div>
-                <button id="btn-settings" class="btn-settings-trigger" title="Settings">⚙️</button>
+                <div class="logo-actions" style="display: flex; gap: 8px; align-items: center;">
+                    <button id="btn-theme-toggle" class="btn-theme-toggle" title="Toggle Theme" style="background: transparent; border: none; cursor: pointer; font-size: 16px; padding: 4px; display: flex; align-items: center; justify-content: center; transition: var(--transition-smooth); outline: none;">☀️</button>
+                    <button id="btn-settings" class="btn-settings-trigger" title="Settings">⚙️</button>
+                </div>
             </div>
             
             <!-- Connection Badges -->
@@ -33,6 +36,9 @@
                 </div>
                 <div id="status-sonarr" class="status-badge status-offline">
                     <span class="indicator"></span> Sonarr
+                </div>
+                <div id="status-demo" class="status-badge status-demo hidden" title="Running in Demo Sandbox Mode">
+                    ✨ Demo Active
                 </div>
                 <button type="button" class="tab-btn status-badge search-badge" data-tab="search" title="Global Search">
                     🔎 Search
@@ -113,8 +119,11 @@
             </div>
 
             <!-- Notifications Card -->
-            <div class="notifications-card">
-                <h3>Recent Activity</h3>
+            <div class="notifications-card collapsed" id="notifications-card">
+                <div class="notifications-header" id="notifications-header" style="display: flex; justify-content: space-between; align-items: center; cursor: pointer; user-select: none;">
+                    <h3 style="margin: 0;">Recent Activity</h3>
+                    <span class="toggle-icon" style="font-size: 10px; transition: transform 0.3s ease;">▼</span>
+                </div>
                 <div id="notifications-list" class="notifications-list">
                     <div class="notification-item empty">No recent activity.</div>
                 </div>
@@ -252,14 +261,14 @@
             <div class="modal-footer">
                 <button id="btn-modal-back" class="btn btn-secondary hidden">Back</button>
                 <button id="btn-modal-cancel" class="btn btn-secondary">Cancel</button>
-                <button id="btn-modal-confirm" class="btn btn-success hidden">Start Download</button>
+                <button id="btn-modal-confirm" class="btn btn-success hidden">Add and Search</button>
             </div>
         </div>
     </div>
 
     <!-- Settings Modal (Overlay) -->
     <div id="settings-overlay" class="modal-overlay hidden">
-        <div class="modal-card">
+        <div class="modal-card settings-modal-card">
             <div class="modal-header">
                 <h2>Application Settings</h2>
                 <button id="settings-close" class="btn-close">&times;</button>
@@ -341,6 +350,15 @@
                                 Default Show Archived Items
                             </label>
                         </div>
+                        
+                        <h3 style="font-family:'Outfit', sans-serif; font-size:14px; color:var(--accent-blue); text-transform:uppercase; margin-top:20px; margin-bottom:12px; border-bottom:1px solid var(--border-color); padding-bottom:4px;">Interface Theme</h3>
+                        <div class="form-group" style="margin-top: 12px;">
+                            <label for="select-theme-mode">Theme Mode</label>
+                            <select id="select-theme-mode" style="background:rgba(0, 0, 0, 0.3); border:1px solid var(--border-color); border-radius:8px; padding:10px 12px; color:var(--text-primary); font-size:14px; width:100%; outline:none;">
+                                <option value="dark">Dark Theme</option>
+                                <option value="light">Light Theme</option>
+                            </select>
+                        </div>
                     </div>
 
                     <!-- Tab Panel 4: System -->
@@ -377,6 +395,26 @@
         </div>
     </div>
  
+    <!-- Floating Scan Progress Card -->
+    <div id="scan-progress-popover" class="scan-progress-popover hidden">
+        <div class="progress-header">
+            <span class="progress-title">Scanning Releases</span>
+            <button id="btn-close-progress" class="btn-close-progress" title="Minimize">&times;</button>
+        </div>
+        <div class="progress-body">
+            <div class="progress-spinner-container">
+                <div class="progress-spinner"></div>
+                <div class="progress-text-container">
+                    <div id="progress-status-msg" class="progress-status-msg">Scraping release calendars...</div>
+                    <div id="progress-percent-text" class="progress-percent-text">0%</div>
+                </div>
+            </div>
+            <div class="progress-bar-bg">
+                <div id="progress-bar-fill" class="progress-bar-fill" style="width: 0%;"></div>
+            </div>
+        </div>
+    </div>
+
     <!-- Script Entry -->
     <script src="/static/app.js"></script>
 </body>

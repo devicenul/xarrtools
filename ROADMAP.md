@@ -66,47 +66,50 @@ This document tracks planned future functionality, architectural changes, and us
   - Support setting a basic schema mapping or custom parsing regex pattern to ingest titles, dates, descriptions, and IDs.
 - **Code files involved**: [xarrtools/db.py](file:///d:/Workspaces/Projects/xarrtools/xarrtools/db.py), [xarrtools/server.py](file:///d:/Workspaces/Projects/xarrtools/xarrtools/server.py), [xarrtools/templates/app.js](file:///d:/Workspaces/Projects/xarrtools/xarrtools/templates/app.js).
 
-### 9. Fix Refresh Icon Spinner Background
-- **Goal**: Ensure the rotating refresh icon inside discovery cards has a transparent circular background instead of a square bounding box when spinning.
-- **Code files involved**: [xarrtools/templates/style.css](file:///d:/Workspaces/Projects/xarrtools/xarrtools/templates/style.css).
-
-### 10. Better Scan Progress & Pop-over Indication
-- **Goal**: Replace the full-screen blocking loading indicator with a non-blocking pop-over/floating toast scan indicator so users can continue browsing cached releases while updates are fetched.
-- **Code files involved**: [xarrtools/templates/index.html](file:///d:/Workspaces/Projects/xarrtools/xarrtools/templates/index.html), [xarrtools/templates/app.js](file:///d:/Workspaces/Projects/xarrtools/app.js), [xarrtools/templates/style.css](file:///d:/Workspaces/Projects/xarrtools/style.css).
-
-### 11. Collapsible & Scrollable Recent Activity
-- **Goal**: Restructure the "Recent Activity" panel in the sidebar to be scrollable and collapsed by default, ensuring the logs do not push other controls off-screen.
-- **Code files involved**: [xarrtools/templates/index.html](file:///d:/Workspaces/Projects/xarrtools/xarrtools/templates/index.html), [xarrtools/templates/app.js](file:///d:/Workspaces/Projects/xarrtools/app.js).
-
-### 12. Light Mode Support with Toggle
-- **Goal**: Support a light theme option toggled via a sidebar switch, including custom color palettes and a light-mode optimized version of the neon logo.
-- **Code files involved**: [xarrtools/templates/index.html](file:///d:/Workspaces/Projects/xarrtools/xarrtools/templates/index.html), [xarrtools/templates/style.css](file:///d:/Workspaces/Projects/xarrtools/style.css), [xarrtools/templates/app.js](file:///d:/Workspaces/Projects/xarrtools/app.js).
-
-### 13. Code and Agentic Review
+### 9. Code and Agentic Review
 - **Goal**: Complete a thorough security and performance review of database locks, scraper concurrency, and exception mapping layers.
 
-### 14. GitHub Builds and Releases Setup
+### 10. GitHub Builds and Releases Setup
 - **Goal**: Automate PyInstaller compilation and packaging workflows on GitHub tag triggers, distributing binary builds directly via GitHub Releases.
 
-### 15. GPL v3 License Integration
+### 11. GPL v3 License Integration
 - **Goal**: Commit a standard GPL v3.0 license file to the repository.
 - **Code files involved**: [LICENSE](file:///d:/Workspaces/Projects/xarrtools/LICENSE) [NEW].
 
-### 16. Standalone Desktop App UI (Captive Browser Window)
+### 12. Standalone Desktop App UI (Captive Browser Window)
 - **Goal**: Enable running the application as a standalone desktop program using a captive web-view wrapper (like `pywebview` or `PyQtWebEngine`) to run the server in the background and display the UI inside a dedicated application frame.
 - **Code files involved**: [main.py](file:///d:/Workspaces/Projects/xarrtools/main.py), [xarrtools/gui.py](file:///d:/Workspaces/Projects/xarrtools/xarrtools/gui.py) [NEW].
-
-### 17. Run Without Configuration (Try Basic UI)
-- **Goal**: Enable users to search, view, and test the discovery UI without configuring Sonarr or Radarr. Display friendly placeholders or demo mode when credentials are missing.
-- **Code files involved**: [xarrtools/templates/app.js](file:///d:/Workspaces/Projects/xarrtools/xarrtools/templates/app.js), [xarrtools/server.py](file:///d:/Workspaces/Projects/xarrtools/xarrtools/server.py).
-
-### 18. Auto-Open Settings Modal on Missing Config
-- **Goal**: Detect if Radarr/Sonarr are unconfigured when the app is first opened in the browser, and automatically display the settings modal focused on the server configuration tab.
-- **Code files involved**: [xarrtools/templates/app.js](file:///d:/Workspaces/Projects/xarrtools/xarrtools/templates/app.js).
 
 ---
 
 ## Completed Features
+
+### ✓ Standalone Demo Mode (Run Without Configuration)
+Provides an interactive sandbox flow with simulated indexer lookups, options configuration (folders and quality profiles), and global search capability when Radarr/Sonarr servers are unconfigured. Adds a glowing magenta "Demo Active" badge to the sidebar indicators.
+
+### ✓ Auto-Open Settings on Unconfigured Launch
+Detects on load if both Radarr and Sonarr are unconfigured and automatically triggers the Settings panel so the user knows where connection credentials can be input.
+
+### ✓ Clickable Poster Art Link Navigation
+Wraps card poster graphics in anchor tags that redirect to external metadata sites (IMDb for movies, TVDB/TVMaze for TV series) in a new browser tab with hover states and active scales preserved.
+
+### ✓ Fixed Settings Modal Dialog Layout Dimensions
+Sets a static size for the Settings modal card, styling form bodies with flex layouts and scroll limits to prevent vertical page resizing during settings tab transitions.
+
+### ✓ Theme Synchronization inside Settings Tab
+Adds a Theme Mode dropdown inside the Settings "View Options" tab, synchronized in real-time with the body classes, localStorage, and the header theme toggler.
+
+### ✓ Light Mode Support with Switch Toggle
+Implemented light mode styling overrides, tuned HSL color palettes, localStorage preference saving, and generated optimized light logo/favicon assets (`logo_light.png` and `favicon_light.png`).
+
+### ✓ Non-Blocking Scan Progress Pop-Over & Startup Progress
+Replaced the full-screen blocking overlay with a bottom-right floating scan status popup. Implemented thread-safe background status APIs on the server, a client-side polling interval, and a state-guard to ignore latency gaps. Configured startup cache loads to also utilize this progress card.
+
+### ✓ Collapsible & Scrollable Recent Activity Sidebar
+Restructured the Recent Activity sidebar container to be collapsed by default with rotating chevron transition states, scrolling within the sidebar boundaries rather than pushing options off-screen.
+
+### ✓ Refresh Icon Spinner Background Fixed
+Replaced standard text emoji 🔄 with a custom vector SVG circular arrow, ensuring a completely transparent background during rotation and resolving system-specific font background constraints.
 
 ### ✓ Radarr Track Collection / Box Set Exposure
 Allows users to automatically track and monitor entire TMDb Movie Collections (such as trilogies or franchise box sets) in Radarr when adding individual movies. Exposes TMDb collection status as visual badges inside movie indexer results and adds config options to enable collection monitoring when adding titles.
@@ -124,28 +127,28 @@ Added vertically-stacked dropdown selectors inside the sidebar `.filter-card` to
 Scans automatically identify incomplete cache records (e.g., missing poster, ratings, or IDs) and enrich them from live metadata feeds. Preserves the `is_archived` status and uses a 24-hour rate limit check to prevent redundant API queries.
 
 ### ✓ Media Rating Badges (Rotten Tomatoes / Metacritic / IMDb)
-Displays IMDb, Metacritic, and Rotten Tomatoes ratings directly as styled, color-coded badges on discovery cards and global search cards. Automatically enriches TV Maze/Sonarr average ratings for TV and Radarr IMDb/Metacritic/RT rating arrays for Movies, storing values inside SQLite cache table schema and rendering dynamically.
+Displays IMDb, Metacritic, and Rotten Tomatoes ratings directly as styled, color-coded badges on discovery cards and global search cards. Automatically enriches TV movie ratings and stores values inside SQLite cache table schema.
 
 ### ✓ Media Poster Art & 2xn Card Layout
-Queries Sonarr, Radarr, and TVMaze metadata providers to locate public image links, saves them inside the local cached database, and leverages a background healer daemon thread to automatically repair existing cache tables. Redesigned discovery card styling into a split-layout design showcasing 2:3 vertical poster art on the left, scaling the card grid to a balanced 2xn screen layout.
+Queries Sonarr, Radarr, and TVMaze metadata providers to locate public image links, saves them inside local cache, and designs cards into a split-layout showcasing 2:3 vertical poster art on the left, scaling the card grid to a balanced 2xn layout.
 
 ### ✓ Global Search for Online Media Items
-Added a "Global Search 🔍" tab in the sidebar that reveals a dedicated search panel. Users can query any movie or TV show title globally using Sonarr/Radarr indexer lookup APIs, view results as split-layout cards with poster art and metadata, check library status automatically, and add items directly via the existing download options modal (skipping Step 1 indexer search). Cards update in-place on successful addition.
+Allows users to query any movie or TV show title globally using Sonarr/Radarr indexer lookup APIs, view results with poster art, check library status, and add items directly.
 
 ### ✓ Load Cached Discoveries on Initial Startup
-Instead of greeting the user with a blank welcome panel on browser load, immediately pull and render non-filtered, cached discoveries from the local SQLite database that match the current date filters.
+Immediately pulls and renders non-filtered, cached discoveries from the local SQLite database that match the current date filters on page load.
 
 ### ✓ Collapse Empty Sections in UI
 Automatically hide the TV Shows or Movies section containers in the Web UI if active search inputs, tab selections, or filters yield zero visible cards.
 
 ### ✓ Title Matching Regardless of Year Setting
-Added a user setting (enabled by default) to match on the same title regardless of year if a unique ID is not available, which resolves matching issues for returning seasons of shows that release in different years.
+Added a user setting to match on the same title regardless of year if a unique ID is not available, resolving matching issues for returning seasons of shows.
 
 ### ✓ Brand App Icon and Favicon Creation
-Designed a custom neon-cyberpunk hot-magenta/cyan logo concept, built an automated `scratch/resize.ps1` helper using `System.Drawing` assemblies, and integrated resized favicon & logo PNG elements directly into the HTML index head and header.
+Designed a custom neon-cyberpunk hot-magenta/cyan logo concept, built a PowerShell resize helper script, and integrated favicons and logo elements.
 
 ### ✓ Settings Dialog Reorganization
-Overhauled the single settings layout form into a responsive, sectioned tab interface (Servers, Scanning, View Options, System Diagnostics) with real-time rows count metrics and manual cache prune/wipe utility triggers.
+Overhauled settings layout into a responsive tabbed interface (Servers, Scanning, View Options, System Diagnostics) with cache metrics and wipe utilities.
 
 ### ✓ Media External Links and Search Chips
-Introduced a collapsible source links panel inside the media cards, including direct deep links to IMDb, TMDB, TVDB, Metacritic, and a dynamic Google Search query link.
+Introduced collapsible source links inside media cards, including direct deep links to IMDb, TMDB, TVDB, Metacritic, and Google.

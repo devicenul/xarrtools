@@ -84,8 +84,47 @@ const inputSonarrKey = document.getElementById("input-sonarr-key");
 const inputPastMonths = document.getElementById("input-past-months");
 const inputFutureMonths = document.getElementById("input-future-months");
 
+// --- Theme Helpers ---
+function initTheme() {
+    const savedTheme = localStorage.getItem("xarrtools-theme");
+    const isLight = savedTheme === "light";
+    if (isLight) {
+        document.body.classList.add("light-theme");
+    } else {
+        document.body.classList.remove("light-theme");
+    }
+    // Defer UI updates slightly to ensure elements exist
+    setTimeout(() => updateThemeToggleUI(isLight), 0);
+}
+
+function updateThemeToggleUI(isLight) {
+    const themeBtn = document.getElementById("btn-theme-toggle");
+    const logoImg = document.getElementById("app-logo");
+    if (themeBtn) {
+        themeBtn.textContent = isLight ? "🌙" : "☀️";
+        themeBtn.title = isLight ? "Switch to Dark Theme" : "Switch to Light Theme";
+    }
+    if (logoImg) {
+        logoImg.src = isLight ? "/static/favicon_light.png" : "/static/favicon.png";
+    }
+}
+
+function toggleTheme() {
+    const isLight = document.body.classList.toggle("light-theme");
+    const themeStr = isLight ? "light" : "dark";
+    localStorage.setItem("xarrtools-theme", themeStr);
+    updateThemeToggleUI(isLight);
+    
+    // Synchronize select theme dropdown if open or loaded
+    const selectTheme = document.getElementById("select-theme-mode");
+    if (selectTheme) {
+        selectTheme.value = themeStr;
+    }
+}
+
 // --- Initialization ---
 document.addEventListener("DOMContentLoaded", () => {
+    initTheme();
     loadSettingsAndConfig();
     setupEventListeners();
 });
@@ -106,6 +145,11 @@ async function loadSettingsAndConfig() {
         // Initialize UI Elements with Settings Defaults
         initializeSettingsDefaults();
         updateStatusBadges();
+        
+        // Check if unconfigured (both offline)
+        if (appConfig && !appConfig.radarr.configured && !appConfig.sonarr.configured) {
+            openSettingsModal();
+        }
         
         // Load cached discoveries from database on initial setup (skip_scrape=true)
         await scanReleases(true);
@@ -139,6 +183,16 @@ function initializeSettingsDefaults() {
 function updateStatusBadges() {
     if (!appConfig) return;
 
+    const statusDemo = document.getElementById("status-demo");
+    const isUnconfigured = !appConfig.radarr.configured && !appConfig.sonarr.configured;
+    if (statusDemo) {
+        if (isUnconfigured) {
+            statusDemo.classList.remove("hidden");
+        } else {
+            statusDemo.classList.add("hidden");
+        }
+    }
+
     // Radarr status
     if (appConfig.radarr.configured) {
         statusRadarr.className = "status-badge status-online";
@@ -154,14 +208,87 @@ function updateStatusBadges() {
     }
 }
 
+let progressInterval = null;
+
+function startProgressPolling() {
+    if (progressInterval) clearInterval(progressInterval);
+    
+    const popover = document.getElementById("scan-progress-popover");
+    const statusMsg = document.getElementById("progress-status-msg");
+    const percentText = document.getElementById("progress-percent-text");
+    const barFill = document.getElementById("progress-bar-fill");
+    
+    if (popover) popover.classList.remove("hidden");
+    if (statusMsg) statusMsg.textContent = "Initiating scan...";
+    if (percentText) percentText.textContent = "0%";
+    if (barFill) barFill.style.width = "0%";
+    
+    let hasStarted = false;
+    
+    progressInterval = setInterval(async () => {
+        try {
+            const res = await fetch("/api/scan/progress");
+            if (!res.ok) return;
+            const data = await res.json();
+            
+            if (data.status === "scraping") {
+                hasStarted = true;
+                if (statusMsg) statusMsg.textContent = data.message;
+                if (percentText) percentText.textContent = "Scraping...";
+                if (barFill) barFill.style.width = "5%";
+            } else if (data.status === "enriching") {
+                hasStarted = true;
+                if (statusMsg) statusMsg.textContent = data.message;
+                if (data.total > 0) {
+                    const percent = Math.round((data.current / data.total) * 100);
+                    if (percentText) percentText.textContent = `${percent}% (${data.current}/${data.total})`;
+                    if (barFill) barFill.style.width = `${percent}%`;
+                } else {
+                    if (percentText) percentText.textContent = "Enriching...";
+                }
+            } else if (data.status === "idle") {
+                if (hasStarted) {
+                    stopProgressPolling();
+                }
+            }
+        } catch (e) {
+            console.error("Error polling scan progress:", e);
+        }
+    }, 500);
+}
+
+function stopProgressPolling() {
+    if (progressInterval) {
+        clearInterval(progressInterval);
+        progressInterval = null;
+    }
+    const popover = document.getElementById("scan-progress-popover");
+    if (popover) popover.classList.add("hidden");
+}
+
 // 2. Scan Metacritic and DVD calendar releases
 async function scanReleases(skipScrape = false) {
     const shouldSkipScrape = (skipScrape === true);
+    const popover = document.getElementById("scan-progress-popover");
+    const statusMsg = document.getElementById("progress-status-msg");
+    const percentText = document.getElementById("progress-percent-text");
+    const barFill = document.getElementById("progress-bar-fill");
     
-    welcomeState.classList.add("hidden");
-    contentArea.classList.add("hidden");
-    loadingOverlay.classList.remove("hidden");
-    loadingText.textContent = shouldSkipScrape ? "Loading cached releases..." : "Scanning feeds...";
+    if (shouldSkipScrape) {
+        // Show progress pop-over for cache loading on startup
+        if (popover) popover.classList.remove("hidden");
+        if (statusMsg) statusMsg.textContent = "Loading cached releases...";
+        if (percentText) percentText.textContent = "Please wait...";
+        if (barFill) barFill.style.width = "50%";
+        
+        welcomeState.classList.add("hidden");
+        contentArea.classList.remove("hidden");
+    } else {
+        // Non-blocking scan pop-over and polling
+        startProgressPolling();
+        welcomeState.classList.add("hidden");
+        contentArea.classList.remove("hidden");
+    }
     
     const pastMonths = document.getElementById("slider-past").value;
     const futureMonths = document.getElementById("slider-future").value;
@@ -178,20 +305,24 @@ async function scanReleases(skipScrape = false) {
         currentDiscoveries.tv = data.tv || [];
         currentDiscoveries.movies = data.movies || [];
         
-        if (shouldSkipScrape && currentDiscoveries.tv.length === 0 && currentDiscoveries.movies.length === 0) {
-            loadingOverlay.classList.add("hidden");
+        populateFilterOptions();
+        renderMediaLists();
+        
+        if (currentDiscoveries.tv.length === 0 && currentDiscoveries.movies.length === 0) {
             welcomeState.classList.remove("hidden");
             contentArea.classList.add("hidden");
         } else {
-            populateFilterOptions();
-            renderMediaLists();
-            loadingOverlay.classList.add("hidden");
+            welcomeState.classList.add("hidden");
             contentArea.classList.remove("hidden");
         }
     } catch (error) {
-        loadingOverlay.classList.add("hidden");
-        welcomeState.classList.remove("hidden");
         alert(`Error: ${error.message}`);
+    } finally {
+        if (shouldSkipScrape) {
+            if (popover) popover.classList.add("hidden");
+        } else {
+            stopProgressPolling();
+        }
     }
 }
 
@@ -204,6 +335,40 @@ async function addMediaItem() {
     const discoveryItem = selectedItemForAdd.item; // Capture reference before closing modal clears selectedItemForAdd
     const searchCard = selectedItemForAdd.card || null; // Capture search card ref if from global search
     
+    // Intercept for Demo Mode simulation
+    if (selectedItemForAdd.isDemo) {
+        closeModal();
+        loadingOverlay.classList.remove("hidden");
+        loadingText.textContent = `[Demo Mode] Adding '${rawMeta.title}'...`;
+        
+        setTimeout(() => {
+            loadingOverlay.classList.add("hidden");
+            addNotification(`[Demo Sandbox] Successfully added ${type === 'tv' ? 'TV Show' : 'Movie'} '${rawMeta.title}' to sandbox library!`, "success");
+            
+            if (discoveryItem) {
+                discoveryItem.is_in_library = true;
+                renderMediaLists();
+            }
+            
+            if (searchCard) {
+                const addBtn = searchCard.querySelector(".btn-search-add");
+                if (addBtn) {
+                    addBtn.textContent = "In Library";
+                    addBtn.disabled = true;
+                    addBtn.className = "btn btn-secondary btn-added btn-search-add";
+                }
+                const badges = searchCard.querySelector(".card-badges");
+                if (badges && !badges.querySelector(".badge-in-library")) {
+                    const badge = document.createElement("span");
+                    badge.className = "badge badge-in-library";
+                    badge.textContent = "In Library";
+                    badges.appendChild(badge);
+                }
+            }
+        }, 800);
+        return;
+    }
+
     const checkTrackCollection = document.getElementById("check-track-collection");
     const payload = {
         type: type,
@@ -558,20 +723,26 @@ function createMediaCard(item, type, index) {
     chipsHtml += `<a href="https://www.google.com/search?q=${searchString}" target="_blank" class="chip chip-google">Google Search 🔍</a>`;
         
     // Setup poster image
+    const navUrl = getPosterNavigationUrl(item, type);
     let posterHtml = "";
     if (item.poster_url) {
         posterHtml = `
-            <div class="card-poster">
-                <img src="${item.poster_url}" alt="${item.title} poster" class="poster-img" onerror="this.onerror=null; this.parentElement.innerHTML='<div class=&quot;poster-fallback&quot;><span>${type === 'tv' ? '📺' : '🎬'}</span></div>';">
-            </div>
+            <a href="${navUrl}" target="_blank" class="card-poster-link" title="Click to view external page">
+                <div class="card-poster">
+                    <img src="${item.poster_url}" alt="${item.title} poster" class="poster-img" onerror="this.onerror=null; this.parentElement.innerHTML='<div class=&quot;poster-fallback&quot;><span>${type === 'tv' ? '📺' : '🎬'}</span><p style=&quot;font-size: 11px; padding: 0 8px; font-weight: 500; color: var(--text-primary); text-transform: uppercase; letter-spacing: 0.5px;&quot;>${item.title.replace(/'/g, '&#39;').replace(/"/g, '&quot;')}</p></div>';">
+                </div>
+            </a>
         `;
     } else {
         posterHtml = `
-            <div class="card-poster">
-                <div class="poster-fallback">
-                    <span>${type === 'tv' ? '📺' : '🎬'}</span>
+            <a href="${navUrl}" target="_blank" class="card-poster-link" title="Click to view external page">
+                <div class="card-poster">
+                    <div class="poster-fallback">
+                        <span>${type === 'tv' ? '📺' : '🎬'}</span>
+                        <p style="font-size: 11px; padding: 0 8px; font-weight: 500; color: var(--text-primary); text-transform: uppercase; letter-spacing: 0.5px;">${item.title.replace(/'/g, '&#39;').replace(/"/g, '&quot;')}</p>
+                    </div>
                 </div>
-            </div>
+            </a>
         `;
     }
         
@@ -582,7 +753,12 @@ function createMediaCard(item, type, index) {
                 <h3>${item.title}</h3>
                 <div class="card-year-refresh">
                     <span class="year">${item.year}</span>
-                    <button class="btn-refresh-icon" title="Refresh Metadata">🔄</button>
+                    <button class="btn-refresh-icon" title="Refresh Metadata">
+                        <svg class="refresh-svg" viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round" style="display: block; pointer-events: none;">
+                            <polyline points="23 4 23 10 17 10"></polyline>
+                            <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path>
+                        </svg>
+                    </button>
                 </div>
             </div>
             <div class="card-badges">
@@ -686,7 +862,7 @@ async function openAddModal(type, index) {
 
     const targetConfig = type === "tv" ? appConfig.sonarr : appConfig.radarr;
     if (!targetConfig.configured) {
-        alert(`${type === "tv" ? "Sonarr" : "Radarr"} is not configured. Click settings in the top right to configure it.`);
+        openDemoAddModal(type, item, index, null);
         return;
     }
 
@@ -793,9 +969,30 @@ function renderLookupResults(results, type, discoveryItem) {
 function goToOptionsStep(metadataItem) {
     selectedItemForAdd.raw_metadata = metadataItem;
     const type = selectedItemForAdd.type;
-    const targetConfig = type === "tv" ? appConfig.sonarr : appConfig.radarr;
+    
+    let targetConfig;
+    if (selectedItemForAdd.isDemo) {
+        targetConfig = {
+            folders: [
+                { path: "/data/media/Movies" },
+                { path: "/data/media/Kids" }
+            ],
+            profiles: [
+                { id: 1, name: "Any (Default)" },
+                { id: 2, name: "Ultra-HD 4K" },
+                { id: 3, name: "HD - 1080p/720p" }
+            ],
+            language_profiles: [
+                { id: 1, name: "English" },
+                { id: 2, name: "Spanish" },
+                { id: 3, name: "French" }
+            ]
+        };
+    } else {
+        targetConfig = type === "tv" ? appConfig.sonarr : appConfig.radarr;
+    }
 
-    modalTitle.textContent = `Configure Download: ${metadataItem.title}`;
+    modalTitle.textContent = `${selectedItemForAdd.isDemo ? '[Demo Sandbox] ' : ''}Configure Download: ${metadataItem.title}`;
     
     // Clear selects
     selectFolder.innerHTML = "";
@@ -887,6 +1084,13 @@ function openSettingsModal() {
         document.getElementById("input-show-library").checked = appSettings.default_show_library === "1";
         document.getElementById("input-show-archived").checked = appSettings.default_show_archived === "1";
         document.getElementById("input-match-ignore-year").checked = appSettings.default_match_ignore_year !== "0";
+    }
+    
+    // Set theme selector value inside View Options tab to current theme
+    const selectTheme = document.getElementById("select-theme-mode");
+    if (selectTheme) {
+        const currentTheme = localStorage.getItem("xarrtools-theme") || "dark";
+        selectTheme.value = currentTheme;
     }
     
     // Reset active tab to Servers
@@ -1062,6 +1266,21 @@ async function runGlobalSearch() {
         </div>
     `;
     
+    // Intercept if unconfigured to return demo search results
+    const isConfigured = type === "tv" ? (appConfig && appConfig.sonarr.configured) : (appConfig && appConfig.radarr.configured);
+    if (!isConfigured) {
+        setTimeout(() => {
+            const demoResults = getDemoSearchResults(query, type);
+            resultsGrid.innerHTML = "";
+            demoResults.forEach(res => {
+                const card = createSearchCard(res, type);
+                resultsGrid.appendChild(card);
+            });
+            addNotification(`[Demo Mode] Found ${demoResults.length} simulated result(s) for "${query}".`, "info");
+        }, 600);
+        return;
+    }
+    
     try {
         const response = await fetch(`/api/lookup?type=${type}&title=${encodeURIComponent(query)}`);
         const data = await response.json();
@@ -1157,20 +1376,26 @@ function createSearchCard(res, type) {
     }
     
     // Poster HTML
+    const navUrl = getPosterNavigationUrl(res, type);
     let posterHtml = "";
     if (posterUrl) {
         posterHtml = `
-            <div class="card-poster">
-                <img src="${posterUrl}" alt="${title} poster" class="poster-img" onerror="this.onerror=null; this.parentElement.innerHTML='<div class=&quot;poster-fallback&quot;><span>${type === 'tv' ? '📺' : '🎬'}</span></div>';">
-            </div>
+            <a href="${navUrl}" target="_blank" class="card-poster-link" title="Click to view external page">
+                <div class="card-poster">
+                    <img src="${posterUrl}" alt="${title} poster" class="poster-img" onerror="this.onerror=null; this.parentElement.innerHTML='<div class=&quot;poster-fallback&quot;><span>${type === 'tv' ? '📺' : '🎬'}</span><p style=&quot;font-size: 11px; padding: 0 8px; font-weight: 500; color: var(--text-primary); text-transform: uppercase; letter-spacing: 0.5px;&quot;>${title.replace(/'/g, '&#39;').replace(/"/g, '&quot;')}</p></div>';">
+                </div>
+            </a>
         `;
     } else {
         posterHtml = `
-            <div class="card-poster">
-                <div class="poster-fallback">
-                    <span>${type === 'tv' ? '📺' : '🎬'}</span>
+            <a href="${navUrl}" target="_blank" class="card-poster-link" title="Click to view external page">
+                <div class="card-poster">
+                    <div class="poster-fallback">
+                        <span>${type === 'tv' ? '📺' : '🎬'}</span>
+                        <p style="font-size: 11px; padding: 0 8px; font-weight: 500; color: var(--text-primary); text-transform: uppercase; letter-spacing: 0.5px;">${title.replace(/'/g, '&#39;').replace(/"/g, '&quot;')}</p>
+                    </div>
                 </div>
-            </div>
+            </a>
         `;
     }
     
@@ -1286,7 +1511,7 @@ function openAddModalFromLookup(res, type, card) {
     
     const targetConfig = type === "tv" ? appConfig.sonarr : appConfig.radarr;
     if (!targetConfig.configured) {
-        alert(`${type === "tv" ? "Sonarr" : "Radarr"} is not configured. Click settings in the top right to configure it.`);
+        openDemoAddModal(type, { title: res.title, year: res.year }, null, card, res);
         return;
     }
     
@@ -1306,8 +1531,151 @@ function openAddModalFromLookup(res, type, card) {
     modalOverlay.classList.remove("hidden");
 }
 
+function getPosterNavigationUrl(item, type) {
+    const imdbId = item.imdbId || item.imdb_id;
+    const tmdbId = item.tmdbId || item.tmdb_id;
+    const tvdbId = item.tvdbId || item.tvdb_id;
+    
+    if (type === "movie") {
+        if (imdbId) return `https://www.imdb.com/title/${imdbId}/`;
+        if (tmdbId) return `https://www.themoviedb.org/movie/${tmdbId}`;
+    } else if (type === "tv") {
+        if (tvdbId) return `https://thetvdb.com/dereferrer/series/${tvdbId}`;
+        if (imdbId) return `https://www.imdb.com/title/${imdbId}/`;
+    }
+    
+    // Fallback to Metacritic/source URL
+    if (item.href) return item.href;
+    
+    // Double fallback to Google search
+    const searchString = encodeURIComponent(`${item.title} ${item.year} ${type === 'tv' ? 'tv show' : 'movie'}`);
+    return `https://www.google.com/search?q=${searchString}`;
+}
+
+function getDemoSearchResults(query, type) {
+    if (type === "movie") {
+        return [
+            {
+                title: query,
+                year: 2026,
+                tmdbId: 88801,
+                imdbId: "tt1234567",
+                overview: `[Demo Sandbox] Simulated movie result matching your query "${query}".`,
+                studio: "Demo Studios",
+                genres: ["Action", "Sci-Fi"]
+            },
+            {
+                title: `${query}: Part II`,
+                year: 2027,
+                tmdbId: 88802,
+                imdbId: "tt2345678",
+                overview: `[Demo Sandbox] Futuristic sequel to "${query}".`,
+                studio: "Demo Studios",
+                genres: ["Action", "Sci-Fi", "Adventure"]
+            }
+        ];
+    } else {
+        return [
+            {
+                title: query,
+                year: 2026,
+                tvdbId: 99901,
+                imdbId: "tt3456789",
+                overview: `[Demo Sandbox] Simulated TV series matching your query "${query}".`,
+                network: "Demo Network",
+                genres: ["Drama", "Mystery"]
+            },
+            {
+                title: `${query} (Spinoff)`,
+                year: 2028,
+                tvdbId: 99902,
+                imdbId: "tt4567890",
+                overview: `[Demo Sandbox] Popular television spinoff based on "${query}".`,
+                network: "Demo Streaming",
+                genres: ["Comedy"]
+            }
+        ];
+    }
+}
+
+function openDemoAddModal(type, item, index, searchCard = null, rawMetadata = null) {
+    selectedItemForAdd = { 
+        type, 
+        item, 
+        isDemo: true, 
+        card: searchCard,
+        raw_metadata: rawMetadata
+    };
+    
+    // Setup Step 1 UI
+    modalTitle.textContent = `[Demo Sandbox] Search Indexer for '${item.title}'`;
+    modalStepSearch.classList.remove("hidden");
+    modalStepOptions.classList.add("hidden");
+    btnModalBack.classList.add("hidden");
+    btnModalConfirm.classList.add("hidden");
+    
+    lookupLoading.classList.remove("hidden");
+    lookupResultsList.classList.add("hidden");
+    lookupResultsList.innerHTML = "";
+    
+    modalOverlay.classList.remove("hidden");
+    
+    // Simulate indexing search delay
+    setTimeout(() => {
+        lookupLoading.classList.add("hidden");
+        lookupResultsList.classList.remove("hidden");
+        
+        const fakeResults = [
+            {
+                title: item.title,
+                year: item.year,
+                tvdbId: type === "tv" ? 99901 : null,
+                tmdbId: type === "movie" ? 88801 : null,
+                imdbId: item.imdbId || "tt1234567",
+                overview: `[Demo Mode] Simulated match for '${item.title}'. In sandbox mode, you can select this to preview the settings configurations.`,
+                collection: type === "movie" ? { title: `${item.title} Collection`, name: `${item.title} Collection` } : null,
+                id: null
+            },
+            {
+                title: `${item.title} (Sandbox Spinoff)`,
+                year: item.year - 1,
+                tvdbId: type === "tv" ? 99902 : null,
+                tmdbId: type === "movie" ? 88802 : null,
+                imdbId: "tt2345678",
+                overview: "[Demo Mode] Alternative simulated release for testing multiselection flows.",
+                id: null
+            }
+        ];
+        
+        renderLookupResults(fakeResults, type, item);
+    }, 600);
+}
+
 
 function setupEventListeners() {
+    // Theme toggle button click
+    const btnThemeToggle = document.getElementById("btn-theme-toggle");
+    if (btnThemeToggle) {
+        btnThemeToggle.addEventListener("click", toggleTheme);
+    }
+    
+    // Collapsible Notifications click
+    const notificationsHeader = document.getElementById("notifications-header");
+    const notificationsCard = document.getElementById("notifications-card");
+    if (notificationsHeader && notificationsCard) {
+        notificationsHeader.addEventListener("click", () => {
+            notificationsCard.classList.toggle("collapsed");
+        });
+    }
+
+    // Floating Progress Pop-over Close button
+    const btnCloseProgress = document.getElementById("btn-close-progress");
+    if (btnCloseProgress) {
+        btnCloseProgress.addEventListener("click", () => {
+            document.getElementById("scan-progress-popover").classList.add("hidden");
+        });
+    }
+
     btnScan.addEventListener("click", scanReleases);
     modalClose.addEventListener("click", closeModal);
     btnModalCancel.addEventListener("click", closeModal);
@@ -1340,6 +1708,22 @@ function setupEventListeners() {
     settingsClose.addEventListener("click", closeSettingsModal);
     btnSettingsCancel.addEventListener("click", closeSettingsModal);
     btnSettingsSave.addEventListener("click", saveSettings);
+    
+    // Theme Selector inside settings dropdown
+    const selectTheme = document.getElementById("select-theme-mode");
+    if (selectTheme) {
+        selectTheme.addEventListener("change", (e) => {
+            const selectedTheme = e.target.value;
+            const isLight = (selectedTheme === "light");
+            if (isLight) {
+                document.body.classList.add("light-theme");
+            } else {
+                document.body.classList.remove("light-theme");
+            }
+            localStorage.setItem("xarrtools-theme", selectedTheme);
+            updateThemeToggleUI(isLight);
+        });
+    }
 
     // Tab switching inside settings
     const settingsTabButtons = document.querySelectorAll(".settings-tab-btn");
