@@ -21,7 +21,9 @@ from xarrtools.db import (
     get_cache_stats,
     clear_all_cache,
     get_cached_discoveries,
-    update_cached_library_status
+    update_cached_library_status,
+    normalize_title,
+    get_setting
 )
 
 # Initialize Database and Prune Expired cache entries
@@ -177,13 +179,16 @@ def discover_releases():
             if scan_progress["status"] != "idle":
                 return jsonify({"status": "error", "message": "A scan is already in progress."}), 409
     
+    ignore_year = (get_setting("default_match_ignore_year", "1") == "1")
     radarr_client, sonarr_client = get_clients()
     
-    # 1. Fetch libraries in single queries to optimize check (collecting TVDB/TMDB and IMDb sets)
+    # 1. Fetch libraries in single queries to optimize check (collecting TVDB/TMDB and IMDb sets, and normalized titles for automatch)
     radarr_tmdb_ids = set()
     radarr_imdb_ids = set()
+    radarr_titles = {}
     sonarr_tvdb_ids = set()
     sonarr_imdb_ids = set()
+    sonarr_titles = {}
     
     if radarr_client:
         try:
@@ -195,6 +200,12 @@ def discover_releases():
                     imdb = str(movie["imdbId"]).strip().lower()
                     if imdb:
                         radarr_imdb_ids.add(imdb)
+                title_norm = normalize_title(movie.get("title", ""))
+                if title_norm:
+                    if title_norm not in radarr_titles:
+                        radarr_titles[title_norm] = []
+                    if movie.get("year"):
+                        radarr_titles[title_norm].append(int(movie["year"]))
         except Exception as e:
             app.logger.error(f"Error fetching Radarr library: {e}")
             
@@ -208,6 +219,12 @@ def discover_releases():
                     imdb = str(show["imdbId"]).strip().lower()
                     if imdb:
                         sonarr_imdb_ids.add(imdb)
+                title_norm = normalize_title(show.get("title", ""))
+                if title_norm:
+                    if title_norm not in sonarr_titles:
+                        sonarr_titles[title_norm] = []
+                    if show.get("year"):
+                        sonarr_titles[title_norm].append(int(show["year"]))
         except Exception as e:
             app.logger.error(f"Error fetching Sonarr library: {e}")
             
@@ -231,7 +248,17 @@ def discover_releases():
                 has_tvdb_match = (tvdb_id and int(tvdb_id) in sonarr_tvdb_ids)
                 clean_imdb = str(imdb_id).strip().lower() if imdb_id else ""
                 has_imdb_match = (clean_imdb and clean_imdb in sonarr_imdb_ids)
-                in_library = has_tvdb_match or has_imdb_match
+                
+                has_title_match = False
+                title_norm = normalize_title(row["title"])
+                if title_norm in sonarr_titles:
+                    if ignore_year:
+                        has_title_match = True
+                    else:
+                        row_year = row["year"]
+                        has_title_match = any(abs(y - row_year) <= 1 for y in sonarr_titles[title_norm])
+                        
+                in_library = has_tvdb_match or has_imdb_match or has_title_match
                 
                 # Sync status if changed
                 if in_library != bool(row["is_in_library"]):
@@ -270,7 +297,17 @@ def discover_releases():
                 has_tmdb_match = (tmdb_id and int(tmdb_id) in radarr_tmdb_ids)
                 clean_imdb = str(imdb_id).strip().lower() if imdb_id else ""
                 has_imdb_match = (clean_imdb and clean_imdb in radarr_imdb_ids)
-                in_library = has_tmdb_match or has_imdb_match
+                
+                has_title_match = False
+                title_norm = normalize_title(row["title"])
+                if title_norm in radarr_titles:
+                    if ignore_year:
+                        has_title_match = True
+                    else:
+                        row_year = row["year"]
+                        has_title_match = any(abs(y - row_year) <= 1 for y in radarr_titles[title_norm])
+                        
+                in_library = has_tmdb_match or has_imdb_match or has_title_match
                 
                 # Sync status if changed
                 if in_library != bool(row["is_in_library"]):
@@ -350,7 +387,16 @@ def discover_releases():
                         has_tvdb_match = (tvdb_val and int(tvdb_val) in sonarr_tvdb_ids)
                         clean_imdb = str(imdb_val).strip().lower() if imdb_val else ""
                         has_imdb_match = (clean_imdb and clean_imdb in sonarr_imdb_ids)
-                        in_library = has_tvdb_match or has_imdb_match
+                        
+                        has_title_match = False
+                        title_norm = normalize_title(cached["title"])
+                        if title_norm in sonarr_titles:
+                            if ignore_year:
+                                has_title_match = True
+                            else:
+                                has_title_match = any(abs(y - cached["year"]) <= 1 for y in sonarr_titles[title_norm])
+                                
+                        in_library = has_tvdb_match or has_imdb_match or has_title_match
                         
                         # Sync status if changed
                         if in_library != bool(cached["is_in_library"]):
@@ -391,7 +437,16 @@ def discover_releases():
                         has_tvdb_match = (tvdb_val and int(tvdb_val) in sonarr_tvdb_ids)
                         clean_imdb = str(imdb_val).strip().lower() if imdb_val else ""
                         has_imdb_match = (clean_imdb and clean_imdb in sonarr_imdb_ids)
-                        in_library = has_tvdb_match or has_imdb_match
+                        
+                        has_title_match = False
+                        title_norm = normalize_title(data["title"])
+                        if title_norm in sonarr_titles:
+                            if ignore_year:
+                                has_title_match = True
+                            else:
+                                has_title_match = any(abs(y - data["year"]) <= 1 for y in sonarr_titles[title_norm])
+                                
+                        in_library = has_tvdb_match or has_imdb_match or has_title_match
                     else:
                         in_library = bool(cached["is_in_library"]) if cached else False
                         
@@ -455,7 +510,16 @@ def discover_releases():
                         has_tmdb_match = (tmdb_val and int(tmdb_val) in radarr_tmdb_ids)
                         clean_imdb = str(imdb_val).strip().lower() if imdb_val else ""
                         has_imdb_match = (clean_imdb and clean_imdb in radarr_imdb_ids)
-                        in_library = has_tmdb_match or has_imdb_match
+                        
+                        has_title_match = False
+                        title_norm = normalize_title(cached["title"])
+                        if title_norm in radarr_titles:
+                            if ignore_year:
+                                has_title_match = True
+                            else:
+                                has_title_match = any(abs(y - cached["year"]) <= 1 for y in radarr_titles[title_norm])
+                                
+                        in_library = has_tmdb_match or has_imdb_match or has_title_match
                         
                         # Sync status if changed
                         if in_library != bool(cached["is_in_library"]):
@@ -497,7 +561,16 @@ def discover_releases():
                         has_tmdb_match = (tmdb_val and int(tmdb_val) in radarr_tmdb_ids)
                         clean_imdb = str(imdb_val).strip().lower() if imdb_val else ""
                         has_imdb_match = (clean_imdb and clean_imdb in radarr_imdb_ids)
-                        in_library = has_tmdb_match or has_imdb_match
+                        
+                        has_title_match = False
+                        title_norm = normalize_title(data["title"])
+                        if title_norm in radarr_titles:
+                            if ignore_year:
+                                has_title_match = True
+                            else:
+                                has_title_match = any(abs(y - data["year"]) <= 1 for y in radarr_titles[title_norm])
+                                
+                        in_library = has_tmdb_match or has_imdb_match or has_title_match
                     else:
                         in_library = bool(cached["is_in_library"]) if cached else False
                         
@@ -574,11 +647,33 @@ def cache_refresh_item():
                     
                     tvdb_val = refreshed.get("tvdbId")
                     imdb_val = refreshed.get("imdbId")
+                    title_val = refreshed.get("title")
+                    year_val = refreshed.get("year", 0)
                     
                     has_tvdb_match = (tvdb_val and int(tvdb_val) in tvdb_set)
                     clean_imdb = str(imdb_val).strip().lower() if imdb_val else ""
                     has_imdb_match = (clean_imdb and clean_imdb in imdb_set)
-                    in_library = has_tvdb_match or has_imdb_match
+                    
+                    # Automatch title fallback
+                    has_title_match = False
+                    title_norm = normalize_title(title_val)
+                    ignore_year = (get_setting("default_match_ignore_year", "1") == "1")
+                    sonarr_titles_local = {}
+                    for show in series:
+                        t_norm = normalize_title(show.get("title", ""))
+                        if t_norm:
+                            if t_norm not in sonarr_titles_local:
+                                sonarr_titles_local[t_norm] = []
+                            if show.get("year"):
+                                sonarr_titles_local[t_norm].append(int(show["year"]))
+                                
+                    if title_norm in sonarr_titles_local:
+                        if ignore_year:
+                            has_title_match = True
+                        else:
+                            has_title_match = any(abs(y - year_val) <= 1 for y in sonarr_titles_local[title_norm])
+                            
+                    in_library = has_tvdb_match or has_imdb_match or has_title_match
                 except Exception:
                     pass
             else:
@@ -604,11 +699,33 @@ def cache_refresh_item():
                     
                     tmdb_val = refreshed.get("tmdbId")
                     imdb_val = refreshed.get("imdbId")
+                    title_val = refreshed.get("title")
+                    year_val = refreshed.get("year", 0)
                     
                     has_tmdb_match = (tmdb_val and int(tmdb_val) in tmdb_set)
                     clean_imdb = str(imdb_val).strip().lower() if imdb_val else ""
                     has_imdb_match = (clean_imdb and clean_imdb in imdb_set)
-                    in_library = has_tmdb_match or has_imdb_match
+                    
+                    # Automatch title fallback
+                    has_title_match = False
+                    title_norm = normalize_title(title_val)
+                    ignore_year = (get_setting("default_match_ignore_year", "1") == "1")
+                    radarr_titles_local = {}
+                    for movie in movies:
+                        t_norm = normalize_title(movie.get("title", ""))
+                        if t_norm:
+                            if t_norm not in radarr_titles_local:
+                                radarr_titles_local[t_norm] = []
+                            if movie.get("year"):
+                                radarr_titles_local[t_norm].append(int(movie["year"]))
+                                
+                    if title_norm in radarr_titles_local:
+                        if ignore_year:
+                            has_title_match = True
+                        else:
+                            has_title_match = any(abs(y - year_val) <= 1 for y in radarr_titles_local[title_norm])
+                            
+                    in_library = has_tmdb_match or has_imdb_match or has_title_match
                 except Exception:
                     pass
             else:
