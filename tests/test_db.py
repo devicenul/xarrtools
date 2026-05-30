@@ -347,3 +347,23 @@ def test_get_cached_discoveries(temp_db):
     assert len(movies) == 1
     assert tv[0]["title"] == "Show 1"
     assert movies[0]["title"] == "Movie 1"
+
+
+def test_db_frozen_path():
+    import sys
+    import importlib
+    
+    old_frozen = getattr(sys, 'frozen', None)
+    sys.frozen = True
+    try:
+        importlib.reload(core.db)
+        from pathlib import Path
+        expected = Path(sys.executable).resolve().parent / "xarrtools.db"
+        assert core.db.DB_PATH == expected
+    finally:
+        if old_frozen is None:
+            if hasattr(sys, 'frozen'):
+                del sys.frozen
+        else:
+            sys.frozen = old_frozen
+        importlib.reload(core.db)

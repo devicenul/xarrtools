@@ -28,3 +28,8 @@ xarrtools.db-wal
 .coverage
 .pytest_cache/
 htmlcov/
+
+# PyInstaller / Build outputs
+build/
+dist/
+*.spec

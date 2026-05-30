@@ -908,7 +908,15 @@ def background_poster_healer():
 if "PYTEST_CURRENT_TEST" not in os.environ:
     threading.Thread(target=background_poster_healer, daemon=True).start()
 
-def start_server(port=5000):
+def start_server(port=5000, debug=False):
     """Starts the Flask web server."""
-    print(f"Starting xarrtools server at http://localhost:{port}...")
-    app.run(host="127.0.0.1", port=port, debug=False)
+    if debug:
+        print(f"Starting xarrtools server in DEBUG mode at http://localhost:{port}...")
+        app.run(host="127.0.0.1", port=port, debug=True)
+    else:
+        print(f"Starting xarrtools production server at http://localhost:{port}...")
+        try:
+            from waitress import serve
+            serve(app, host="127.0.0.1", port=port)
+        except ImportError:
+            app.run(host="127.0.0.1", port=port, debug=False)

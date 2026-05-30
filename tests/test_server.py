@@ -672,9 +672,22 @@ def test_background_poster_healer_exception(mock_get_clients, mock_sleep):
 
 
 @patch("web.server.app.run")
-def test_start_server(mock_run):
-    start_server(1234)
+@patch("waitress.serve")
+def test_start_server_production(mock_serve, mock_run):
+    start_server(1234, debug=False)
+    mock_serve.assert_called_once_with(app, host="127.0.0.1", port=1234)
+    mock_run.assert_not_called()
+
+@patch("web.server.app.run")
+@patch("waitress.serve", side_effect=ImportError("No waitress"))
+def test_start_server_fallback(mock_serve, mock_run):
+    start_server(1234, debug=False)
     mock_run.assert_called_once_with(host="127.0.0.1", port=1234, debug=False)
+
+@patch("web.server.app.run")
+def test_start_server_debug(mock_run):
+    start_server(1234, debug=True)
+    mock_run.assert_called_once_with(host="127.0.0.1", port=1234, debug=True)
 
 @patch("web.server.config")
 @patch("web.server.RadarrClient")

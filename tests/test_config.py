@@ -51,3 +51,24 @@ def test_config_missing_vars():
         assert "RADARR_API_KEY" in config.get_missing_radarr_vars()
         assert "SONARR_URL" in config.get_missing_sonarr_vars()
         assert "SONARR_API_KEY" in config.get_missing_sonarr_vars()
+
+
+def test_config_frozen_path():
+    import sys
+    import importlib
+    import core.config
+    
+    old_frozen = getattr(sys, 'frozen', None)
+    sys.frozen = True
+    try:
+        importlib.reload(core.config)
+        from pathlib import Path
+        expected = Path(sys.executable).resolve().parent / ".env"
+        assert core.config.dotenv_path == expected
+    finally:
+        if old_frozen is None:
+            if hasattr(sys, 'frozen'):
+                del sys.frozen
+        else:
+            sys.frozen = old_frozen
+        importlib.reload(core.config)

@@ -1,9 +1,14 @@
 import os
+import sys
 from pathlib import Path
 from dotenv import load_dotenv
 
-# Try to find and load a .env file in the workspace directory or parent directory
-dotenv_path = Path(__file__).resolve().parent.parent / '.env'
+# Try to find and load a .env file in the workspace directory (or executable directory if compiled)
+if getattr(sys, 'frozen', False):
+    dotenv_path = Path(sys.executable).resolve().parent / '.env'
+else:
+    dotenv_path = Path(__file__).resolve().parent.parent / '.env'
+
 load_dotenv(dotenv_path=dotenv_path)
 
 class Config:

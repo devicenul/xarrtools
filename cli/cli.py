@@ -14,6 +14,16 @@ from core.enricher import enrich_tv_show, enrich_movie
 
 console = Console()
 
+# Try to use unicode check/cross marks if supported by stdout encoding, fallback to ASCII indicators otherwise.
+CHECK_MARK = "[green]✓[/green]"
+CROSS_MARK = "[red]✗[/red]"
+try:
+    "✓".encode(sys.stdout.encoding or 'ascii')
+except Exception:
+    CHECK_MARK = "[green]V[/green]"
+    CROSS_MARK = "[red]X[/red]"
+
+
 def parse_indices(selection_str: str, max_val: int) -> list:
     """Parses selection string like '1, 3' or '1-3' or 'all' into 0-indexed integers."""
     selection_str = selection_str.strip().lower()
@@ -55,14 +65,14 @@ def show_config_status():
     status_lines = []
     
     if radarr_ok:
-        status_lines.append("[green]✓[/green] [bold]Radarr[/bold]: Configured ([cyan]" + config.radarr_url + "[/cyan])")
+        status_lines.append(f"{CHECK_MARK} [bold]Radarr[/bold]: Configured ([cyan]" + config.radarr_url + "[/cyan])")
     else:
-        status_lines.append("[red]✗[/red] [bold]Radarr[/bold]: Not Configured (Missing: " + ", ".join(config.get_missing_radarr_vars()) + ")")
+        status_lines.append(f"{CROSS_MARK} [bold]Radarr[/bold]: Not Configured (Missing: " + ", ".join(config.get_missing_radarr_vars()) + ")")
         
     if sonarr_ok:
-        status_lines.append("[green]✓[/green] [bold]Sonarr[/bold]: Configured ([cyan]" + config.sonarr_url + "[/cyan])")
+        status_lines.append(f"{CHECK_MARK} [bold]Sonarr[/bold]: Configured ([cyan]" + config.sonarr_url + "[/cyan])")
     else:
-        status_lines.append("[red]✗[/red] [bold]Sonarr[/bold]: Not Configured (Missing: " + ", ".join(config.get_missing_sonarr_vars()) + ")")
+        status_lines.append(f"{CROSS_MARK} [bold]Sonarr[/bold]: Not Configured (Missing: " + ", ".join(config.get_missing_sonarr_vars()) + ")")
 
     console.print(Panel("\n".join(status_lines), title="[bold white]Service Status[/bold white]", expand=False))
 
@@ -167,9 +177,9 @@ def handle_radarr_workflow():
                     monitored=monitored,
                     search_now=search_now
                 )
-            console.print(f"[green]✓[/green] Successfully added [bold]'{res.get('title')}'[/bold]!")
+            console.print(f"{CHECK_MARK} Successfully added [bold]'{res.get('title')}'[/bold]!")
         except ArrAPIError as e:
-            console.print(f"[red]✗ Failed to add '{movie.get('title')}': {e}[/red]")
+            console.print(f"{CROSS_MARK} Failed to add '{movie.get('title')}': {e}")
 
 def handle_sonarr_workflow():
     if not config.validate_sonarr():
@@ -264,9 +274,9 @@ def handle_sonarr_workflow():
                     search_now=search_now,
                     language_profile_id=selected_lang_profile_id
                 )
-            console.print(f"[green]✓[/green] Successfully added [bold]'{res.get('title')}'[/bold]!")
+            console.print(f"{CHECK_MARK} Successfully added [bold]'{res.get('title')}'[/bold]!")
         except ArrAPIError as e:
-            console.print(f"[red]✗ Failed to add '{series.get('title')}': {e}[/red]")
+            console.print(f"{CROSS_MARK} Failed to add '{series.get('title')}': {e}")
 
 def handle_discovery_workflow():
     """Runs the Metacritic scraper and TVMaze/Radarr enrichment to find and add new releases."""
@@ -482,9 +492,9 @@ def handle_discovery_workflow():
                                 search_now=search_now,
                                 language_profile_id=selected_lang_profile_id
                             )
-                        console.print(f"[green]✓[/green] Successfully added [bold]'{res.get('title')}'[/bold]!")
+                        console.print(f"{CHECK_MARK} Successfully added [bold]'{res.get('title')}'[/bold]!")
                     except ArrAPIError as e:
-                        console.print(f"[red]✗ Failed to add '{show.get('title')}': {e}[/red]")
+                        console.print(f"{CROSS_MARK} Failed to add '{show.get('title')}': {e}")
             except ArrAPIError as e:
                 console.print(f"[red]Error fetching Sonarr config options: {e}[/red]")
 
@@ -515,9 +525,9 @@ def handle_discovery_workflow():
                                 monitored=monitored,
                                 search_now=search_now
                             )
-                        console.print(f"[green]✓[/green] Successfully added [bold]'{res.get('title')}'[/bold]!")
+                        console.print(f"{CHECK_MARK} Successfully added [bold]'{res.get('title')}'[/bold]!")
                     except ArrAPIError as e:
-                        console.print(f"[red]✗ Failed to add '{movie.get('title')}': {e}[/red]")
+                        console.print(f"{CROSS_MARK} Failed to add '{movie.get('title')}': {e}")
             except ArrAPIError as e:
                 console.print(f"[red]Error fetching Radarr config options: {e}[/red]")
 

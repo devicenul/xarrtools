@@ -5,8 +5,13 @@ import re
 from pathlib import Path
 from datetime import datetime, timedelta
 
-# Store database in the project root folder
-DB_PATH = Path(__file__).resolve().parent.parent / "xarrtools.db"
+import sys
+
+# Store database in the project root folder (or executable directory if compiled)
+if getattr(sys, 'frozen', False):
+    DB_PATH = Path(sys.executable).resolve().parent / "xarrtools.db"
+else:
+    DB_PATH = Path(__file__).resolve().parent.parent / "xarrtools.db"
 
 def get_db_connection():
     """Establishes and returns a connection to the SQLite database with Row factory."""

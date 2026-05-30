@@ -15,6 +15,7 @@ if __name__ == "__main__":
     if "--cli" in sys.argv:
         run_cli()
     else:
+        debug_mode = "--debug" in sys.argv or "-d" in sys.argv
         # Schedule the browser open in 1.5 seconds to allow Flask to bind to the port
         Timer(1.5, open_browser).start()
-        start_server(port=5000)
+        start_server(port=5000, debug=debug_mode)
