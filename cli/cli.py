@@ -234,7 +234,7 @@ def handle_sonarr_workflow():
     to_add = [s for s in shows_to_add if not s.get("id")]
 
     if already_added:
-        names = ", ".join(f"'{s['title']}'" for m in already_added)
+        names = ", ".join(f"'{m['title']}'" for m in already_added)
         console.print(f"[yellow]Skipping already added shows: {names}[/yellow]")
 
     if not to_add:
@@ -327,6 +327,7 @@ def handle_discovery_workflow():
                     data["date_str"] = item["date_str"]
                     enriched_tv.append(data)
                 except Exception as e:
+                    item["year"] = item["date_obj"].year
                     item["plot"] = item["description"]
                     item["cast"] = "Error getting details."
                     item["genres"] = []
@@ -350,6 +351,7 @@ def handle_discovery_workflow():
                         data["imdbId"] = item.get("imdbId")
                     enriched_movies.append(data)
                 except Exception as e:
+                    item["year"] = item["date_obj"].year
                     item["plot"] = item["description"]
                     item["cast"] = "Error getting details."
                     item["genres"] = []

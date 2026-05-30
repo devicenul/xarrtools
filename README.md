@@ -143,3 +143,15 @@ Launch the CLI interface:
 python main.py --cli
 ```
 Allows searching and queueing downloads in a direct interactive command-line workflow.
+
+---
+
+## Running Tests 🧪
+
+To execute the unit and integration tests with coverage:
+
+1. Activate your virtual environment and run `pytest`:
+   ```bash
+   .venv\Scripts\pytest --cov=core --cov=web --cov=cli tests/ --cov-report=term-missing
+   ```
+2. This runs the comprehensive test suite (testing all scrapers, config accessors, database helpers, Flask API controllers, and Rich CLI logic) against a temporary SQLite database with all external REST integrations mocked for clean, hermetic execution.

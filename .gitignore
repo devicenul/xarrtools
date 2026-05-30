@@ -24,4 +24,7 @@ xarrtools.db-wal
 *.njsproj
 *.sln
 *.swp
-
+# Testing
+.coverage
+.pytest_cache/
+htmlcov/

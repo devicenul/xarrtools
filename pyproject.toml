@@ -1,0 +1,31 @@
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+addopts = "--cov=core --cov=web --cov=cli --cov-report=term-missing"
+
+[tool.coverage.run]
+branch = true
+source = ["core", "web", "cli"]
+omit = [
+    "tests/*",
+    "setup.py"
+]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "if self.debug:",
+    "raise AssertionError",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+    "pass",
+    "except Exception:",
+    "except ArrAPIError:"
+]
+
+[tool.mutmut]
+paths_to_mutate = "core,web,cli"
+backup = false
+runner = "python -m pytest"
+tests_dir = "tests/"

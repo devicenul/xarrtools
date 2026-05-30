@@ -233,7 +233,6 @@ def discover_releases():
     
     if skip_scrape:
         # Load directly from database cache
-        from datetime import datetime, timedelta
         start_date = (datetime.now() - timedelta(days=past_days)).strftime("%Y-%m-%d")
         end_date = (datetime.now() + timedelta(days=future_days)).strftime("%Y-%m-%d")
         
@@ -343,9 +342,8 @@ def discover_releases():
         })
         
     try:
-        if not skip_scrape:
-            update_scan_progress("scraping", "Scraping Metacritic and DVD release calendars...", 0, 0)
-            
+        update_scan_progress("scraping", "Scraping Metacritic and DVD release calendars...", 0, 0)
+        
         try:
             tv_raw, movie_raw = get_discoveries(past_days, future_days)
         except Exception as e:
@@ -355,8 +353,7 @@ def discover_releases():
         total_items = len(tv_raw) + len(movie_raw)
         for idx, item in enumerate(tv_raw):
             try:
-                if not skip_scrape:
-                    update_scan_progress("enriching", f"Fetching metadata for {item['title']}", idx + 1, total_items)
+                update_scan_progress("enriching", f"Fetching metadata for {item['title']}", idx + 1, total_items)
                 cached = get_cached_item("tv", item["title"], item["date_obj"].year)
                 
                 # Check if cache is incomplete
@@ -477,9 +474,8 @@ def discover_releases():
         # 3. Enrich Movies (using database cache optimization)
         for idx, item in enumerate(movie_raw):
             try:
-                if not skip_scrape:
-                    current_idx = len(tv_raw) + idx + 1
-                    update_scan_progress("enriching", f"Getting metadata for {item['title']}", current_idx, total_items)
+                current_idx = len(tv_raw) + idx + 1
+                update_scan_progress("enriching", f"Getting metadata for {item['title']}", current_idx, total_items)
                 cached = get_cached_item("movie", item["title"], item["date_obj"].year, item.get("imdbId"))
                 
                 # Check if cache is incomplete
@@ -605,8 +601,7 @@ def discover_releases():
             "movies": enriched_movies
         })
     finally:
-        if not skip_scrape:
-            update_scan_progress("idle", "Idle", 0, 0)
+        update_scan_progress("idle", "Idle", 0, 0)
 
 @app.route("/api/cache/refresh", methods=["POST"])
 def cache_refresh_item():
@@ -910,7 +905,8 @@ def background_poster_healer():
             time.sleep(5)
 
 # Start background healer thread
-threading.Thread(target=background_poster_healer, daemon=True).start()
+if "PYTEST_CURRENT_TEST" not in os.environ:
+    threading.Thread(target=background_poster_healer, daemon=True).start()
 
 def start_server(port=5000):
     """Starts the Flask web server."""

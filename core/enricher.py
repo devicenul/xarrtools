@@ -179,7 +179,7 @@ def enrich_tv_show(title: str, year: int, sonarr_client: Optional[SonarrClient] 
                                 if url:
                                     if url.startswith("http"):
                                         data["poster_url"] = url
-                                    elif sonarr_client:
+                                    else:
                                         base = sonarr_client.base_url.rstrip("/")
                                         sep = "&" if "?" in url else "?"
                                         data["poster_url"] = f"{base}{url}{sep}apikey={sonarr_client.api_key}"
@@ -258,7 +258,7 @@ def enrich_movie(title: str, year: int, radarr_client: Optional[RadarrClient] = 
                             if url:
                                 if url.startswith("http"):
                                     data["poster_url"] = url
-                                elif radarr_client:
+                                else:
                                     base = radarr_client.base_url.rstrip("/")
                                     sep = "&" if "?" in url else "?"
                                     data["poster_url"] = f"{base}{url}{sep}apikey={radarr_client.api_key}"

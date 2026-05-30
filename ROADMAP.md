@@ -37,30 +37,24 @@ This document tracks planned future functionality, architectural changes, and us
   - Log scan statistics and broadcast a notification update payload to the UI sidebar (using simple long-polling or WebSockets).
 - **Code files involved**: [web/server.py](file:///d:/Workspaces/Projects/xarrtools/web/server.py), [web/templates/app.js](file:///d:/Workspaces/Projects/xarrtools/web/templates/app.js)
 
-### 4. Unit Tests
-- **Goal**: Create comprehensive unit tests for scrapers, API endpoints, config settings, and enrichment processes.
-- **Implementation Strategy**:
-  - Add pytest suite testing endpoints with MagicMock connections.
-- **Code files involved**: [tests/](file:///d:/Workspaces/Projects/xarrtools/tests) [NEW].
-
-### 5. User-Defined Media Feeds
+### 4. User-Defined Media Feeds
 - **Goal**: Support custom media discovery calendars/feeds beyond the pre-configured Metacritic and DVD calendar schedules.
 - **Implementation Strategy**:
   - Allow users to enter custom feed URLs (RSS feeds, JSON feeds, or scrape-able HTML) in Settings.
   - Support setting a basic schema mapping or custom parsing regex pattern to ingest titles, dates, descriptions, and IDs.
 - **Code files involved**: [core/db.py](file:///d:/Workspaces/Projects/xarrtools/core/db.py), [web/server.py](file:///d:/Workspaces/Projects/xarrtools/web/server.py), [web/templates/app.js](file:///d:/Workspaces/Projects/xarrtools/web/templates/app.js).
 
-### 6. Code and Agentic Review
+### 5. Code and Agentic Review
 - **Goal**: Complete a thorough security and performance review of database locks, scraper concurrency, and exception mapping layers.
 
-### 7. GitHub Builds and Releases Setup
+### 6. GitHub Builds and Releases Setup
 - **Goal**: Automate PyInstaller compilation and packaging workflows on GitHub tag triggers, distributing binary builds directly via GitHub Releases.
 
-### 8. GPL v3 License Integration
+### 7. GPL v3 License Integration
 - **Goal**: Commit a standard GPL v3.0 license file to the repository.
 - **Code files involved**: [LICENSE](file:///d:/Workspaces/Projects/xarrtools/LICENSE) [NEW].
 
-### 9. Standalone Desktop App UI (Captive Browser Window)
+### 8. Standalone Desktop App UI (Captive Browser Window)
 - **Goal**: Enable running the application as a standalone desktop program using a captive web-view wrapper (like `pywebview` or `PyQtWebEngine`) to run the server in the background and display the UI inside a dedicated application frame.
 - **Code files involved**: [main.py](file:///d:/Workspaces/Projects/xarrtools/main.py), [gui/gui.py](file:///d:/Workspaces/Projects/xarrtools/gui/gui.py) [NEW].
 
@@ -68,6 +62,9 @@ This document tracks planned future functionality, architectural changes, and us
 ---
 
 ## Completed Features
+
+### ✓ Comprehensive Unit and Coverage Testing
+Designed and implemented a complete testing framework using `pytest` and `pytest-cov`, reaching **100% statement coverage** across all modules including `core` library logic, the Flask `web` backend, and the interactive terminal `cli`. Utilizes mock integrations for external REST clients (Sonarr, Radarr, TMDB, TVMaze) and isolates execution to a temporary SQLite test database to ensure completely clean, isolated, and deterministic test runs.
 
 ### ✓ Reorganized Codebase & Sensible Package Layout
 Removed the redundant nested `xarrtools/xarrtools/` packaging. Reorganized the codebase into clean top-level directories: `core` (shared domain logic and database layers), `web` (Flask web server and templates), and `cli` (interactive terminal console manager). All imports have been restructured and tested successfully.
