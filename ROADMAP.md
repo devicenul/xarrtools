@@ -58,6 +58,22 @@ This document tracks planned future functionality, architectural changes, and us
 - **Goal**: Enable running the application as a standalone desktop program using a captive web-view wrapper (like `pywebview` or `PyQtWebEngine`) to run the server in the background and display the UI inside a dedicated application frame.
 - **Code files involved**: [main.py](file:///d:/Workspaces/Projects/xarrtools/main.py), [gui/gui.py](file:///d:/Workspaces/Projects/xarrtools/gui/gui.py) [NEW].
 
+### 9. Sufficient Logging
+- **Goal**: Implement systematic, configurable, structured logging across all core scraper classes, API wrappers, database operations, and server endpoints to facilitate easier troubleshooting and telemetry.
+- **Implementation Strategy**:
+  - Re-architect simple print statements and sporadic `app.logger.error` instances into a unified Python standard `logging` setup.
+  - Support log level configuration (e.g., DEBUG, INFO, WARNING, ERROR) via Settings.
+  - Set up rotating log file handler (`xarrtools.log`) alongside console logging.
+- **Code files involved**: [core/config.py](file:///d:/Workspaces/Projects/xarrtools/core/config.py), [web/server.py](file:///d:/Workspaces/Projects/xarrtools/web/server.py), [cli/cli.py](file:///d:/Workspaces/Projects/xarrtools/cli/cli.py).
+
+### 10. Sufficient Comments in the Code
+- **Goal**: Standardize and enrich inline code documentation, block comments, and docstrings across all modules to improve code legibility and ease codebase onboarding for external developers or automated agents.
+- **Implementation Strategy**:
+  - Perform a thorough audit of the code modules, ensuring all classes, utility functions, routes, and complex regex matching/parsing blocks have descriptive PEP 257 compliant docstrings.
+  - Standardize docstring structure (describing arguments, return types, and potential side-effects).
+  - Add context comments explaining non-trivial business logic, database queries, and test isolation design details.
+- **Code files involved**: all Python files under `core/`, `web/`, and `cli/`.
+
 
 ---
 
