@@ -1952,4 +1952,106 @@ body.light-theme .progress-bar-bg {
     transition: width 0.3s ease;
 }
 
+/* Custom Feeds Settings Styling */
+#panel-feeds {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+}
 
+#panel-feeds table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+#panel-feeds th {
+    padding: 10px 12px;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--text-secondary);
+    border-bottom: 1px solid var(--border-color);
+}
+
+#panel-feeds td {
+    padding: 10px 12px;
+    font-size: 13px;
+    color: var(--text-primary);
+    border-bottom: 1px solid var(--border-color);
+    vertical-align: middle;
+}
+
+#panel-feeds tr:hover {
+    background: rgba(255, 255, 255, 0.01);
+}
+
+body.light-theme #panel-feeds tr:hover {
+    background: rgba(0, 0, 0, 0.02);
+}
+
+#panel-feeds select,
+#panel-feeds textarea,
+#panel-feeds input[type="text"] {
+    background: rgba(0, 0, 0, 0.3) !important;
+    border: 1px solid var(--border-color) !important;
+    border-radius: 8px !important;
+    color: var(--text-primary) !important;
+    outline: none !important;
+    transition: var(--transition-smooth) !important;
+}
+
+body.light-theme #panel-feeds select,
+body.light-theme #panel-feeds textarea,
+body.light-theme #panel-feeds input[type="text"] {
+    background: rgba(255, 255, 255, 0.7) !important;
+    color: #121212 !important;
+}
+
+#panel-feeds select:focus,
+#panel-feeds textarea:focus,
+#panel-feeds input[type="text"]:focus {
+    border-color: var(--accent-blue) !important;
+    box-shadow: 0 0 0 2px rgba(0, 210, 255, 0.15) !important;
+}
+
+/* Feed editor tabs */
+.feed-tab-btn {
+    border-bottom: 2px solid transparent !important;
+    transition: var(--transition-smooth);
+}
+
+.feed-tab-btn:hover {
+    color: var(--text-primary) !important;
+}
+
+.feed-tab-btn.active {
+    border-bottom-color: var(--accent-blue) !important;
+    color: var(--accent-blue) !important;
+}
+
+/* Scrollbars for config files & previews */
+#feed-parser-config::-webkit-scrollbar,
+#feed-test-results::-webkit-scrollbar,
+.table-container::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+}
+
+#feed-parser-config::-webkit-scrollbar-thumb,
+#feed-test-results::-webkit-scrollbar-thumb,
+.table-container::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 3px;
+}
+
+#feed-parser-config::-webkit-scrollbar-thumb:hover,
+#feed-test-results::-webkit-scrollbar-thumb:hover,
+.table-container::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.2);
+}
+
+body.light-theme #feed-parser-config::-webkit-scrollbar-thumb,
+body.light-theme #feed-test-results::-webkit-scrollbar-thumb,
+body.light-theme .table-container::-webkit-scrollbar-thumb {
+    background: rgba(0, 0, 0, 0.1);
+}

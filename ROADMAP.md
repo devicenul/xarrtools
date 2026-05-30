@@ -24,28 +24,17 @@ This document tracks planned future functionality, architectural changes, and us
   - Log scan statistics and broadcast a notification update payload to the UI sidebar (using simple long-polling or WebSockets).
 - **Code files involved**: [web/server.py](file:///d:/Workspaces/Projects/xarrtools/web/server.py), [web/templates/app.js](file:///d:/Workspaces/Projects/xarrtools/web/templates/app.js)
 
-### 4. User-Defined Media Feeds
-- **Goal**: Support custom media discovery calendars/feeds beyond the pre-configured Metacritic and DVD calendar schedules.
-- **Implementation Strategy**:
-  - Allow users to enter custom feed URLs (RSS feeds, JSON feeds, or scrape-able HTML) in Settings.
-  - Support setting a basic schema mapping or custom parsing regex pattern to ingest titles, dates, descriptions, and IDs.
-- **Code files involved**: [core/db.py](file:///d:/Workspaces/Projects/xarrtools/core/db.py), [web/server.py](file:///d:/Workspaces/Projects/xarrtools/web/server.py), [web/templates/app.js](file:///d:/Workspaces/Projects/xarrtools/web/templates/app.js).
-
-### 5. Code and Agentic Review
+### 4. Code and Agentic Review
 - **Goal**: Complete a thorough security and performance review of database locks, scraper concurrency, and exception mapping layers.
 
-### 6. GitHub Builds and Releases Setup
+### 5. GitHub Builds and Releases Setup
 - **Goal**: Automate PyInstaller compilation and packaging workflows on GitHub tag triggers, distributing binary builds directly via GitHub Releases.
 
-### 7. GPL v3 License Integration
-- **Goal**: Commit a standard GPL v3.0 license file to the repository.
-- **Code files involved**: [LICENSE](file:///d:/Workspaces/Projects/xarrtools/LICENSE) [NEW].
-
-### 8. Standalone Desktop App UI (Captive Browser Window)
+### 6. Standalone Desktop App UI (Captive Browser Window)
 - **Goal**: Enable running the application as a standalone desktop program using a captive web-view wrapper (like `pywebview` or `PyQtWebEngine`) to run the server in the background and display the UI inside a dedicated application frame.
 - **Code files involved**: [main.py](file:///d:/Workspaces/Projects/xarrtools/main.py), [gui/gui.py](file:///d:/Workspaces/Projects/xarrtools/gui/gui.py) [NEW].
 
-### 9. Sufficient Logging
+### 7. Sufficient Logging
 - **Goal**: Implement systematic, configurable, structured logging across all core scraper classes, API wrappers, database operations, and server endpoints to facilitate easier troubleshooting and telemetry.
 - **Implementation Strategy**:
   - Re-architect simple print statements and sporadic `app.logger.error` instances into a unified Python standard `logging` setup.
@@ -53,7 +42,7 @@ This document tracks planned future functionality, architectural changes, and us
   - Set up rotating log file handler (`xarrtools.log`) alongside console logging.
 - **Code files involved**: [core/config.py](file:///d:/Workspaces/Projects/xarrtools/core/config.py), [web/server.py](file:///d:/Workspaces/Projects/xarrtools/web/server.py), [cli/cli.py](file:///d:/Workspaces/Projects/xarrtools/cli/cli.py).
 
-### 10. Sufficient Comments in the Code
+### 8. Sufficient Comments in the Code
 - **Goal**: Standardize and enrich inline code documentation, block comments, and docstrings across all modules to improve code legibility and ease codebase onboarding for external developers or automated agents.
 - **Implementation Strategy**:
   - Perform a thorough audit of the code modules, ensuring all classes, utility functions, routes, and complex regex matching/parsing blocks have descriptive PEP 257 compliant docstrings.
@@ -61,10 +50,26 @@ This document tracks planned future functionality, architectural changes, and us
   - Add context comments explaining non-trivial business logic, database queries, and test isolation design details.
 - **Code files involved**: all Python files under `core/`, `web/`, and `cli/`.
 
+### 9. Free Packaging and Distribution Pipeline
+- **Goal**: Create cross-platform installation packages and setup distribution channels completely free of charge, avoiding developer registration fees.
+- **Implementation Strategy**:
+  - **macOS (Homebrew Tap & DMG)**: Distribute the compiled `.app` bundle inside an unsigned drag-and-drop `.dmg` using `create-dmg` or `dmgbuild`. Create a custom Homebrew Tap repository (`homebrew-xarrtools`) with a Ruby formula to distribute the pre-compiled binary seamlessly via `brew install xarrtools`. Provide clear instructions for Gatekeeper bypass (`xattr -d com.apple.quarantine`).
+  - **Windows (WinGet & Inno Setup)**: Use `Inno Setup` to bundle the binary into a custom `Setup.exe` installer for free. Submit the application to the community-driven Windows Package Manager (`winget`) repository so users can install it via `winget install xarrtools`.
+  - **SmartScreen Whitelisting**: Set up a workflow to submit new release binary hashes to the Microsoft Security Intelligence File Submission portal for free analysis, which builds reputation and clears false-positive SmartScreen warnings.
+  - **Python Package (PyPI)**: Distribute the app as a standard package on PyPI, enabling installation via `pipx install xarrtools` to bypass OS code-signing limitations completely.
+- **Code files involved**: [build.sh](file:///Users/rrjefferson/Workspaces/Projects/xarrtools/build.sh), [build.bat](file:///Users/rrjefferson/Workspaces/Projects/xarrtools/build.bat).
+
 
 ---
 
 ## Completed Features
+
+### ✓ User-Defined Custom Feeds (RSS, JSON, HTML)
+Supports custom media discovery calendars/feeds beyond the built-in Metacritic and DVD release schedules. Users can define custom RSS/XML feeds, JSON API sources, or raw HTML tables with custom CSS selectors/JSONPath mapping configurations directly in the Settings GUI. Includes automated validation controls, SSRF protections, a dry-run diagnostic preview panel, and a "Restore Defaults" button to reload seeded presets.
+
+### ✓ GPL v3.0 License Integration
+Committed the standard GNU General Public License v3.0 to the repository root.
+
 
 ### ✓ Cross-Platform Launcher Scripts and Compilation (Windows, macOS, Linux)
 Automated launcher scripts (`run.bat` / `run.sh`) handle virtual environment setup and dependency installation on Windows, macOS, and Linux. PyInstaller compilation bundles the application into standalone single-file executables via `build.bat` and `build.sh`, with `sys._MEIPASS` path resolution for compiled asset access.

@@ -1188,6 +1188,444 @@ async function wipeCacheManually() {
     }
 }
 
+// --- Custom Feeds Management ---
+
+const DEFAULT_PARSER_CONFIGS = {
+    rss: {
+        item_selector: "item",
+        mappings: {
+            title: { selector: "title" },
+            year: { selector: "filmYear", transforms: [{ type: "regex_search", pattern: "\\d{4}" }] },
+            date_str: { selector: "pubDate" },
+            href: { selector: "link" }
+        }
+    },
+    json: {
+        item_selector: "$",
+        mappings: {
+            title: { selector: "title" },
+            year: { selector: "year" },
+            href: { selector: "url" }
+        }
+    },
+    html: {
+        item_selector: "table.wikitable tbody tr",
+        mappings: {
+            title: { selector: "td i a", extract: "text" },
+            year: { selector: "td", extract: "text", transforms: [{ type: "regex_search", pattern: "\\d{4}" }] },
+            href: { selector: "td i a", extract: "attribute", attribute_name: "href" }
+        }
+    }
+};
+
+let customFeedsList = [];
+
+async function loadCustomFeeds() {
+    const tableBody = document.getElementById("feeds-table-body");
+    if (!tableBody) return;
+    
+    tableBody.innerHTML = `<tr><td colspan="4" style="padding: 12px; text-align: center; color: var(--text-secondary);"><div class="spinner-small" style="display:inline-block; vertical-align:middle; margin-right:8px;"></div> Loading feeds...</td></tr>`;
+    
+    try {
+        const response = await fetch("/api/feeds");
+        if (!response.ok) throw new Error("HTTP error " + response.status);
+        const data = await response.json();
+        
+        if (data.status === "success") {
+            customFeedsList = data.feeds || [];
+            if (customFeedsList.length === 0) {
+                tableBody.innerHTML = `<tr><td colspan="4" style="padding: 12px; text-align: center; color: var(--text-secondary);">No custom feeds configured.</td></tr>`;
+                return;
+            }
+            
+            tableBody.innerHTML = "";
+            customFeedsList.forEach(feed => {
+                const tr = document.createElement("tr");
+                tr.style.borderBottom = "1px solid var(--border-color)";
+                
+                // Status Badge
+                let statusBadge = "";
+                let errorTooltip = "";
+                if (feed.last_status === "success") {
+                    statusBadge = `<span class="badge" style="background: rgba(0, 255, 135, 0.1); color: var(--accent-green); border: 1px solid rgba(0, 255, 135, 0.25); font-size:10px; padding:2px 6px;">Success</span>`;
+                } else if (feed.last_status === "error") {
+                    errorTooltip = feed.last_error_message ? `title="${feed.last_error_message.replace(/"/g, '&quot;')}"` : "";
+                    statusBadge = `<span class="badge" style="background: rgba(255, 0, 80, 0.1); color: #ff0050; border: 1px solid rgba(255, 0, 80, 0.25); font-size:10px; padding:2px 6px; cursor:help;" ${errorTooltip}>Error ⚠️</span>`;
+                } else {
+                    statusBadge = `<span class="badge" style="background: rgba(255, 255, 255, 0.05); color: var(--text-secondary); border: 1px solid var(--border-color); font-size:10px; padding:2px 6px;">Never</span>`;
+                }
+                
+                // Enabled style indicator
+                const enabledStyle = feed.enabled === 1 ? "" : "opacity: 0.5; text-decoration: line-through;";
+                
+                tr.innerHTML = `
+                    <td style="padding: 8px; font-weight: 500; color: var(--text-primary); max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; ${enabledStyle}">${feed.name}</td>
+                    <td style="padding: 8px; text-transform: uppercase; font-size: 11px; color: var(--text-secondary);">${feed.feed_type}</td>
+                    <td style="padding: 8px;">${statusBadge}</td>
+                    <td style="padding: 8px; text-align: right; white-space: nowrap;">
+                        <button type="button" class="btn btn-secondary btn-feed-row-edit" data-feed-id="${feed.id}" style="font-size:11px; padding:2px 6px; margin:0 4px 0 0; width:auto; display:inline-block;">Edit</button>
+                        <button type="button" class="btn btn-feed-row-delete" data-feed-id="${feed.id}" data-feed-name="${feed.name}" style="background: rgba(255, 42, 133, 0.1); border: 1px solid rgba(255, 42, 133, 0.3); color: var(--accent-magenta); font-size:11px; padding:2px 6px; margin:0; width:auto; display:inline-block;">&times;</button>
+                    </td>
+                `;
+                
+                tr.querySelector(".btn-feed-row-edit").addEventListener("click", () => {
+                    openFeedEditor(feed);
+                });
+                tr.querySelector(".btn-feed-row-delete").addEventListener("click", () => {
+                    deleteCustomFeed(feed.id, feed.name);
+                });
+                
+                tableBody.appendChild(tr);
+            });
+        } else {
+            tableBody.innerHTML = `<tr><td colspan="4" style="padding: 12px; text-align: center; color: var(--accent-magenta);">Error loading feeds: ${data.message}</td></tr>`;
+        }
+    } catch (err) {
+        tableBody.innerHTML = `<tr><td colspan="4" style="padding: 12px; text-align: center; color: var(--accent-magenta);">Fetch failed: ${err.message}</td></tr>`;
+    }
+}
+
+function openFeedEditor(feed) {
+    const listView = document.getElementById("feeds-list-view");
+    const editorView = document.getElementById("feed-editor-view");
+    
+    if (!listView || !editorView) return;
+    
+    listView.classList.add("hidden");
+    editorView.classList.remove("hidden");
+    
+    const feedId = document.getElementById("feed-id");
+    const feedName = document.getElementById("feed-name");
+    const feedUrl = document.getElementById("feed-url");
+    const feedType = document.getElementById("feed-type");
+    const feedMediaType = document.getElementById("feed-media-type");
+    const feedEnabled = document.getElementById("feed-enabled");
+    const feedHeaders = document.getElementById("feed-headers");
+    const feedParserConfig = document.getElementById("feed-parser-config");
+    const editorTitle = document.getElementById("feed-editor-title");
+    
+    // Hide diagnostics preview card
+    document.getElementById("feed-test-preview").classList.add("hidden");
+    
+    if (feed) {
+        editorTitle.textContent = "Edit Custom Feed";
+        feedId.value = feed.id;
+        feedName.value = feed.name || "";
+        feedUrl.value = feed.url || "";
+        feedType.value = feed.feed_type || "rss";
+        feedMediaType.value = feed.default_media_type || "movie";
+        feedEnabled.checked = feed.enabled === 1;
+        
+        let headersObj = {};
+        try {
+            headersObj = typeof feed.http_headers === 'string' ? JSON.parse(feed.http_headers) : (feed.http_headers || {});
+        } catch (e) {
+            headersObj = {};
+        }
+        feedHeaders.value = JSON.stringify(headersObj, null, 2);
+        
+        let configObj = {};
+        try {
+            configObj = typeof feed.parser_config === 'string' ? JSON.parse(feed.parser_config) : (feed.parser_config || {});
+        } catch (e) {
+            configObj = {};
+        }
+        feedParserConfig.value = JSON.stringify(configObj, null, 2);
+    } else {
+        editorTitle.textContent = "Add Custom Feed";
+        feedId.value = "";
+        feedName.value = "";
+        feedUrl.value = "";
+        feedType.value = "rss";
+        feedMediaType.value = "movie";
+        feedEnabled.checked = true;
+        feedHeaders.value = "{}";
+        feedParserConfig.value = JSON.stringify(DEFAULT_PARSER_CONFIGS.rss, null, 2);
+    }
+    
+    switchEditorTab("feed-tab-general");
+}
+
+function closeFeedEditor() {
+    const listView = document.getElementById("feeds-list-view");
+    const editorView = document.getElementById("feed-editor-view");
+    if (listView && editorView) {
+        editorView.classList.add("hidden");
+        listView.classList.remove("hidden");
+        loadCustomFeeds();
+    }
+}
+
+function switchEditorTab(tabId) {
+    const tabButtons = document.querySelectorAll(".feed-tab-btn");
+    const tabPanels = document.querySelectorAll(".feed-editor-tab-panel");
+    
+    tabButtons.forEach(btn => {
+        if (btn.getAttribute("data-editor-tab") === tabId) {
+            btn.classList.add("active");
+            btn.style.color = "var(--accent-blue)";
+        } else {
+            btn.classList.remove("active");
+            btn.style.color = "var(--text-secondary)";
+        }
+    });
+    
+    tabPanels.forEach(panel => {
+        if (panel.id === tabId) {
+            panel.classList.remove("hidden");
+            if (tabId === "feed-tab-mapping") {
+                panel.style.display = "flex";
+            } else {
+                panel.style.display = "block";
+            }
+        } else {
+            panel.classList.add("hidden");
+            panel.style.display = "none";
+        }
+    });
+}
+
+function handleFeedTypeChange() {
+    const feedType = document.getElementById("feed-type").value;
+    const parserConfigField = document.getElementById("feed-parser-config");
+    
+    // Clear parser config for built-in types
+    if (["metacritic_tv", "metacritic_movie", "dvds_releases"].includes(feedType)) {
+        parserConfigField.value = "{}";
+        return;
+    }
+    
+    const currentValue = parserConfigField.value.trim();
+    let matchesDefault = false;
+    
+    try {
+        const parsedCurrent = JSON.parse(currentValue);
+        if (Object.keys(parsedCurrent).length === 0 || 
+            (currentValue.includes("filmYear") && feedType !== "rss") ||
+            (currentValue.includes("tbody tr") && feedType !== "html") ||
+            (currentValue.includes("item_selector\": \"$\"") && feedType !== "json")
+        ) {
+            matchesDefault = true;
+        }
+    } catch (e) {
+        matchesDefault = true;
+    }
+    
+    if (matchesDefault && DEFAULT_PARSER_CONFIGS[feedType]) {
+        parserConfigField.value = JSON.stringify(DEFAULT_PARSER_CONFIGS[feedType], null, 2);
+    }
+}
+
+async function saveCustomFeed() {
+    const feedId = document.getElementById("feed-id").value;
+    const name = document.getElementById("feed-name").value.trim();
+    const url = document.getElementById("feed-url").value.trim();
+    const feedType = document.getElementById("feed-type").value;
+    const defaultMediaType = document.getElementById("feed-media-type").value;
+    const enabled = document.getElementById("feed-enabled").checked ? 1 : 0;
+    const headersRaw = document.getElementById("feed-headers").value.trim();
+    const configRaw = document.getElementById("feed-parser-config").value.trim();
+    
+    if (!name || !url) {
+        alert("Please enter a feed name and URL.");
+        return;
+    }
+    
+    let httpHeaders = {};
+    if (headersRaw) {
+        try {
+            httpHeaders = JSON.parse(headersRaw);
+        } catch (e) {
+            alert("HTTP Headers must be valid JSON object. Error: " + e.message);
+            return;
+        }
+    }
+    
+    let parserConfig = {};
+    try {
+        parserConfig = JSON.parse(configRaw);
+    } catch (e) {
+        alert("Parser Config must be valid JSON object. Error: " + e.message);
+        return;
+    }
+    
+    if (!["metacritic_tv", "metacritic_movie", "dvds_releases"].includes(feedType)) {
+        if (!parserConfig.mappings || !parserConfig.mappings.title) {
+            alert("Parser config mappings must contain at least a 'title' selector rule.");
+            return;
+        }
+    }
+    
+    const payload = {
+        id: feedId ? parseInt(feedId) : null,
+        name: name,
+        url: url,
+        feed_type: feedType,
+        default_media_type: defaultMediaType,
+        enabled: enabled,
+        http_headers: httpHeaders,
+        parser_config: parserConfig
+    };
+    
+    try {
+        const saveBtn = document.getElementById("btn-feed-save");
+        if (saveBtn) saveBtn.disabled = true;
+        
+        const response = await fetch("/api/feeds", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload)
+        });
+        
+        const data = await response.json();
+        if (saveBtn) saveBtn.disabled = false;
+        
+        if (response.ok && data.status === "success") {
+            addNotification(`Feed '${name}' saved successfully.`, "success");
+            closeFeedEditor();
+        } else {
+            addNotification(`Save failed: ${data.message}`, "error");
+        }
+    } catch (err) {
+        addNotification(`Connection error: ${err.message}`, "error");
+        const saveBtn = document.getElementById("btn-feed-save");
+        if (saveBtn) saveBtn.disabled = false;
+    }
+}
+
+async function deleteCustomFeed(feedId, feedName) {
+    if (!confirm(`Are you sure you want to delete the custom feed '${feedName}'?`)) {
+        return;
+    }
+    
+    try {
+        const response = await fetch("/api/feeds/delete", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ id: feedId })
+        });
+        const data = await response.json();
+        
+        if (response.ok && data.status === "success") {
+            addNotification(`Feed '${feedName}' deleted.`, "success");
+            loadCustomFeeds();
+        } else {
+            addNotification(`Delete failed: ${data.message}`, "error");
+        }
+    } catch (err) {
+        addNotification(`Connection error: ${err.message}`, "error");
+    }
+}
+
+async function testCustomFeed() {
+    const url = document.getElementById("feed-url").value.trim();
+    const feedType = document.getElementById("feed-type").value;
+    const defaultMediaType = document.getElementById("feed-media-type").value;
+    const headersRaw = document.getElementById("feed-headers").value.trim();
+    const configRaw = document.getElementById("feed-parser-config").value.trim();
+    
+    if (!url) {
+        alert("Please enter a feed URL to test.");
+        return;
+    }
+    
+    let httpHeaders = {};
+    if (headersRaw) {
+        try {
+            httpHeaders = JSON.parse(headersRaw);
+        } catch (e) {
+            alert("HTTP Headers must be valid JSON object. Error: " + e.message);
+            return;
+        }
+    }
+    
+    let parserConfig = {};
+    try {
+        parserConfig = JSON.parse(configRaw);
+    } catch (e) {
+        alert("Parser Config must be valid JSON object. Error: " + e.message);
+        return;
+    }
+    
+    const previewCard = document.getElementById("feed-test-preview");
+    const previewStats = document.getElementById("feed-test-stats");
+    const previewResults = document.getElementById("feed-test-results");
+    const testBtn = document.getElementById("btn-feed-test");
+    
+    previewCard.classList.remove("hidden");
+    previewStats.textContent = "Testing...";
+    previewResults.textContent = "Connecting to feed URL and running parsed mapping diagnostics. Please wait...";
+    
+    if (testBtn) testBtn.disabled = true;
+    
+    try {
+        const response = await fetch("/api/feeds/test", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                url: url,
+                feed_type: feedType,
+                default_media_type: defaultMediaType,
+                http_headers: httpHeaders,
+                parser_config: parserConfig
+            })
+        });
+        
+        const data = await response.json();
+        if (testBtn) testBtn.disabled = false;
+        
+        if (response.ok && data.status === "success") {
+            const timeMs = data.fetch_time_ms;
+            const itemsCount = data.parsed_items_count;
+            previewStats.textContent = `Success (${timeMs}ms)`;
+            
+            if (data.results && data.results.length > 0) {
+                let text = `Total parsed: ${itemsCount} items. Showing first ${data.results.length}:\n\n`;
+                data.results.forEach((item, idx) => {
+                    const yearStr = item.year ? ` (${item.year})` : "";
+                    const imdbStr = item.imdb_id ? ` [IMDb: ${item.imdb_id}]` : "";
+                    text += `${idx + 1}. Title: "${item.title}"${yearStr}${imdbStr}\n`;
+                    text += `   Link:  ${item.href || "N/A"}\n`;
+                    if (item.description) {
+                        text += `   Plot:  ${item.description}\n`;
+                    }
+                    text += `\n`;
+                });
+                previewResults.textContent = text;
+            } else {
+                previewResults.textContent = "Fetched successfully, but 0 items matched your mapping selectors.";
+            }
+        } else {
+            previewStats.textContent = "Error";
+            previewResults.textContent = `Dry-run test failed:\n${data.message || "Unknown error occurred"}`;
+        }
+    } catch (err) {
+        if (testBtn) testBtn.disabled = false;
+        previewStats.textContent = "Connection Failure";
+        previewResults.textContent = `HTTP post request failed: ${err.message}`;
+    }
+}
+
+async function restoreDefaultFeeds() {
+    if (!confirm("Are you sure you want to restore all feeds to default? This will delete any custom feeds you have configured and bring back Metacritic and DVDs calendars.")) {
+        return;
+    }
+    
+    try {
+        const response = await fetch("/api/feeds/restore", { method: "POST" });
+        const data = await response.json();
+        
+        if (response.ok && data.status === "success") {
+            addNotification("Default feeds restored successfully.", "success");
+            loadCustomFeeds();
+        } else {
+            addNotification(`Restore failed: ${data.message}`, "error");
+        }
+    } catch (err) {
+        addNotification(`Connection error: ${err.message}`, "error");
+    }
+}
+
 function applyTabFilter() {
     const activeTab = document.querySelector(".tab-btn.active").getAttribute("data-tab");
     const noResultsContainer = document.getElementById("no-results-container");
@@ -1761,12 +2199,48 @@ function setupEventListeners() {
                     p.classList.add("hidden");
                 }
             });
+            
+            if (targetTab === "panel-feeds") {
+                // If in editor view, return to list view
+                const editorView = document.getElementById("feed-editor-view");
+                const listView = document.getElementById("feeds-list-view");
+                if (editorView && listView) {
+                    editorView.classList.add("hidden");
+                    listView.classList.remove("hidden");
+                }
+                loadCustomFeeds();
+            }
         });
     });
 
     // Maintenance button clicks
     document.getElementById("btn-cache-prune").addEventListener("click", pruneCacheManually);
     document.getElementById("btn-cache-clear").addEventListener("click", wipeCacheManually);
+
+    // Custom Feed Events
+    const btnFeedRestore = document.getElementById("btn-feed-restore");
+    if (btnFeedRestore) btnFeedRestore.addEventListener("click", restoreDefaultFeeds);
+
+    const btnFeedAdd = document.getElementById("btn-feed-add");
+    if (btnFeedAdd) btnFeedAdd.addEventListener("click", () => openFeedEditor(null));
+    
+    const btnFeedSave = document.getElementById("btn-feed-save");
+    if (btnFeedSave) btnFeedSave.addEventListener("click", saveCustomFeed);
+    
+    const btnFeedCancel = document.getElementById("btn-feed-cancel");
+    if (btnFeedCancel) btnFeedCancel.addEventListener("click", closeFeedEditor);
+    
+    const btnFeedTest = document.getElementById("btn-feed-test");
+    if (btnFeedTest) btnFeedTest.addEventListener("click", testCustomFeed);
+    
+    const selectFeedType = document.getElementById("feed-type");
+    if (selectFeedType) selectFeedType.addEventListener("change", handleFeedTypeChange);
+    
+    const feedTabGeneral = document.getElementById("btn-feed-tab-general");
+    if (feedTabGeneral) feedTabGeneral.addEventListener("click", () => switchEditorTab("feed-tab-general"));
+    
+    const feedTabMapping = document.getElementById("btn-feed-tab-mapping");
+    if (feedTabMapping) feedTabMapping.addEventListener("click", () => switchEditorTab("feed-tab-mapping"));
 
     // Global Search event listeners
     const btnGlobalSearch = document.getElementById("btn-global-search");

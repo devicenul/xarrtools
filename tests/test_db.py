@@ -358,6 +358,7 @@ def test_db_frozen_path():
     import sys
     import importlib
     
+    old_db_path = core.db.DB_PATH
     old_frozen = getattr(sys, 'frozen', None)
     sys.frozen = True
     try:
@@ -372,3 +373,4 @@ def test_db_frozen_path():
         else:
             sys.frozen = old_frozen
         importlib.reload(core.db)
+        core.db.DB_PATH = old_db_path

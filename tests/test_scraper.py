@@ -279,6 +279,7 @@ def test_get_discoveries():
     
     with patch("core.scraper.scrape_new_releases") as mock_scrape_new, \
          patch("core.scraper.scrape_dvds_releases") as mock_scrape_dvd, \
+         patch("core.scraper.safe_fetch_feed", return_value=""), \
          patch("core.scraper.datetime", MockDatetime):
          
         # Scrape new releases returns mock_tv and mock_movies

@@ -1799,3 +1799,171 @@ def test_discover_recently_updated_false_branch(client):
                 mock_enrich_tv.assert_called_once()
                 mock_enrich_movie.assert_called_once()
 
+
+def test_custom_feed_endpoints(client):
+    # Ensure custom_feeds is clean
+    conn = core.db.get_db_connection()
+    conn.execute("DELETE FROM custom_feeds")
+    conn.commit()
+    conn.close()
+
+    # 1. GET /api/feeds (should be empty initially)
+    response = client.get("/api/feeds")
+    assert response.status_code == 200
+    data = response.get_json()
+    assert data["status"] == "success"
+    assert len(data["feeds"]) == 0
+
+    # 2. POST /api/feeds (create new feed)
+    feed_payload = {
+        "name": "Test Watchlist",
+        "url": "https://example.com/watchlist",
+        "feed_type": "json",
+        "default_media_type": "movie",
+        "enabled": 1,
+        "http_headers": {"User-Agent": "TestAgent"},
+        "parser_config": {
+            "item_selector": "results",
+            "mappings": {
+                "title": {"selector": "title"},
+                "year": {"selector": "release_year", "transforms": [{"type": "regex_search", "pattern": "\\d{4}"}]}
+            }
+        }
+    }
+    response = client.post("/api/feeds", json=feed_payload)
+    assert response.status_code == 200
+    data = response.get_json()
+    assert data["status"] == "success"
+    assert "feed_id" in data
+    feed_id = data["feed_id"]
+
+    # 3. GET /api/feeds again (should contain the new feed)
+    response = client.get("/api/feeds")
+    assert response.status_code == 200
+    data = response.get_json()
+    assert len(data["feeds"]) == 1
+    feed = data["feeds"][0]
+    assert feed["name"] == "Test Watchlist"
+    assert feed["feed_type"] == "json"
+    assert feed["enabled"] == 1
+    assert "results" in feed["parser_config"]
+
+    # 4. POST /api/feeds (update existing feed)
+    feed_payload["id"] = feed_id
+    feed_payload["name"] = "Updated Watchlist"
+    feed_payload["enabled"] = 0
+    response = client.post("/api/feeds", json=feed_payload)
+    assert response.status_code == 200
+    data = response.get_json()
+    assert data["status"] == "success"
+
+    # Check updated feed
+    response = client.get("/api/feeds")
+    data = response.get_json()
+    assert len(data["feeds"]) == 1
+    assert data["feeds"][0]["name"] == "Updated Watchlist"
+    assert data["feeds"][0]["enabled"] == 0
+
+    # 5. POST /api/feeds/test (dry-run preview test with mocked network response)
+    test_payload = {
+        "url": "https://example.com/watchlist",
+        "feed_type": "json",
+        "default_media_type": "movie",
+        "http_headers": {"User-Agent": "TestAgent"},
+        "parser_config": {
+            "item_selector": "results",
+            "mappings": {
+                "title": {"selector": "title"},
+                "year": {"selector": "release_year", "transforms": [{"type": "regex_search", "pattern": "\\d{4}"}]}
+            }
+        }
+    }
+
+    mock_json = '{"results": [{"title": "Inception", "release_year": "2010"}, {"title": "Interstellar", "release_year": "2014"}]}'
+    with patch("web.server.safe_fetch_feed", return_value=mock_json) as mock_fetch:
+        response = client.post("/api/feeds/test", json=test_payload)
+        assert response.status_code == 200
+        data = response.get_json()
+        assert data["status"] == "success"
+        assert data["parsed_items_count"] == 2
+        assert len(data["results"]) == 2
+        assert data["results"][0]["title"] == "Inception"
+        assert data["results"][0]["year"] == 2010
+        mock_fetch.assert_called_once_with("https://example.com/watchlist", headers={"User-Agent": "TestAgent"})
+
+    # 6. POST /api/feeds/delete (remove the feed)
+    response = client.post("/api/feeds/delete", json={"id": feed_id})
+    assert response.status_code == 200
+    data = response.get_json()
+    assert data["status"] == "success"
+
+    # GET /api/feeds (should be empty again)
+    response = client.get("/api/feeds")
+    data = response.get_json()
+    assert len(data["feeds"]) == 0
+
+    # 7. POST /api/feeds validation errors (missing fields)
+    response = client.post("/api/feeds", json={"name": "Bad Feed"})
+    assert response.status_code == 400
+    
+    # 8. POST /api/feeds validation errors (invalid http_headers JSON)
+    response = client.post("/api/feeds", json={"name": "Bad Feed", "url": "http://x", "feed_type": "json", "http_headers": "invalid-json", "parser_config": {}})
+    assert response.status_code == 400
+
+    # 9. POST /api/feeds validation errors (missing 'title' in mappings)
+    response = client.post("/api/feeds", json={"name": "Bad Feed", "url": "http://x", "feed_type": "json", "parser_config": {"item_selector": "x", "mappings": {}}})
+    assert response.status_code == 400
+
+    # 10. POST /api/feeds validation errors (unsafe regex pattern)
+    unsafe_payload = {
+        "name": "Unsafe Regex Feed",
+        "url": "http://example.com",
+        "feed_type": "json",
+        "parser_config": {
+            "item_selector": "items",
+            "mappings": {
+                "title": {"selector": "title"},
+                "year": {"selector": "year", "transforms": [{"type": "regex_search", "pattern": "(a+)+"}]}
+            }
+        }
+    }
+    response = client.post("/api/feeds", json=unsafe_payload)
+    assert response.status_code == 400
+    data = response.get_json()
+    assert data["status"] == "error"
+    assert "unsafe nested quantifiers" in data["message"]
+
+    # 11. POST /api/feeds/restore
+    response = client.post("/api/feeds/restore")
+    assert response.status_code == 200
+    data = response.get_json()
+    assert data["status"] == "success"
+
+    # Verify feeds are restored (5 default feeds)
+    response = client.get("/api/feeds")
+    assert response.status_code == 200
+    data = response.get_json()
+    assert len(data["feeds"]) == 5
+    names = [f["name"] for f in data["feeds"]]
+    assert "Metacritic - New TV Shows" in names
+    assert "Metacritic - New Movies" in names
+    assert "DVDs Release Dates" in names
+    assert "Letterboxd - Popular Weekly Movies" in names
+    assert "Wikipedia - 2026 American Films" in names
+
+    # 12. POST /api/feeds (saving built-in feed type with empty config should succeed)
+    built_in_payload = {
+        "name": "Custom Metacritic TV",
+        "url": "https://www.metacritic.com/browse/tv/all/all/all-time/new/",
+        "feed_type": "metacritic_tv",
+        "default_media_type": "tv",
+        "enabled": 1,
+        "http_headers": {},
+        "parser_config": {}
+    }
+    response = client.post("/api/feeds", json=built_in_payload)
+    assert response.status_code == 200
+    data = response.get_json()
+    assert data["status"] == "success"
+
+

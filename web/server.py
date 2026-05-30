@@ -8,7 +8,7 @@ from datetime import datetime, timedelta
 
 from core.config import config
 from core.client import RadarrClient, SonarrClient, ArrAPIError
-from core.scraper import get_discoveries
+from core.scraper import get_discoveries, safe_fetch_feed, parse_custom_feed, is_safe_regex
 from core.enricher import enrich_tv_show, enrich_movie
 from core.db import (
     init_db,
@@ -23,7 +23,8 @@ from core.db import (
     get_cached_discoveries,
     update_cached_library_status,
     normalize_title,
-    get_setting
+    get_setting,
+    get_db_connection
 )
 
 # Initialize Database and Prune Expired cache entries
@@ -907,6 +908,193 @@ def background_poster_healer():
 # Start background healer thread
 if "PYTEST_CURRENT_TEST" not in os.environ:
     threading.Thread(target=background_poster_healer, daemon=True).start()
+
+@app.route("/api/feeds", methods=["GET"])
+def get_custom_feeds():
+    """Retrieve all configured custom feeds."""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM custom_feeds")
+    rows = [dict(row) for row in cursor.fetchall()]
+    conn.close()
+    return jsonify({"status": "success", "feeds": rows})
+
+@app.route("/api/feeds", methods=["POST"])
+def save_custom_feed():
+    """Create or update a custom feed with strict schema and regex safety validation."""
+    data = request.json or {}
+    id_ = data.get("id")
+    name = data.get("name")
+    url = data.get("url")
+    feed_type = data.get("feed_type")
+    default_media_type = data.get("default_media_type", "movie")
+    enabled = data.get("enabled", 1)
+    
+    if not name or not url or not feed_type:
+        return jsonify({"status": "error", "message": "Missing required fields (name, url, feed_type)"}), 400
+        
+    http_headers = data.get("http_headers")
+    if isinstance(http_headers, dict):
+        headers_str = json.dumps(http_headers)
+    elif isinstance(http_headers, str):
+        headers_str = http_headers
+    else:
+        headers_str = "{}"
+        
+    # Validate http_headers is valid JSON
+    try:
+        json.loads(headers_str)
+    except ValueError:
+        return jsonify({"status": "error", "message": "HTTP headers must be a valid JSON dictionary"}), 400
+        
+    parser_config = data.get("parser_config")
+    if isinstance(parser_config, dict):
+        parser_cfg_str = json.dumps(parser_config)
+        parser_cfg_dict = parser_config
+    elif isinstance(parser_config, str):
+        parser_cfg_str = parser_config
+        try:
+            parser_cfg_dict = json.loads(parser_config)
+        except ValueError:
+            return jsonify({"status": "error", "message": "Parser config must be a valid JSON dictionary"}), 400
+    else:
+        return jsonify({"status": "error", "message": "Parser config must be a valid JSON object"}), 400
+        
+    # Validate required mapping elements in parser config
+    if feed_type not in ("metacritic_tv", "metacritic_movie", "dvds_releases"):
+        mappings = parser_cfg_dict.get("mappings", {})
+        if "title" not in mappings:
+            return jsonify({"status": "error", "message": "Parser config mappings must contain at least a 'title' selector rule"}), 400
+            
+        # Validate regex transforms safety (ReDoS defense)
+        for field, rules in mappings.items():
+            for t in rules.get("transforms", []):
+                if t.get("type") in ("regex_search", "regex_replace"):
+                    pattern = t.get("pattern", "")
+                    if not is_safe_regex(pattern):
+                        return jsonify({"status": "error", "message": f"Regular expression pattern '{pattern}' in transform mapping for '{field}' contains unsafe nested quantifiers and was rejected."}), 400
+
+    conn = get_db_connection()
+    conn.execute("BEGIN IMMEDIATE")
+    try:
+        cursor = conn.cursor()
+        if id_ is not None:
+            cursor.execute('''
+                UPDATE custom_feeds SET
+                    name = ?, url = ?, feed_type = ?, default_media_type = ?,
+                    enabled = ?, http_headers = ?, parser_config = ?
+                WHERE id = ?
+            ''', (name, url, feed_type, default_media_type, int(enabled), headers_str, parser_cfg_str, id_))
+            feed_id = id_
+        else:
+            cursor.execute('''
+                INSERT INTO custom_feeds (name, url, feed_type, default_media_type, enabled, http_headers, parser_config)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            ''', (name, url, feed_type, default_media_type, int(enabled), headers_str, parser_cfg_str))
+            feed_id = cursor.lastrowid
+        conn.commit()
+    except Exception as e:
+        conn.rollback()
+        return jsonify({"status": "error", "message": str(e)}), 500
+    finally:
+        conn.close()
+        
+    return jsonify({"status": "success", "message": "Feed saved successfully", "feed_id": feed_id})
+
+@app.route("/api/feeds/test", methods=["POST"])
+def test_custom_feed():
+    """Dry-run mapping configurations against target feeds returning parsed previews."""
+    data = request.json or {}
+    url = data.get("url")
+    feed_type = data.get("feed_type")
+    default_media_type = data.get("default_media_type", "movie")
+    http_headers = data.get("http_headers") or {}
+    parser_config = data.get("parser_config") or {}
+    
+    if not url or not feed_type:
+        return jsonify({"status": "error", "message": "Missing required fields (url, feed_type)"}), 400
+        
+    # Validate regex transforms safety
+    mappings = parser_config.get("mappings", {})
+    for field, rules in mappings.items():
+        for t in rules.get("transforms", []):
+            if t.get("type") in ("regex_search", "regex_replace"):
+                pattern = t.get("pattern", "")
+                if not is_safe_regex(pattern):
+                    return jsonify({"status": "error", "message": f"Unsafe regex '{pattern}' detected"}), 400
+
+    try:
+        import time
+        start_time = time.time()
+        raw_payload = safe_fetch_feed(url, headers=http_headers)
+        
+        # Inject details into parser config for standardize_item
+        parser_config["url"] = url
+        parser_config["default_media_type"] = default_media_type
+        parser_config["feed_type"] = feed_type
+        
+        items = parse_custom_feed(parser_config, raw_payload)
+        fetch_time = int((time.time() - start_time) * 1000)
+        
+        # Return preview serialization
+        preview_items = []
+        for item in items[:15]:  # Clamp preview to top 15 results
+            preview_items.append({
+                "title": item["title"],
+                "year": item["year"],
+                "type": item["type"],
+                "date_str": item["date_str"],
+                "href": item["href"],
+                "imdb_id": item["imdb_id"],
+                "tvdb_id": item["tvdb_id"],
+                "tmdb_id": item["tmdb_id"],
+                "description": item["description"][:120] + "..." if len(item["description"]) > 120 else item["description"]
+            })
+            
+        return jsonify({
+            "status": "success",
+            "fetch_time_ms": fetch_time,
+            "parsed_items_count": len(items),
+            "results": preview_items,
+            "errors": []
+        })
+    except Exception as e:
+        return jsonify({
+            "status": "error",
+            "message": f"Test scan failed: {e}"
+        }), 500
+
+@app.route("/api/feeds/delete", methods=["POST"])
+def delete_custom_feed():
+    """Wipes a configured custom feed registry from the database."""
+    data = request.json or {}
+    id_ = data.get("id")
+    if id_ is None:
+        return jsonify({"status": "error", "message": "Missing feed id"}), 400
+        
+    conn = get_db_connection()
+    conn.execute("BEGIN IMMEDIATE")
+    try:
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM custom_feeds WHERE id = ?", (id_,))
+        conn.commit()
+    except Exception as e:
+        conn.rollback()
+        return jsonify({"status": "error", "message": str(e)}), 500
+    finally:
+        conn.close()
+        
+    return jsonify({"status": "success", "message": "Feed deleted successfully"})
+
+@app.route("/api/feeds/restore", methods=["POST"])
+def restore_default_feeds_route():
+    """Wipes the custom feeds registry and restores standard default configurations."""
+    from core.db import restore_default_feeds
+    try:
+        restore_default_feeds()
+        return jsonify({"status": "success", "message": "Default feeds restored successfully"})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
 
 def start_server(port=5000, debug=False):
     """Starts the Flask web server."""

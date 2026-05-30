@@ -15,13 +15,17 @@ else:
 
 def get_db_connection():
     """Establishes and returns a connection to the SQLite database with Row factory."""
-    conn = sqlite3.connect(DB_PATH)
+    conn = sqlite3.connect(DB_PATH, timeout=30)
+    conn.isolation_level = None
     conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA foreign_keys = ON;")
+    conn.execute("PRAGMA busy_timeout = 30000;")
     return conn
 
 def init_db():
-    """Creates settings and cache tables, and migrates existing .env variables if empty."""
+    """Creates settings, cache, and custom_feeds tables, and migrates existing settings/columns."""
     conn = get_db_connection()
+    conn.execute("PRAGMA journal_mode = WAL;")
     cursor = conn.cursor()
     
     # 1. Create Settings table
@@ -32,7 +36,24 @@ def init_db():
         )
     ''')
     
-    # 2. Create Cache table
+    # 2. Create Custom Feeds table
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS custom_feeds (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            url TEXT NOT NULL,
+            feed_type TEXT NOT NULL,          -- 'rss', 'json', 'html'
+            default_media_type TEXT NOT NULL, -- 'movie', 'tv'
+            http_headers TEXT,                -- JSON dictionary structure
+            parser_config TEXT NOT NULL,      -- JSON dictionary containing mappings/rules
+            enabled INTEGER DEFAULT 1,        -- 0 = Disabled, 1 = Enabled
+            last_run TEXT,                    -- Datetime timestamp
+            last_status TEXT,                 -- 'success', 'error', 'blocked'
+            last_error_message TEXT           -- Traceback or error details
+        )
+    ''')
+    
+    # 3. Create Cache table
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS cache (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -53,39 +74,67 @@ def init_db():
             poster_url TEXT,
             is_returning INTEGER DEFAULT 0,
             is_archived INTEGER DEFAULT 0,
-            added_at TEXT
+            added_at TEXT,
+            rating_imdb TEXT,
+            rating_metacritic TEXT,
+            rating_rt TEXT,
+            is_in_library INTEGER DEFAULT 0,
+            source_feed_id INTEGER REFERENCES custom_feeds(id) ON DELETE SET NULL,
+            normalized_title TEXT
         )
     ''')
-    conn.commit()
     
-    # 2b. Add poster_url to cache table if not present (migration for existing database)
+    # Check and add columns dynamically for existing databases
     cursor.execute("PRAGMA table_info(cache)")
     columns = [col[1] for col in cursor.fetchall()]
-    if "poster_url" not in columns:
-        cursor.execute("ALTER TABLE cache ADD COLUMN poster_url TEXT")
-        conn.commit()
     
-    # 2c. Add rating columns to cache table if not present (migration for existing database)
-    cursor.execute("PRAGMA table_info(cache)")
-    columns = [col[1] for col in cursor.fetchall()]
-    if "rating_imdb" not in columns:
-        cursor.execute("ALTER TABLE cache ADD COLUMN rating_imdb TEXT")
-        conn.commit()
-    if "rating_metacritic" not in columns:
-        cursor.execute("ALTER TABLE cache ADD COLUMN rating_metacritic TEXT")
-        conn.commit()
-    if "rating_rt" not in columns:
-        cursor.execute("ALTER TABLE cache ADD COLUMN rating_rt TEXT")
-        conn.commit()
+    expected_cols = {
+        "type": "TEXT",
+        "title": "TEXT",
+        "year": "INTEGER",
+        "date_str": "TEXT",
+        "date_obj": "TEXT",
+        "description": "TEXT",
+        "href": "TEXT",
+        "imdb_id": "TEXT",
+        "tvdb_id": "INTEGER",
+        "tmdb_id": "INTEGER",
+        "genres": "TEXT",
+        "cast": "TEXT",
+        "network": "TEXT",
+        "trailer": "TEXT",
+        "poster_url": "TEXT",
+        "is_returning": "INTEGER DEFAULT 0",
+        "is_archived": "INTEGER DEFAULT 0",
+        "added_at": "TEXT",
+        "rating_imdb": "TEXT",
+        "rating_metacritic": "TEXT",
+        "rating_rt": "TEXT",
+        "is_in_library": "INTEGER DEFAULT 0",
+        "source_feed_id": "INTEGER REFERENCES custom_feeds(id) ON DELETE SET NULL",
+        "normalized_title": "TEXT"
+    }
+    
+    for col, col_type in expected_cols.items():
+        if col not in columns:
+            cursor.execute(f"ALTER TABLE cache ADD COLUMN {col} {col_type}")
+
         
-    # 2d. Add is_in_library column to cache table if not present (migration for existing database)
-    cursor.execute("PRAGMA table_info(cache)")
-    columns = [col[1] for col in cursor.fetchall()]
-    if "is_in_library" not in columns:
-        cursor.execute("ALTER TABLE cache ADD COLUMN is_in_library INTEGER DEFAULT 0")
-        conn.commit()
+    # Populate normalized_title for legacy cached entries
+    cursor.execute("SELECT id, title, type FROM cache WHERE normalized_title IS NULL")
+    rows = cursor.fetchall()
+    for row in rows:
+        is_tv = (row["type"] == "tv")
+        norm = normalize_title(row["title"], is_tv)
+        cursor.execute("UPDATE cache SET normalized_title = ? WHERE id = ?", (norm, row["id"]))
+        
+    # Create indices
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_cache_normalized ON cache(type, normalized_title)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_cache_date_obj ON cache(date_obj) WHERE date_obj IS NOT NULL AND date_obj != ''")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_cache_imdb_id ON cache(imdb_id) WHERE imdb_id IS NOT NULL AND imdb_id != ''")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_cache_source_feed_id ON cache(source_feed_id) WHERE source_feed_id IS NOT NULL")
     
-    # 3. Migrate from .env if settings table is empty
+    # 4. Migrate from .env if settings table is empty
     cursor.execute("SELECT COUNT(*) FROM settings")
     if cursor.fetchone()[0] == 0:
         # Import config dynamically to bypass circular dependency
@@ -105,9 +154,8 @@ def init_db():
         for key, val in env_settings.items():
             if val is not None:
                 cursor.execute("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", (key, str(val)))
-        conn.commit()
         
-    # 4. Ensure any missing default settings are seeded (e.g. if database already exists)
+    # 5. Ensure any missing default settings are seeded (e.g. if database already exists)
     default_settings = {
         "default_past_months": "1",
         "default_future_months": "2",
@@ -120,9 +168,102 @@ def init_db():
         cursor.execute("SELECT COUNT(*) FROM settings WHERE key = ?", (key,))
         if cursor.fetchone()[0] == 0:
             cursor.execute("INSERT INTO settings (key, value) VALUES (?, ?)", (key, val))
-    conn.commit()
-        
+            
+    # 6. Ensure default feeds are seeded if the table is empty
+    cursor.execute("SELECT COUNT(*) FROM custom_feeds")
+    if cursor.fetchone()[0] == 0:
+        restore_default_feeds(conn)
     conn.close()
+
+def restore_default_feeds(conn=None):
+    """Wipes all custom feeds and inserts the standard default feeds (Metacritic, DVDs, Letterboxd, Wikipedia)."""
+    local_conn = False
+    if conn is None:
+        conn = get_db_connection()
+        conn.execute("BEGIN IMMEDIATE")
+        local_conn = True
+        
+    try:
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM custom_feeds")
+        
+        import json
+        default_feeds = [
+            {
+                "name": "Metacritic - New TV Shows",
+                "url": "https://www.metacritic.com/browse/tv/all/all/all-time/new/",
+                "feed_type": "metacritic_tv",
+                "default_media_type": "tv",
+                "enabled": 1,
+                "http_headers": "{}",
+                "parser_config": "{}"
+            },
+            {
+                "name": "Metacritic - New Movies",
+                "url": "https://www.metacritic.com/browse/movie/all/all/all-time/new/",
+                "feed_type": "metacritic_movie",
+                "default_media_type": "movie",
+                "enabled": 1,
+                "http_headers": "{}",
+                "parser_config": "{}"
+            },
+            {
+                "name": "DVDs Release Dates",
+                "url": "https://www.dvdsreleasedates.com/releases/{year}/{month:02d}/",
+                "feed_type": "dvds_releases",
+                "default_media_type": "movie",
+                "enabled": 1,
+                "http_headers": "{}",
+                "parser_config": "{}"
+            },
+            {
+                "name": "Letterboxd - Popular Weekly Movies",
+                "url": "https://letterboxd.com/films/popular/this/week/size/small/rss/",
+                "feed_type": "rss",
+                "default_media_type": "movie",
+                "enabled": 1,
+                "http_headers": "{}",
+                "parser_config": json.dumps({
+                    "item_selector": "item",
+                    "mappings": {
+                        "title": {"selector": "title"},
+                        "year": {"selector": "filmYear", "transforms": [{"type": "regex_search", "pattern": "\\d{4}"}]},
+                        "href": {"selector": "link"}
+                    }
+                })
+            },
+            {
+                "name": "Wikipedia - 2026 American Films",
+                "url": "https://en.wikipedia.org/wiki/List_of_American_films_of_2026",
+                "feed_type": "html",
+                "default_media_type": "movie",
+                "enabled": 1,
+                "http_headers": "{}",
+                "parser_config": json.dumps({
+                    "item_selector": "table.wikitable tbody tr",
+                    "mappings": {
+                        "title": {"selector": "td i a", "extract": "text"},
+                        "year": {"selector": "td", "extract": "text", "transforms": [{"type": "regex_search", "pattern": "\\d{4}"}, {"type": "default", "value": "2026"}]},
+                        "href": {"selector": "td i a", "extract": "attribute", "attribute_name": "href"}
+                    }
+                })
+            }
+        ]
+        for feed in default_feeds:
+            cursor.execute('''
+                INSERT INTO custom_feeds (name, url, feed_type, default_media_type, enabled, http_headers, parser_config)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            ''', (feed["name"], feed["url"], feed["feed_type"], feed["default_media_type"], feed["enabled"], feed["http_headers"], feed["parser_config"]))
+            
+        if local_conn:
+            conn.commit()
+    except Exception:
+        if local_conn:
+            conn.rollback()
+        raise
+    finally:
+        if local_conn:
+            conn.close()
 
 def get_setting(key: str, default: str = "") -> str:
     """Fetches a setting value by key."""
@@ -201,7 +342,7 @@ def normalize_title(title: str, is_tv: bool = False) -> str:
     return re.sub(r'[^a-z0-9]', '', title.lower())
 
 def get_cached_item(type_: str, title: str, year: int, imdb_id: str = None, conn = None) -> dict:
-    """Retrieves a cached movie or TV show by IMDb ID or normalized title (ignoring year if setting enabled)."""
+    """Retrieves a cached movie or TV show by IMDb ID or normalized title (checking exact/close matches first, falling back to ignore year setting)."""
     local_conn = False
     if conn is None:
         conn = get_db_connection()
@@ -218,180 +359,231 @@ def get_cached_item(type_: str, title: str, year: int, imdb_id: str = None, conn
                 conn.close()
             return dict(row)
             
-    # 2. Check default_match_ignore_year setting
+    # 2. Fetch default_match_ignore_year setting
     cursor.execute("SELECT value FROM settings WHERE key = 'default_match_ignore_year'")
     row_setting = cursor.fetchone()
-    ignore_year = True # default on
-    if row_setting:
-        ignore_year = (row_setting[0] == "1")
+    ignore_year = (row_setting[0] == "1") if row_setting else True
         
-    # 3. Query based on year constraint setting
-    if ignore_year:
-        cursor.execute("SELECT * FROM cache WHERE type = ?", (type_,))
-    else:
-        cursor.execute("SELECT * FROM cache WHERE type = ? AND year >= ? AND year <= ?", (type_, year - 1, year + 1))
-        
-    rows = cursor.fetchall()
+    # 3. Query cache by indexed normalized title (O(1)) with fallback for NULL columns
+    is_tv = (type_ == "tv")
+    norm_title = normalize_title(title, is_tv=is_tv)
+    
+    cursor.execute("SELECT * FROM cache WHERE type = ? AND (normalized_title = ? OR normalized_title IS NULL)", (type_, norm_title))
+    all_rows = [dict(row) for row in cursor.fetchall()]
+    
     if local_conn:
         conn.close()
         
-    is_tv = (type_ == "tv")
-    norm_title = normalize_title(title, is_tv=is_tv)
+    if not all_rows:
+        return None
+        
+    # Filter rows verifying title matching (especially if normalized_title was NULL)
+    rows = []
+    for r in all_rows:
+        r_norm = r["normalized_title"] or normalize_title(r["title"], is_tv=is_tv)
+        if r_norm == norm_title:
+            rows.append(r)
+            
+    if not rows:
+        return None
+        
+    # 4. Check for exact year match first
     for row in rows:
-        if normalize_title(row["title"], is_tv=is_tv) == norm_title:
-            return dict(row)
+        if row["year"] == year:
+            return row
+            
+    # 5. Check for close year match (+/- 1 year)
+    for row in rows:
+        if row["year"] and abs(row["year"] - year) <= 1:
+            return row
+            
+    # 6. Year-agnostic fallback if setting enabled
+    if ignore_year:
+        return rows[0]
             
     return None
 
-def add_cached_item(type_: str, item: dict):
-    """Caches or updates a media discovery details item."""
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    
-    imdb_id = item.get("imdbId") or item.get("imdb_id")
-    
-    # Check if already exists in cache using our robust lookup
-    existing = get_cached_item(type_, item["title"], item["year"], imdb_id, conn=conn)
-    
-    genres_json = json.dumps(item.get("genres", []))
-    tvdb_id = item.get("tvdbId") or item.get("tvdb_id")
-    tmdb_id = item.get("tmdbId") or item.get("tmdb_id")
-    is_in_lib = 1 if item.get("is_in_library") else 0
-    
-    date_obj_str = ""
-    if item.get("date_obj"):
-        if isinstance(item["date_obj"], datetime):
-            date_obj_str = item["date_obj"].strftime("%Y-%m-%d")
-        else:
-            date_obj_str = str(item["date_obj"])
-            
-    if existing:
-        cursor.execute('''
-            UPDATE cache SET
-                date_str = ?, date_obj = ?, description = ?, href = ?, imdb_id = ?,
-                tvdb_id = ?, tmdb_id = ?, genres = ?, cast = ?, network = ?, trailer = ?,
-                poster_url = ?, is_returning = ?, added_at = ?,
-                rating_imdb = ?, rating_metacritic = ?, rating_rt = ?, is_in_library = ?
-            WHERE id = ?
-        ''', (
-            item.get("date_str", ""),
-            date_obj_str,
-            item.get("plot", "No plot summary available."),
-            item.get("href", ""),
-            imdb_id,
-            tvdb_id,
-            tmdb_id,
-            genres_json,
-            item.get("cast", "Cast details not available."),
-            item.get("network", "Unknown"),
-            item.get("trailer", ""),
-            item.get("poster_url", ""),
-            1 if item.get("is_returning") else 0,
-            datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-            item.get("rating_imdb", ""),
-            item.get("rating_metacritic", ""),
-            item.get("rating_rt", ""),
-            is_in_lib,
-            existing["id"]
-        ))
-    else:
-        cursor.execute('''
-            INSERT INTO cache (
-                type, title, year, date_str, date_obj, description, href, imdb_id,
-                tvdb_id, tmdb_id, genres, cast, network, trailer, poster_url, is_returning, is_archived, added_at,
-                rating_imdb, rating_metacritic, rating_rt, is_in_library
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ''', (
-            type_,
-            item["title"],
-            item["year"],
-            item.get("date_str", ""),
-            date_obj_str,
-            item.get("plot", "No plot summary available."),
-            item.get("href", ""),
-            imdb_id,
-            tvdb_id,
-            tmdb_id,
-            genres_json,
-            item.get("cast", "Cast details not available."),
-            item.get("network", "Unknown"),
-            item.get("trailer", ""),
-            item.get("poster_url", ""),
-            1 if item.get("is_returning") else 0,
-            1 if item.get("is_archived") else 0,
-            datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-            item.get("rating_imdb", ""),
-            item.get("rating_metacritic", ""),
-            item.get("rating_rt", ""),
-            is_in_lib
-        ))
-    conn.commit()
-    conn.close()
-
-def archive_cached_item(type_: str, title: str, year: int, is_archived: bool = True, raw_item: dict = None):
-    """Sets the is_archived flag on a cached discovery. Inserts a skeleton if not in cache."""
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    
-    imdb_id = None
-    if raw_item:
-        imdb_id = raw_item.get("imdbId") or raw_item.get("imdb_id")
+def add_cached_item(type_: str, item: dict, conn = None):
+    """Caches or updates a media discovery details item, running within explicit BEGIN IMMEDIATE transactions."""
+    close_conn = False
+    if conn is None:
+        conn = get_db_connection()
+        conn.execute("BEGIN IMMEDIATE")
+        close_conn = True
         
-    existing = get_cached_item(type_, title, year, imdb_id, conn=conn)
-    
-    archived_val = 1 if is_archived else 0
-    
-    if existing:
-        cursor.execute("UPDATE cache SET is_archived = ? WHERE id = ?", (archived_val, existing["id"]))
-    else:
-        if raw_item:
-            genres_json = json.dumps(raw_item.get("genres", []))
-            tvdb_id = raw_item.get("tvdbId") or raw_item.get("tvdb_id")
-            tmdb_id = raw_item.get("tmdbId") or raw_item.get("tmdb_id")
-            
-            date_obj_str = ""
-            if raw_item.get("date_obj"):
-                if isinstance(raw_item["date_obj"], datetime):
-                    date_obj_str = raw_item["date_obj"].strftime("%Y-%m-%d")
-                else:
-                    date_obj_str = str(raw_item["date_obj"])
-                    
+    try:
+        cursor = conn.cursor()
+        imdb_id = item.get("imdbId") or item.get("imdb_id")
+        
+        # Check if already exists in cache using our robust lookup inside transaction
+        existing = get_cached_item(type_, item["title"], item["year"], imdb_id, conn=conn)
+        
+        genres_json = json.dumps(item.get("genres", []))
+        tvdb_id = item.get("tvdbId") or item.get("tvdb_id")
+        tmdb_id = item.get("tmdbId") or item.get("tmdb_id")
+        is_in_lib = 1 if item.get("is_in_library") else 0
+        source_feed_id = item.get("source_feed_id")
+        
+        normalized_title = normalize_title(item["title"], is_tv=(type_ == "tv"))
+        
+        date_obj_str = ""
+        if item.get("date_obj"):
+            if isinstance(item["date_obj"], datetime):
+                date_obj_str = item["date_obj"].strftime("%Y-%m-%d")
+            else:
+                date_obj_str = str(item["date_obj"])
+                
+        if existing:
+            # We preserve existing source_feed_id if it's already set and not provided
+            feed_id = source_feed_id if source_feed_id is not None else existing.get("source_feed_id")
             cursor.execute('''
-                INSERT INTO cache (
-                    type, title, year, date_str, date_obj, description, href, imdb_id,
-                    tvdb_id, tmdb_id, genres, cast, network, trailer, poster_url, is_returning, is_archived, added_at,
-                    rating_imdb, rating_metacritic, rating_rt, is_in_library
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                UPDATE cache SET
+                    date_str = ?, date_obj = ?, description = ?, href = ?, imdb_id = ?,
+                    tvdb_id = ?, tmdb_id = ?, genres = ?, cast = ?, network = ?, trailer = ?,
+                    poster_url = ?, is_returning = ?, added_at = ?,
+                    rating_imdb = ?, rating_metacritic = ?, rating_rt = ?, is_in_library = ?,
+                    source_feed_id = ?, normalized_title = ?
+                WHERE id = ?
             ''', (
-                type_, title, year,
-                raw_item.get("date_str", ""),
+                item.get("date_str", ""),
                 date_obj_str,
-                raw_item.get("plot") or raw_item.get("description", "No plot summary available."),
-                raw_item.get("href", ""),
+                item.get("plot") or item.get("description") or "No plot summary available.",
+                item.get("href", ""),
                 imdb_id,
                 tvdb_id,
                 tmdb_id,
                 genres_json,
-                raw_item.get("cast", "Cast details not available."),
-                raw_item.get("network", "Unknown"),
-                raw_item.get("trailer", ""),
-                raw_item.get("poster_url", ""),
-                1 if raw_item.get("is_returning") else 0,
-                archived_val,
+                item.get("cast", "Cast details not available."),
+                item.get("network", "Unknown"),
+                item.get("trailer", ""),
+                item.get("poster_url", ""),
+                1 if item.get("is_returning") else 0,
                 datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                raw_item.get("rating_imdb", ""),
-                raw_item.get("rating_metacritic", ""),
-                raw_item.get("rating_rt", ""),
-                1 if raw_item.get("is_in_library") else 0
+                item.get("rating_imdb", ""),
+                item.get("rating_metacritic", ""),
+                item.get("rating_rt", ""),
+                is_in_lib,
+                feed_id,
+                normalized_title,
+                existing["id"]
             ))
         else:
             cursor.execute('''
-                INSERT INTO cache (type, title, year, is_archived, added_at)
-                VALUES (?, ?, ?, ?, ?)
-            ''', (type_, title, year, archived_val, datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
+                INSERT INTO cache (
+                    type, title, year, date_str, date_obj, description, href, imdb_id,
+                    tvdb_id, tmdb_id, genres, cast, network, trailer, poster_url, is_returning, is_archived, added_at,
+                    rating_imdb, rating_metacritic, rating_rt, is_in_library, source_feed_id, normalized_title
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ''', (
+                type_,
+                item["title"],
+                item["year"],
+                item.get("date_str", ""),
+                date_obj_str,
+                item.get("plot") or item.get("description") or "No plot summary available.",
+                item.get("href", ""),
+                imdb_id,
+                tvdb_id,
+                tmdb_id,
+                genres_json,
+                item.get("cast", "Cast details not available."),
+                item.get("network", "Unknown"),
+                item.get("trailer", ""),
+                item.get("poster_url", ""),
+                1 if item.get("is_returning") else 0,
+                1 if item.get("is_archived") else 0,
+                datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                item.get("rating_imdb", ""),
+                item.get("rating_metacritic", ""),
+                item.get("rating_rt", ""),
+                is_in_lib,
+                source_feed_id,
+                normalized_title
+            ))
             
-    conn.commit()
-    conn.close()
+        if close_conn:
+            conn.commit()
+    except Exception:
+        if close_conn:
+            conn.rollback()
+        raise
+    finally:
+        if close_conn:
+            conn.close()
+
+def archive_cached_item(type_: str, title: str, year: int, is_archived: bool = True, raw_item: dict = None):
+    """Sets the is_archived flag on a cached discovery. Inserts a skeleton if not in cache."""
+    conn = get_db_connection()
+    conn.execute("BEGIN IMMEDIATE")
+    try:
+        cursor = conn.cursor()
+        
+        imdb_id = None
+        if raw_item:
+            imdb_id = raw_item.get("imdbId") or raw_item.get("imdb_id")
+            
+        existing = get_cached_item(type_, title, year, imdb_id, conn=conn)
+        
+        archived_val = 1 if is_archived else 0
+        normalized_title = normalize_title(title, is_tv=(type_ == "tv"))
+        
+        if existing:
+            cursor.execute("UPDATE cache SET is_archived = ? WHERE id = ?", (archived_val, existing["id"]))
+        else:
+            if raw_item:
+                genres_json = json.dumps(raw_item.get("genres", []))
+                tvdb_id = raw_item.get("tvdbId") or raw_item.get("tvdb_id")
+                tmdb_id = raw_item.get("tmdbId") or raw_item.get("tmdb_id")
+                
+                date_obj_str = ""
+                if raw_item.get("date_obj"):
+                    if isinstance(raw_item["date_obj"], datetime):
+                        date_obj_str = raw_item["date_obj"].strftime("%Y-%m-%d")
+                    else:
+                        date_obj_str = str(raw_item["date_obj"])
+                        
+                cursor.execute('''
+                    INSERT INTO cache (
+                        type, title, year, date_str, date_obj, description, href, imdb_id,
+                        tvdb_id, tmdb_id, genres, cast, network, trailer, poster_url, is_returning, is_archived, added_at,
+                        rating_imdb, rating_metacritic, rating_rt, is_in_library, normalized_title
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ''', (
+                    type_, title, year,
+                    raw_item.get("date_str", ""),
+                    date_obj_str,
+                    raw_item.get("plot") or raw_item.get("description", "No plot summary available."),
+                    raw_item.get("href", ""),
+                    imdb_id,
+                    tvdb_id,
+                    tmdb_id,
+                    genres_json,
+                    raw_item.get("cast", "Cast details not available."),
+                    raw_item.get("network", "Unknown"),
+                    raw_item.get("trailer", ""),
+                    raw_item.get("poster_url", ""),
+                    1 if raw_item.get("is_returning") else 0,
+                    archived_val,
+                    datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                    raw_item.get("rating_imdb", ""),
+                    raw_item.get("rating_metacritic", ""),
+                    raw_item.get("rating_rt", ""),
+                    1 if raw_item.get("is_in_library") else 0,
+                    normalized_title
+                ))
+            else:
+                cursor.execute('''
+                    INSERT INTO cache (type, title, year, is_archived, added_at, normalized_title)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                ''', (type_, title, year, archived_val, datetime.now().strftime("%Y-%m-%d %H:%M:%S"), normalized_title))
+                
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
 
 def clean_expired_cache():
     """Removes cached discoveries older than 12 months (365 days) from premiere/release date."""
@@ -472,9 +664,16 @@ def get_cached_discoveries(start_date: str, end_date: str) -> tuple:
 def update_cached_library_status(type_: str, title: str, year: int, is_in_library: bool, imdb_id: str = None):
     """Updates the is_in_library status for a cached item in the database."""
     conn = get_db_connection()
-    cursor = conn.cursor()
-    existing = get_cached_item(type_, title, year, imdb_id, conn=conn)
-    if existing:
-        cursor.execute("UPDATE cache SET is_in_library = ? WHERE id = ?", (1 if is_in_library else 0, existing["id"]))
-        conn.commit()
-    conn.close()
+    conn.execute("BEGIN IMMEDIATE")
+    try:
+        cursor = conn.cursor()
+        existing = get_cached_item(type_, title, year, imdb_id, conn=conn)
+        if existing:
+            cursor.execute("UPDATE cache SET is_in_library = ? WHERE id = ?", (1 if is_in_library else 0, existing["id"]))
+            conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
