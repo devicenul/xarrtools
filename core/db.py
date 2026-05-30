@@ -150,8 +150,54 @@ def get_all_settings() -> dict:
     conn.close()
     return {row["key"]: row["value"] for row in rows}
 
-def normalize_title(title: str) -> str:
+def clean_tv_title(title: str) -> str:
+    """Strips season descriptors, years, or format suffixes from TV show titles."""
+    title = title.strip()
+    # 1. Remove "Season X" patterns: e.g. ": Season 1", " - Season 2", " (Season 3)"
+    # Also handles words like "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine", "Ten"
+    # Case-insensitive
+    pattern = r'\s*[:\-\(]?\s*season\s*(\d+|one|two|three|four|five|six|seven|eight|nine|ten)\s*\)?'
+    title = re.sub(pattern, '', title, flags=re.IGNORECASE)
+    
+    # 2. Remove other common TV series qualifiers: " Series 1", " The Complete Series", " - Series", " (Series)"
+    pattern_series = r'\s*[:\-\(]?\s*(the\s+)?complete\s+series\s*\)?'
+    title = re.sub(pattern_series, '', title, flags=re.IGNORECASE)
+    
+    pattern_series_num = r'\s*[:\-\(]?\s*series\s*(\d+|one|two|three|four|five|six|seven|eight|nine|ten)\s*\)?'
+    title = re.sub(pattern_series_num, '', title, flags=re.IGNORECASE)
+    
+    # 3. Clean any trailing punctuation or whitespace
+    title = re.sub(r'[\s:\-\(\),]+$', '', title).strip()
+    return title
+
+def clean_movie_title(title: str) -> str:
+    """Strips common release format suffixes, brackets, or parenthetical packaging descriptors."""
+    title = title.strip()
+    
+    # 1. Strip common formats inside brackets or parentheses at the end:
+    # E.g. " [Digital]", " (Digital)", " [4K UHD]", " (4K Ultra HD)", " (Blu-ray + DVD)"
+    pattern_brackets = r'\s*[\[\(][^\]\)]*(digital|4k|uhd|ultra\s+hd|blu-ray|bluray|dvd|steelbook|hd|sd|rip|edition|cut|screen|combo|pack|disc|special)[^\]\)]*[\]\)]'
+    title = re.sub(pattern_brackets, '', title, flags=re.IGNORECASE)
+    
+    # 2. Strip common raw suffixes that are not inside brackets/parentheses:
+    suffixes = [" DVD", " Blu-ray", " BluRay", " 4K", " 3D", " Steelbook", " Digital", " 4K Ultra HD", " 4K UHD", " UHD"]
+    for suffix in suffixes:
+        if title.lower().endswith(suffix.lower()):
+            title = title[:-len(suffix)].strip()
+            
+    # 3. Remove year suffixes like (2024) or [2024] at the end
+    title = re.sub(r'\s*[\[\(\s]\d{4}[\]\)]?$', '', title)
+            
+    # 4. Clean any trailing punctuation or whitespace
+    title = re.sub(r'[\s:\-\(\),\[\]]+$', '', title).strip()
+    return title
+
+def normalize_title(title: str, is_tv: bool = False) -> str:
     """Normalizes title for comparison (same as scraper.py)."""
+    if is_tv:
+        title = clean_tv_title(title)
+    else:
+        title = clean_movie_title(title)
     return re.sub(r'[^a-z0-9]', '', title.lower())
 
 def get_cached_item(type_: str, title: str, year: int, imdb_id: str = None, conn = None) -> dict:
@@ -189,9 +235,10 @@ def get_cached_item(type_: str, title: str, year: int, imdb_id: str = None, conn
     if local_conn:
         conn.close()
         
-    norm_title = normalize_title(title)
+    is_tv = (type_ == "tv")
+    norm_title = normalize_title(title, is_tv=is_tv)
     for row in rows:
-        if normalize_title(row["title"]) == norm_title:
+        if normalize_title(row["title"], is_tv=is_tv) == norm_title:
             return dict(row)
             
     return None

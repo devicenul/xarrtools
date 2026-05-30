@@ -150,7 +150,12 @@ def test_settings_get_set(temp_db):
     assert all_settings["test_key"] == "test_val"
 
 def test_normalize_title():
-    assert core.db.normalize_title("A.B. C! & D-E 2026") == "abcde2026"
+    assert core.db.normalize_title("A.B. C! & D-E 2026") == "abcde"
+    assert core.db.normalize_title("Rivals: Season 1", is_tv=True) == "rivals"
+    assert core.db.normalize_title("Rivals: Season One", is_tv=True) == "rivals"
+    assert core.db.normalize_title("Slow Horses - Season 4", is_tv=True) == "slowhorses"
+    assert core.db.normalize_title("Only Murders in the Building (Season 3)", is_tv=True) == "onlymurdersinthebuilding"
+    assert core.db.clean_tv_title("The White Lotus: Season 3") == "The White Lotus"
 
 def test_cache_crud(temp_db):
     # Pre-seed settings

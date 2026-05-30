@@ -41,6 +41,10 @@ def test_clean_movie_title():
     assert clean_movie_title("Gladiator II 4K") == "Gladiator II"
     assert clean_movie_title("Gladiator II 3D") == "Gladiator II"
     assert clean_movie_title("Gladiator II Steelbook") == "Gladiator II"
+    assert clean_movie_title("Gladiator II [Digital]") == "Gladiator II"
+    assert clean_movie_title("Gladiator II (4K Ultra HD)") == "Gladiator II"
+    assert clean_movie_title("Gladiator II (Blu-ray + DVD)") == "Gladiator II"
+    assert clean_movie_title("The Movie (2024)") == "The Movie"
     assert clean_movie_title("Gladiator II") == "Gladiator II"
 
 def test_is_tv_series():
@@ -51,6 +55,8 @@ def test_is_tv_series():
 
 def test_normalize_title():
     assert normalize_title("The-Movie, Part 2!") == "themoviepart2"
+    assert normalize_title("Gladiator II [Digital]", is_tv=False) == "gladiatorii"
+    assert normalize_title("Gladiator II (Blu-ray + DVD)", is_tv=False) == "gladiatorii"
 
 def test_scrape_new_releases_success():
     mock_html = """
@@ -134,7 +140,7 @@ def test_scrape_new_releases_success():
         assert results[4]["title"] == "Unknown"
         assert results[4]["description"] == "No plot summary available."
         
-        assert results[5]["title"] == "Keyword Show season two"
+        assert results[5]["title"] == "Keyword Show"
         assert results[5]["is_returning"] is True
         
         assert results[6]["title"] == "No Container"

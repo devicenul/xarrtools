@@ -200,7 +200,7 @@ def discover_releases():
                     imdb = str(movie["imdbId"]).strip().lower()
                     if imdb:
                         radarr_imdb_ids.add(imdb)
-                title_norm = normalize_title(movie.get("title", ""))
+                title_norm = normalize_title(movie.get("title", ""), is_tv=False)
                 if title_norm:
                     if title_norm not in radarr_titles:
                         radarr_titles[title_norm] = []
@@ -219,7 +219,7 @@ def discover_releases():
                     imdb = str(show["imdbId"]).strip().lower()
                     if imdb:
                         sonarr_imdb_ids.add(imdb)
-                title_norm = normalize_title(show.get("title", ""))
+                title_norm = normalize_title(show.get("title", ""), is_tv=True)
                 if title_norm:
                     if title_norm not in sonarr_titles:
                         sonarr_titles[title_norm] = []
@@ -249,7 +249,7 @@ def discover_releases():
                 has_imdb_match = (clean_imdb and clean_imdb in sonarr_imdb_ids)
                 
                 has_title_match = False
-                title_norm = normalize_title(row["title"])
+                title_norm = normalize_title(row["title"], is_tv=True)
                 if title_norm in sonarr_titles:
                     if ignore_year:
                         has_title_match = True
@@ -298,7 +298,7 @@ def discover_releases():
                 has_imdb_match = (clean_imdb and clean_imdb in radarr_imdb_ids)
                 
                 has_title_match = False
-                title_norm = normalize_title(row["title"])
+                title_norm = normalize_title(row["title"], is_tv=False)
                 if title_norm in radarr_titles:
                     if ignore_year:
                         has_title_match = True
@@ -386,7 +386,7 @@ def discover_releases():
                         has_imdb_match = (clean_imdb and clean_imdb in sonarr_imdb_ids)
                         
                         has_title_match = False
-                        title_norm = normalize_title(cached["title"])
+                        title_norm = normalize_title(cached["title"], is_tv=True)
                         if title_norm in sonarr_titles:
                             if ignore_year:
                                 has_title_match = True
@@ -436,7 +436,7 @@ def discover_releases():
                         has_imdb_match = (clean_imdb and clean_imdb in sonarr_imdb_ids)
                         
                         has_title_match = False
-                        title_norm = normalize_title(data["title"])
+                        title_norm = normalize_title(data["title"], is_tv=True)
                         if title_norm in sonarr_titles:
                             if ignore_year:
                                 has_title_match = True
@@ -508,7 +508,7 @@ def discover_releases():
                         has_imdb_match = (clean_imdb and clean_imdb in radarr_imdb_ids)
                         
                         has_title_match = False
-                        title_norm = normalize_title(cached["title"])
+                        title_norm = normalize_title(cached["title"], is_tv=False)
                         if title_norm in radarr_titles:
                             if ignore_year:
                                 has_title_match = True
@@ -559,7 +559,7 @@ def discover_releases():
                         has_imdb_match = (clean_imdb and clean_imdb in radarr_imdb_ids)
                         
                         has_title_match = False
-                        title_norm = normalize_title(data["title"])
+                        title_norm = normalize_title(data["title"], is_tv=False)
                         if title_norm in radarr_titles:
                             if ignore_year:
                                 has_title_match = True
@@ -651,11 +651,11 @@ def cache_refresh_item():
                     
                     # Automatch title fallback
                     has_title_match = False
-                    title_norm = normalize_title(title_val)
+                    title_norm = normalize_title(title_val, is_tv=True)
                     ignore_year = (get_setting("default_match_ignore_year", "1") == "1")
                     sonarr_titles_local = {}
                     for show in series:
-                        t_norm = normalize_title(show.get("title", ""))
+                        t_norm = normalize_title(show.get("title", ""), is_tv=True)
                         if t_norm:
                             if t_norm not in sonarr_titles_local:
                                 sonarr_titles_local[t_norm] = []
@@ -703,11 +703,11 @@ def cache_refresh_item():
                     
                     # Automatch title fallback
                     has_title_match = False
-                    title_norm = normalize_title(title_val)
+                    title_norm = normalize_title(title_val, is_tv=False)
                     ignore_year = (get_setting("default_match_ignore_year", "1") == "1")
                     radarr_titles_local = {}
                     for movie in movies:
-                        t_norm = normalize_title(movie.get("title", ""))
+                        t_norm = normalize_title(movie.get("title", ""), is_tv=False)
                         if t_norm:
                             if t_norm not in radarr_titles_local:
                                 radarr_titles_local[t_norm] = []
