@@ -6,19 +6,6 @@ This document tracks planned future functionality, architectural changes, and us
 
 ## Planned Enhancements
 
-### 1. Cross-Platform Launcher Scripts and Compilation (Windows, macOS, Linux)
-- **Goal**: Enable users to run the web server and CLI directly on Windows, macOS, and Linux, either via automated launch scripts (`run.bat` / `run.sh` handling virtual environment setups) or by compile bundling.
-- **Implementation Strategy**:
-  - Create automated bash launcher setup scripts (`run.sh`) mirroring `run.bat` to handle virtual environments and dependencies on Unix-based systems.
-  - Configure `PyInstaller` to bundle the workspace on each respective operating system:
-    ```bash
-    pyinstaller --onefile --add-data "web/templates:web/templates" main.py  # macOS/Linux
-    pyinstaller --onefile --add-data "web/templates;web/templates" main.py  # Windows
-    ```
-  - Modify file path references (e.g., database path, templates folder) to check for `sys._MEIPASS` when running compiled.
-  - Incorporate the compiled binary output workflow into automated build pipeline scripts (e.g., `build.bat`, `build.sh`).
-- **Code files involved**: [main.py](file:///d:/Workspaces/Projects/xarrtools/main.py), [web/server.py](file:///d:/Workspaces/Projects/xarrtools/web/server.py), [core/db.py](file:///d:/Workspaces/Projects/xarrtools/core/db.py), [run.sh](file:///d:/Workspaces/Projects/xarrtools/run.sh) [NEW].
-
 ### 2. Dockerization for NAS/Server Hosting
 - **Goal**: Allow running the application inside a lightweight container on NAS systems (Synology, Unraid, QNAP) or homelab servers.
 - **Implementation Strategy**:
@@ -78,6 +65,9 @@ This document tracks planned future functionality, architectural changes, and us
 ---
 
 ## Completed Features
+
+### ✓ Cross-Platform Launcher Scripts and Compilation (Windows, macOS, Linux)
+Automated launcher scripts (`run.bat` / `run.sh`) handle virtual environment setup and dependency installation on Windows, macOS, and Linux. PyInstaller compilation bundles the application into standalone single-file executables via `build.bat` and `build.sh`, with `sys._MEIPASS` path resolution for compiled asset access.
 
 ### ✓ Comprehensive Unit and Coverage Testing
 Designed and implemented a complete testing framework using `pytest` and `pytest-cov`, reaching **100% statement coverage** across all modules including `core` library logic, the Flask `web` backend, and the interactive terminal `cli`. Utilizes mock integrations for external REST clients (Sonarr, Radarr, TMDB, TVMaze) and isolates execution to a temporary SQLite test database to ensure completely clean, isolated, and deterministic test runs.
