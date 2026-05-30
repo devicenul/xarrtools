@@ -7,10 +7,10 @@ from rich.panel import Panel
 from rich.status import Status
 from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TaskProgressColumn
 
-from xarrtools.config import config
-from xarrtools.client import RadarrClient, SonarrClient, ArrAPIError
-from xarrtools.scraper import get_discoveries
-from xarrtools.enricher import enrich_tv_show, enrich_movie
+from core.config import config
+from core.client import RadarrClient, SonarrClient, ArrAPIError
+from core.scraper import get_discoveries
+from core.enricher import enrich_tv_show, enrich_movie
 
 console = Console()
 

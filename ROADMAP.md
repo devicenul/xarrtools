@@ -12,12 +12,12 @@ This document tracks planned future functionality, architectural changes, and us
   - Create automated bash launcher setup scripts (`run.sh`) mirroring `run.bat` to handle virtual environments and dependencies on Unix-based systems.
   - Configure `PyInstaller` to bundle the workspace on each respective operating system:
     ```bash
-    pyinstaller --onefile --add-data "xarrtools/templates:xarrtools/templates" main.py  # macOS/Linux
-    pyinstaller --onefile --add-data "xarrtools/templates;xarrtools/templates" main.py  # Windows
+    pyinstaller --onefile --add-data "web/templates:web/templates" main.py  # macOS/Linux
+    pyinstaller --onefile --add-data "web/templates;web/templates" main.py  # Windows
     ```
   - Modify file path references (e.g., database path, templates folder) to check for `sys._MEIPASS` when running compiled.
   - Incorporate the compiled binary output workflow into automated build pipeline scripts (e.g., `build.bat`, `build.sh`).
-- **Code files involved**: [main.py](file:///d:/Workspaces/Projects/xarrtools/main.py), [xarrtools/server.py](file:///d:/Workspaces/Projects/xarrtools/xarrtools/server.py), [xarrtools/db.py](file:///d:/Workspaces/Projects/xarrtools/xarrtools/db.py), [run.sh](file:///d:/Workspaces/Projects/xarrtools/run.sh) [NEW].
+- **Code files involved**: [main.py](file:///d:/Workspaces/Projects/xarrtools/main.py), [web/server.py](file:///d:/Workspaces/Projects/xarrtools/web/server.py), [core/db.py](file:///d:/Workspaces/Projects/xarrtools/core/db.py), [run.sh](file:///d:/Workspaces/Projects/xarrtools/run.sh) [NEW].
 
 ### 2. Dockerization for NAS/Server Hosting
 - **Goal**: Allow running the application inside a lightweight container on NAS systems (Synology, Unraid, QNAP) or homelab servers.
@@ -26,7 +26,7 @@ This document tracks planned future functionality, architectural changes, and us
   - Define `/config` as a persistent volume mapping area to hold `xarrtools.db` and optional `.env` file overrides.
   - Expose port `5000` to link the internal Flask process to host requests.
   - Create a `docker-compose.yml` template to easily stand up the tool alongside Radarr and Sonarr containers.
-- **Code files involved**: [Dockerfile](file:///d:/Workspaces/Projects/xarrtools/Dockerfile), [docker-compose.yml](file:///d:/Workspaces/Projects/xarrtools/docker-compose.yml), [xarrtools/db.py](file:///d:/Workspaces/Projects/xarrtools/xarrtools/db.py) (relocate database if running in Docker to `/config/xarrtools.db`).
+- **Code files involved**: [Dockerfile](file:///d:/Workspaces/Projects/xarrtools/Dockerfile), [docker-compose.yml](file:///d:/Workspaces/Projects/xarrtools/docker-compose.yml), [core/db.py](file:///d:/Workspaces/Projects/xarrtools/core/db.py) (relocate database if running in Docker to `/config/xarrtools.db`).
 
 ### 3. Background Scheduled Refreshes
 - **Goal**: Automatically scan Metacritic and DVD releases on a daily schedule, ensuring cache records stay updated without manual user trigger clicks.
@@ -35,45 +35,42 @@ This document tracks planned future functionality, architectural changes, and us
   - Configure scan timings (e.g., run every 24 hours).
   - Scrape calendars, enrich results, and store entries in the SQLite database cache.
   - Log scan statistics and broadcast a notification update payload to the UI sidebar (using simple long-polling or WebSockets).
-- **Code files involved**: [xarrtools/server.py](file:///d:/Workspaces/Projects/xarrtools/xarrtools/server.py), [xarrtools/templates/app.js](file:///d:/Workspaces/Projects/xarrtools/xarrtools/templates/app.js).
+- **Code files involved**: [web/server.py](file:///d:/Workspaces/Projects/xarrtools/web/server.py), [web/templates/app.js](file:///d:/Workspaces/Projects/xarrtools/web/templates/app.js)
 
-### 4. Clean up Directory Structure
-- **Goal**: Clean up project assets, configuration locations, and temporary folders to prepare the codebase for formal Python packaging and distributing.
+### 4. Unit Tests
+- **Goal**: Create comprehensive unit tests for scrapers, API endpoints, config settings, and enrichment processes.
 - **Implementation Strategy**:
-  - Move template assets to standard location hierarchies, organize dev scratch scripts, and ensure proper packaging standards.
-
-### 5. Unit Tests
-- **Goal**: Implement a robust suite of unit and integration tests to ensure logic stability and prevent regressions during updates.
-- **Implementation Strategy**:
-  - Set up a test framework (using `unittest` or `pytest`).
-  - Mock Radarr/Sonarr client API calls, SQLite DB connection tables, and HTML scraper inputs to validate data parsing.
+  - Add pytest suite testing endpoints with MagicMock connections.
 - **Code files involved**: [tests/](file:///d:/Workspaces/Projects/xarrtools/tests) [NEW].
 
-### 6. User-Defined Media Feeds
+### 5. User-Defined Media Feeds
 - **Goal**: Support custom media discovery calendars/feeds beyond the pre-configured Metacritic and DVD calendar schedules.
 - **Implementation Strategy**:
   - Allow users to enter custom feed URLs (RSS feeds, JSON feeds, or scrape-able HTML) in Settings.
   - Support setting a basic schema mapping or custom parsing regex pattern to ingest titles, dates, descriptions, and IDs.
-- **Code files involved**: [xarrtools/db.py](file:///d:/Workspaces/Projects/xarrtools/xarrtools/db.py), [xarrtools/server.py](file:///d:/Workspaces/Projects/xarrtools/xarrtools/server.py), [xarrtools/templates/app.js](file:///d:/Workspaces/Projects/xarrtools/xarrtools/templates/app.js).
+- **Code files involved**: [core/db.py](file:///d:/Workspaces/Projects/xarrtools/core/db.py), [web/server.py](file:///d:/Workspaces/Projects/xarrtools/web/server.py), [web/templates/app.js](file:///d:/Workspaces/Projects/xarrtools/web/templates/app.js).
 
-### 7. Code and Agentic Review
+### 6. Code and Agentic Review
 - **Goal**: Complete a thorough security and performance review of database locks, scraper concurrency, and exception mapping layers.
 
-### 8. GitHub Builds and Releases Setup
+### 7. GitHub Builds and Releases Setup
 - **Goal**: Automate PyInstaller compilation and packaging workflows on GitHub tag triggers, distributing binary builds directly via GitHub Releases.
 
-### 9. GPL v3 License Integration
+### 8. GPL v3 License Integration
 - **Goal**: Commit a standard GPL v3.0 license file to the repository.
 - **Code files involved**: [LICENSE](file:///d:/Workspaces/Projects/xarrtools/LICENSE) [NEW].
 
-### 10. Standalone Desktop App UI (Captive Browser Window)
+### 9. Standalone Desktop App UI (Captive Browser Window)
 - **Goal**: Enable running the application as a standalone desktop program using a captive web-view wrapper (like `pywebview` or `PyQtWebEngine`) to run the server in the background and display the UI inside a dedicated application frame.
-- **Code files involved**: [main.py](file:///d:/Workspaces/Projects/xarrtools/main.py), [xarrtools/gui.py](file:///d:/Workspaces/Projects/xarrtools/xarrtools/gui.py) [NEW].
+- **Code files involved**: [main.py](file:///d:/Workspaces/Projects/xarrtools/main.py), [gui/gui.py](file:///d:/Workspaces/Projects/xarrtools/gui/gui.py) [NEW].
 
 
 ---
 
 ## Completed Features
+
+### ✓ Reorganized Codebase & Sensible Package Layout
+Removed the redundant nested `xarrtools/xarrtools/` packaging. Reorganized the codebase into clean top-level directories: `core` (shared domain logic and database layers), `web` (Flask web server and templates), and `cli` (interactive terminal console manager). All imports have been restructured and tested successfully.
 
 ### ✓ Persistent & Strict In-Library Detection
 Added a persistent `is_in_library` column inside the SQLite database cache, enabling cached status retention across reloads. Implemented strict ID-based matching (TVDB/TMDB ID or IMDb ID) against live Radarr and Sonarr libraries during scans, metadata updates, and additions. Supports unconfigured Sandbox/Demo mode additions by simulating and persisting in-library states directly within the SQLite database cache.

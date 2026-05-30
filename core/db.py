@@ -84,7 +84,7 @@ def init_db():
     cursor.execute("SELECT COUNT(*) FROM settings")
     if cursor.fetchone()[0] == 0:
         # Import config dynamically to bypass circular dependency
-        from xarrtools.config import config
+        from core.config import config
         env_settings = {
             "radarr_url": config.radarr_url,
             "radarr_api_key": config.radarr_api_key,

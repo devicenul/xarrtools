@@ -4,8 +4,8 @@ from bs4 import BeautifulSoup
 import re
 from typing import Dict, Any, Optional
 
-from xarrtools.client import RadarrClient, SonarrClient, ArrAPIError
-from xarrtools.config import config
+from core.client import RadarrClient, SonarrClient, ArrAPIError
+from core.config import config
 
 def clean_html(text: str) -> str:
     """Removes HTML tags from a text string."""

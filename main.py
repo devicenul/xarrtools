@@ -1,8 +1,8 @@
 import sys
 import webbrowser
 from threading import Timer
-from xarrtools.cli import run_cli
-from xarrtools.server import start_server
+from cli import run_cli
+from web import start_server
 
 def open_browser():
     """Timer callback to automatically open the default web browser."""

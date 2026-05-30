@@ -10,7 +10,7 @@ class Config:
     def _get_setting(self, key: str, default: str = "") -> str:
         val = ""
         try:
-            from xarrtools.db import get_setting
+            from core.db import get_setting
             val = get_setting(key, "")
         except Exception:
             pass

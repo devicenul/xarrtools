@@ -6,11 +6,11 @@ from pathlib import Path
 from flask import Flask, jsonify, request, render_template
 from datetime import datetime, timedelta
 
-from xarrtools.config import config
-from xarrtools.client import RadarrClient, SonarrClient, ArrAPIError
-from xarrtools.scraper import get_discoveries
-from xarrtools.enricher import enrich_tv_show, enrich_movie
-from xarrtools.db import (
+from core.config import config
+from core.client import RadarrClient, SonarrClient, ArrAPIError
+from core.scraper import get_discoveries
+from core.enricher import enrich_tv_show, enrich_movie
+from core.db import (
     init_db,
     clean_expired_cache,
     get_cached_item,
@@ -869,8 +869,8 @@ def background_poster_healer():
         
     while True:
         try:
-            from xarrtools.db import get_db_connection, add_cached_item
-            from xarrtools.enricher import enrich_tv_show, enrich_movie
+            from core.db import get_db_connection, add_cached_item
+            from core.enricher import enrich_tv_show, enrich_movie
             
             conn = get_db_connection()
             cursor = conn.cursor()

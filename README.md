@@ -41,22 +41,27 @@ xarrtools/
 ├── ROADMAP.md                  # Project roadmap and completed features log
 ├── .gitignore                  # Git untracked pattern definitions
 │
-└── xarrtools/                  # Primary Python Package
+├── core/                       # Shared Domain Logic & Database layer
+│   ├── __init__.py
+│   ├── client.py               # Radarr & Sonarr REST API wrappers
+│   ├── config.py               # Dynamic settings accessor (DB with .env fallback)
+│   ├── db.py                   # SQLite Cache & Settings database manager
+│   ├── enricher.py             # Metadata crawler (TVDB, TMDB, IMDb matching)
+│   └── scraper.py              # Metacritic / Release calendar HTML scrapers
+│
+├── web/                        # Web Backend (Flask) & Frontend Assets
+│   ├── __init__.py
+│   ├── server.py               # Flask web server and API controllers
+│   └── templates/              # Web Frontend HTML, CSS, JS
+│       ├── index.html          # Dashboard skeleton structure and overlays
+│       ├── style.css           # Premium glassmorphism styles and transitions
+│       ├── app.js              # Client state, filter events, and modal controller
+│       ├── logo_light.png      # Light theme cropped logo
+│       └── favicon_light.png   # Light theme cropped favicon
+│
+└── cli/                        # Command Line Interface (CLI) application
     ├── __init__.py
-    ├── cli.py                  # Rich Console terminal implementation
-    ├── client.py               # Radarr & Sonarr REST API wrappers
-    ├── config.py               # Dynamic settings accessor (DB with .env fallback)
-    ├── db.py                   # SQLite Cache & Settings database manager
-    ├── enricher.py             # Metadata crawler (TVDB, TMDB, IMDb matching)
-    ├── scraper.py              # Metacritic / Release calendar HTML scrapers
-    ├── server.py               # Flask web server and API controllers
-    │
-    └── templates/              # Web Frontend Assets
-        ├── index.html          # Dashboard skeleton structure and overlays
-        ├── style.css           # Premium glassmorphism styles and transitions
-        ├── app.js              # Client state, filter events, and modal controller
-        ├── logo_light.png      # Light theme cropped logo
-        └── favicon_light.png   # Light theme cropped favicon
+    └── cli.py                  # Rich Console terminal implementation
 ```
 
 ---
@@ -66,25 +71,25 @@ xarrtools/
 ### [main.py](file:///d:/Workspaces/Projects/xarrtools/main.py)
 Determines whether to start the server or launch CLI mode based on input flags. By default, it schedules a timer to open your default browser to `http://localhost:5000` and starts the Flask server.
 
-### [xarrtools/db.py](file:///d:/Workspaces/Projects/xarrtools/xarrtools/db.py)
+### [core/db.py](file:///d:/Workspaces/Projects/xarrtools/core/db.py)
 Performs database initialization (`init_db`) creating the `settings` and `cache` tables. 
 - If the settings table is empty, it migrates variables from `.env` to seed the database.
 - Implements settings getter/setter, cache search, and archiving states.
 - Automatically cleans expired cache entries older than 365 days on launch (`clean_expired_cache`).
 
-### [xarrtools/config.py](file:///d:/Workspaces/Projects/xarrtools/xarrtools/config.py)
+### [core/config.py](file:///d:/Workspaces/Projects/xarrtools/core/config.py)
 Provides a global configuration manager. Properties like `radarr_url` and `sonarr_api_key` retrieve settings dynamically from the SQLite `settings` table, falling back to local environment variables if settings are missing or uninitialized.
 
-### [xarrtools/client.py](file:///d:/Workspaces/Projects/xarrtools/xarrtools/client.py)
+### [core/client.py](file:///d:/Workspaces/Projects/xarrtools/core/client.py)
 Implements robust wrappers (`RadarrClient` and `SonarrClient`) to perform CRUD actions against Radarr and Sonarr instances. Employs `get_library()` to obtain whole libraries in single queries, accelerating status resolution. `RadarrClient.add_movie` supports collection tracking using the `"monitor": "movieAndCollection"` flag.
 
-### [xarrtools/scraper.py](file:///d:/Workspaces/Projects/xarrtools/xarrtools/scraper.py)
+### [core/scraper.py](file:///d:/Workspaces/Projects/xarrtools/core/scraper.py)
 Scrapes TV premiers from Metacritic's calendars and movie schedules from DVD Release calendars. Normalizes scraped titles for matching.
 
-### [xarrtools/enricher.py](file:///d:/Workspaces/Projects/xarrtools/xarrtools/enricher.py)
+### [core/enricher.py](file:///d:/Workspaces/Projects/xarrtools/core/enricher.py)
 Uses public metadata sources (TMDB/TVDB/Wikipedia/YouTube) to find best-fit IDs, network/studio info, cast lists, genre taggings, ratings (IMDb, Metacritic, Rotten Tomatoes), and trailer URLs.
 
-### [xarrtools/server.py](file:///d:/Workspaces/Projects/xarrtools/xarrtools/server.py)
+### [web/server.py](file:///d:/Workspaces/Projects/xarrtools/web/server.py)
 The web server module. Exposes:
 - `GET /api/config`: Resolves target root folders and profiles from Radarr/Sonarr.
 - `GET/POST /api/settings`: Manages DB configurations.
@@ -96,6 +101,9 @@ The web server module. Exposes:
 - `POST /api/cache/clear`: Manually wipes all cache records.
 - `GET /api/lookup`: Searches indexers for a title.
 - `POST /api/add`: Deploys media items (optionally collections) to Radarr or Sonarr.
+
+### [cli/cli.py](file:///d:/Workspaces/Projects/xarrtools/cli/cli.py)
+Interactive command line interface built using the `rich` library. Supports searching, listing configuration status, discovering new releases, and bulk adding items to Radarr or Sonarr directly from the terminal.
 
 ---
 
