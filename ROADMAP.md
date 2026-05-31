@@ -104,6 +104,13 @@ This document tracks planned future functionality, architectural changes, and us
   - Render these fields on UI cards under a metadata block in the split-view layout.
 - **Code files involved**: [core/db.py](file:///Users/rrjefferson/Workspaces/Projects/xarrtools/core/db.py), [core/enricher.py](file:///Users/rrjefferson/Workspaces/Projects/xarrtools/core/enricher.py), [web/templates/index.html](file:///Users/rrjefferson/Workspaces/Projects/xarrtools/web/templates/index.html), [web/templates/app.js](file:///Users/rrjefferson/Workspaces/Projects/xarrtools/web/templates/app.js).
 
+### 16. Embed App Icons in Compiled Binaries
+- **Goal**: Add standard application icon assets (`.ico` for Windows, `.icns` for macOS) to PyInstaller compilation pipelines to display visual icons for the executable files.
+- **Implementation Strategy**:
+  - Convert existing logo graphics to target formats (`.ico` and `.icns`).
+  - Add the `--icon` argument to `build.sh` and `build.bat` PyInstaller execution profiles, pointing to the converted icon resources.
+- **Code files involved**: [build.sh](file:///Users/rrjefferson/Workspaces/Projects/xarrtools/build.sh), [build.bat](file:///Users/rrjefferson/Workspaces/Projects/xarrtools/build.bat).
+
 
 ---
 
