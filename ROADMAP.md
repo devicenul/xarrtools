@@ -89,6 +89,21 @@ This document tracks planned future functionality, architectural changes, and us
   - Default the initial view state to sort ascending by release date.
 - **Code files involved**: [web/templates/index.html](file:///Users/rrjefferson/Workspaces/Projects/xarrtools/web/templates/index.html), [web/templates/app.js](file:///Users/rrjefferson/Workspaces/Projects/xarrtools/web/templates/app.js), [web/server.py](file:///Users/rrjefferson/Workspaces/Projects/xarrtools/web/server.py).
 
+### 14. Protocol Fallback for Server Configurations
+- **Goal**: Handle Radarr/Sonarr server addresses configured without explicit `http://` or `https://` schemes by automatically checking connectivity using `https://` first, and falling back to `http://`.
+- **Implementation Strategy**:
+  - Update server validation and client wrappers (`RadarrClient` / `SonarrClient`) to parse user-entered URLs.
+  - If no scheme is present, attempt requests with `https://` prefix, catching connection errors and retrying with `http://` before raising configuration validation errors.
+- **Code files involved**: [core/client.py](file:///Users/rrjefferson/Workspaces/Projects/xarrtools/core/client.py), [web/server.py](file:///Users/rrjefferson/Workspaces/Projects/xarrtools/web/server.py).
+
+### 15. Director and Producer Metadata in Movie Cards
+- **Goal**: Scrape, enrich, and display the director and producer names on movie discovery cards when the information is available.
+- **Implementation Strategy**:
+  - Extend the metadata scraper to query TMDB/IMDb cast/crew APIs for directors and producers.
+  - Add `director` and `producer` text columns to the cache database table.
+  - Render these fields on UI cards under a metadata block in the split-view layout.
+- **Code files involved**: [core/db.py](file:///Users/rrjefferson/Workspaces/Projects/xarrtools/core/db.py), [core/enricher.py](file:///Users/rrjefferson/Workspaces/Projects/xarrtools/core/enricher.py), [web/templates/index.html](file:///Users/rrjefferson/Workspaces/Projects/xarrtools/web/templates/index.html), [web/templates/app.js](file:///Users/rrjefferson/Workspaces/Projects/xarrtools/web/templates/app.js).
+
 
 ---
 
