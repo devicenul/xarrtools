@@ -59,6 +59,13 @@ This document tracks planned future functionality, architectural changes, and us
   - **Python Package (PyPI)**: Distribute the app as a standard package on PyPI, enabling installation via `pipx install xarrtools` to bypass OS code-signing limitations completely.
 - **Code files involved**: [build.sh](file:///Users/rrjefferson/Workspaces/Projects/xarrtools/build.sh), [build.bat](file:///Users/rrjefferson/Workspaces/Projects/xarrtools/build.bat).
 
+### 10. Filter Scanned Items with Missing Crucial Metadata
+- **Goal**: Ignore found items that do not have a title, studio/network, cast, or plot available when scanning, keeping the discovery list clean of incomplete entries.
+- **Implementation Strategy**:
+  - Update scanning/enrichment loops to inspect the resolved metadata fields.
+  - Exclude items that fail to resolve essential fields (title, studio, cast, or plot).
+- **Code files involved**: [core/scraper.py](file:///Users/rrjefferson/Workspaces/Projects/xarrtools/core/scraper.py), [core/enricher.py](file:///Users/rrjefferson/Workspaces/Projects/xarrtools/core/enricher.py).
+
 
 ---
 
