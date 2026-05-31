@@ -66,6 +66,21 @@ This document tracks planned future functionality, architectural changes, and us
   - Exclude items that fail to resolve essential fields (title, studio, cast, or plot).
 - **Code files involved**: [core/scraper.py](file:///Users/rrjefferson/Workspaces/Projects/xarrtools/core/scraper.py), [core/enricher.py](file:///Users/rrjefferson/Workspaces/Projects/xarrtools/core/enricher.py).
 
+### 11. Server-Specific Default Quality Profiles
+- **Goal**: Allow users to select a default quality profile for Radarr and Sonarr individually inside the Settings panel.
+- **Implementation Strategy**:
+  - Add database settings for default Radarr and Sonarr quality profile IDs.
+  - Render dropdown selectors populated from available profiles in the Settings UI under Server configs.
+  - Automatically pre-select these configured profiles when opening the media addition confirmation modals.
+- **Code files involved**: [core/db.py](file:///Users/rrjefferson/Workspaces/Projects/xarrtools/core/db.py), [web/server.py](file:///Users/rrjefferson/Workspaces/Projects/xarrtools/web/server.py), [web/templates/app.js](file:///Users/rrjefferson/Workspaces/Projects/xarrtools/web/templates/app.js), [web/templates/index.html](file:///Users/rrjefferson/Workspaces/Projects/xarrtools/web/templates/index.html).
+
+### 12. "Add Only" Option in Media Addition Modals
+- **Goal**: Provide a separate "Add" button alongside the existing "Add and Search" button when queueing movie/show additions.
+- **Implementation Strategy**:
+  - Add a secondary submission button to the addition confirmation modal.
+  - Configure the backend payload to omit the instant indexer search trigger command (`addSearch = false`) when this secondary button is clicked.
+- **Code files involved**: [web/templates/index.html](file:///Users/rrjefferson/Workspaces/Projects/xarrtools/web/templates/index.html), [web/templates/app.js](file:///Users/rrjefferson/Workspaces/Projects/xarrtools/web/templates/app.js), [web/server.py](file:///Users/rrjefferson/Workspaces/Projects/xarrtools/web/server.py).
+
 
 ---
 
