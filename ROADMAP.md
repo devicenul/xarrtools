@@ -81,6 +81,14 @@ This document tracks planned future functionality, architectural changes, and us
   - Configure the backend payload to omit the instant indexer search trigger command (`addSearch = false`) when this secondary button is clicked.
 - **Code files involved**: [web/templates/index.html](file:///Users/rrjefferson/Workspaces/Projects/xarrtools/web/templates/index.html), [web/templates/app.js](file:///Users/rrjefferson/Workspaces/Projects/xarrtools/web/templates/app.js), [web/server.py](file:///Users/rrjefferson/Workspaces/Projects/xarrtools/web/server.py).
 
+### 13. Sorting Options for Scanned Media lists
+- **Goal**: Enable users to sort movies and TV shows dynamically by release/premiere date, title, or studio. The default sorting behavior should sort items by release date in ascending order.
+- **Implementation Strategy**:
+  - Add a "Sort By" dropdown control to the sidebar filter panel or settings tab.
+  - Implement client-side or backend sorting rules targeting the cache payload fields (`date_obj`, `title`, `network` / `studio`).
+  - Default the initial view state to sort ascending by release date.
+- **Code files involved**: [web/templates/index.html](file:///Users/rrjefferson/Workspaces/Projects/xarrtools/web/templates/index.html), [web/templates/app.js](file:///Users/rrjefferson/Workspaces/Projects/xarrtools/web/templates/app.js), [web/server.py](file:///Users/rrjefferson/Workspaces/Projects/xarrtools/web/server.py).
+
 
 ---
 
