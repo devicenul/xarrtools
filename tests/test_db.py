@@ -374,3 +374,7 @@ def test_db_frozen_path():
             sys.frozen = old_frozen
         importlib.reload(core.db)
         core.db.DB_PATH = old_db_path
+
+def test_db_default_profile_settings_seeds(temp_db):
+    assert core.db.get_setting("radarr_default_profile_id") == ""
+    assert core.db.get_setting("sonarr_default_profile_id") == ""

@@ -13,9 +13,17 @@ fi
 echo "Ensuring PyInstaller is installed in the virtual environment..."
 .venv/bin/pip install pyinstaller
 
+# Detect OS to set the appropriate icon format
+OS_NAME="$(uname -s)"
+if [ "$OS_NAME" = "Darwin" ]; then
+    ICON_FILE="web/templates/favicon.icns"
+else
+    ICON_FILE="web/templates/favicon.png"
+fi
+
 echo ""
 echo "Compiling xarrtools to a single executable..."
-.venv/bin/pyinstaller --onefile --name xarrtools --add-data "web/templates:web/templates" main.py
+.venv/bin/pyinstaller --onefile --name xarrtools --icon="$ICON_FILE" --add-data "web/templates:web/templates" main.py
 
 if [ $? -eq 0 ]; then
     echo ""

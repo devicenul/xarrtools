@@ -80,7 +80,9 @@ def init_db():
             rating_rt TEXT,
             is_in_library INTEGER DEFAULT 0,
             source_feed_id INTEGER REFERENCES custom_feeds(id) ON DELETE SET NULL,
-            normalized_title TEXT
+            normalized_title TEXT,
+            director TEXT,
+            producer TEXT
         )
     ''')
     
@@ -112,12 +114,22 @@ def init_db():
         "rating_rt": "TEXT",
         "is_in_library": "INTEGER DEFAULT 0",
         "source_feed_id": "INTEGER REFERENCES custom_feeds(id) ON DELETE SET NULL",
-        "normalized_title": "TEXT"
+        "normalized_title": "TEXT",
+        "director": "TEXT",
+        "producer": "TEXT"
     }
     
     for col, col_type in expected_cols.items():
         if col not in columns:
             cursor.execute(f"ALTER TABLE cache ADD COLUMN {col} {col_type}")
+
+    # Expunge legacy incomplete cached items (where title, cast, and plot are all missing/placeholder)
+    cursor.execute('''
+        DELETE FROM cache 
+        WHERE (title IS NULL OR title = '' OR title = 'Unknown')
+          AND ("cast" IS NULL OR "cast" = '' OR "cast" = 'Cast details not available.')
+          AND (description IS NULL OR description = '' OR description = 'No plot summary available.')
+    ''')
 
         
     # Populate normalized_title for legacy cached entries
@@ -149,7 +161,9 @@ def init_db():
             "default_show_returning": "0",
             "default_show_library": "0",
             "default_show_archived": "0",
-            "default_match_ignore_year": "1"
+            "default_match_ignore_year": "1",
+            "radarr_default_profile_id": "",
+            "sonarr_default_profile_id": ""
         }
         for key, val in env_settings.items():
             if val is not None:
@@ -162,7 +176,9 @@ def init_db():
         "default_show_returning": "0",
         "default_show_library": "0",
         "default_show_archived": "0",
-        "default_match_ignore_year": "1"
+        "default_match_ignore_year": "1",
+        "radarr_default_profile_id": "",
+        "sonarr_default_profile_id": ""
     }
     for key, val in default_settings.items():
         cursor.execute("SELECT COUNT(*) FROM settings WHERE key = ?", (key,))
@@ -442,7 +458,7 @@ def add_cached_item(type_: str, item: dict, conn = None):
                     tvdb_id = ?, tmdb_id = ?, genres = ?, cast = ?, network = ?, trailer = ?,
                     poster_url = ?, is_returning = ?, added_at = ?,
                     rating_imdb = ?, rating_metacritic = ?, rating_rt = ?, is_in_library = ?,
-                    source_feed_id = ?, normalized_title = ?
+                    source_feed_id = ?, normalized_title = ?, director = ?, producer = ?
                 WHERE id = ?
             ''', (
                 item.get("date_str", ""),
@@ -465,6 +481,8 @@ def add_cached_item(type_: str, item: dict, conn = None):
                 is_in_lib,
                 feed_id,
                 normalized_title,
+                item.get("director", ""),
+                item.get("producer", ""),
                 existing["id"]
             ))
         else:
@@ -472,8 +490,9 @@ def add_cached_item(type_: str, item: dict, conn = None):
                 INSERT INTO cache (
                     type, title, year, date_str, date_obj, description, href, imdb_id,
                     tvdb_id, tmdb_id, genres, cast, network, trailer, poster_url, is_returning, is_archived, added_at,
-                    rating_imdb, rating_metacritic, rating_rt, is_in_library, source_feed_id, normalized_title
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    rating_imdb, rating_metacritic, rating_rt, is_in_library, source_feed_id, normalized_title,
+                    director, producer
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ''', (
                 type_,
                 item["title"],
@@ -498,7 +517,9 @@ def add_cached_item(type_: str, item: dict, conn = None):
                 item.get("rating_rt", ""),
                 is_in_lib,
                 source_feed_id,
-                normalized_title
+                normalized_title,
+                item.get("director", ""),
+                item.get("producer", "")
             ))
             
         if close_conn:
@@ -510,7 +531,7 @@ def add_cached_item(type_: str, item: dict, conn = None):
     finally:
         if close_conn:
             conn.close()
-
+ 
 def archive_cached_item(type_: str, title: str, year: int, is_archived: bool = True, raw_item: dict = None):
     """Sets the is_archived flag on a cached discovery. Inserts a skeleton if not in cache."""
     conn = get_db_connection()
@@ -546,8 +567,9 @@ def archive_cached_item(type_: str, title: str, year: int, is_archived: bool = T
                     INSERT INTO cache (
                         type, title, year, date_str, date_obj, description, href, imdb_id,
                         tvdb_id, tmdb_id, genres, cast, network, trailer, poster_url, is_returning, is_archived, added_at,
-                        rating_imdb, rating_metacritic, rating_rt, is_in_library, normalized_title
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        rating_imdb, rating_metacritic, rating_rt, is_in_library, normalized_title,
+                        director, producer
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ''', (
                     type_, title, year,
                     raw_item.get("date_str", ""),
@@ -569,7 +591,9 @@ def archive_cached_item(type_: str, title: str, year: int, is_archived: bool = T
                     raw_item.get("rating_metacritic", ""),
                     raw_item.get("rating_rt", ""),
                     1 if raw_item.get("is_in_library") else 0,
-                    normalized_title
+                    normalized_title,
+                    raw_item.get("director", ""),
+                    raw_item.get("producer", "")
                 ))
             else:
                 cursor.execute('''

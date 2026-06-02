@@ -1966,4 +1966,69 @@ def test_custom_feed_endpoints(client):
     data = response.get_json()
     assert data["status"] == "success"
 
+def test_discover_returns_date_obj_and_add_only(client):
+    # Setup cache
+    from core.db import add_cached_item
+    tv_date = "2026-06-01"
+    item_tv = {
+        "title": "Show C", "year": 2026, "plot": "TV Desc", "cast": "TV Cast",
+        "genres": ["Drama"], "trailer": "TV Trailer", "poster_url": "http://tv/poster.jpg",
+        "tvdbId": 11, "imdbId": "tt11", "network": "Hulu", "is_in_library": False,
+        "is_archived": False, "date_str": "Jun 1, 2026", "date_obj": tv_date
+    }
+    add_cached_item("tv", item_tv)
+
+    res = client.get("/api/discover?skip_scrape=true&past_months=12&future_months=12")
+    assert res.status_code == 200
+    data = res.get_json()
+    assert len(data["tv"]) >= 1
+    assert data["tv"][0]["date_obj"] == "2026-06-01"
+
+    # Test api/add with search_now=False
+    mock_sonarr = MagicMock()
+    mock_sonarr.add_series.return_value = {"title": "Live Series", "year": 2026, "imdbId": "tt123"}
+    with patch("web.server.get_clients", return_value=(None, mock_sonarr)):
+        res_add = client.post("/api/add", json={
+            "type": "tv",
+            "raw_metadata": {"title": "Live Series", "year": 2026},
+            "folder": "/tv",
+            "profile_id": 2,
+            "search_now": False
+        })
+        assert res_add.status_code == 200
+        mock_sonarr.add_series.assert_called_once_with(
+            series_data={"title": "Live Series", "year": 2026, "is_in_library": True},
+            quality_profile_id=2,
+            root_folder_path="/tv",
+            monitored=True,
+            search_now=False,
+            language_profile_id=1
+        )
+
+def test_is_incomplete_metadata_and_suppression(client):
+    from web.server import is_incomplete_metadata
+    
+    # 1. Test helper logic
+    assert not is_incomplete_metadata({"title": "Gladiator II", "cast": "Cast details not available.", "plot": "No plot summary available."})
+    assert not is_incomplete_metadata({"title": "Unknown", "cast": "Cast details not available.", "plot": "Some cool plot"})
+    assert not is_incomplete_metadata({"title": "Unknown", "cast": "Paul Mescal", "plot": "No plot summary available."})
+    
+    assert is_incomplete_metadata({"title": "Unknown", "cast": "Cast details not available.", "plot": "No plot summary available."})
+    assert is_incomplete_metadata({"title": "", "cast": "", "description": ""})
+    assert is_incomplete_metadata({"title": "None", "cast": "None", "overview": "None"})
+
+    # 2. Test lookup endpoint suppression filtering
+    mock_radarr = MagicMock()
+    mock_radarr.lookup_movie.return_value = [
+        {"title": "Valid Movie", "overview": "Plot summary is here.", "imdbId": "tt111"},
+        {"title": "Unknown", "overview": "No plot summary available.", "imdbId": ""}
+    ]
+    with patch("web.server.get_clients", return_value=(mock_radarr, None)):
+        res = client.get("/api/lookup?type=movie&title=test")
+        assert res.status_code == 200
+        results = res.get_json()["results"]
+        assert len(results) == 1
+        assert results[0]["title"] == "Valid Movie"
+
+
 

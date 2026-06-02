@@ -17,7 +17,7 @@ echo Ensuring PyInstaller is installed in the virtual environment...
 
 echo.
 echo Compiling xarrtools to a single executable...
-.venv\Scripts\pyinstaller --onefile --name xarrtools --add-data "web/templates;web/templates" main.py
+.venv\Scripts\pyinstaller --onefile --name xarrtools --icon=web/templates/favicon.ico --add-data "web/templates;web/templates" main.py
 
 if not errorlevel 1 (
     echo.

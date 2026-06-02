@@ -46,6 +46,16 @@ def get_icon_path() -> str:
         base_path = Path(sys._MEIPASS)
     else:
         base_path = Path(__file__).resolve().parent.parent
+    
+    if sys.platform == "win32":
+        icon_path = base_path / "web" / "templates" / "favicon.ico"
+        if icon_path.exists():
+            return str(icon_path)
+    elif sys.platform == "darwin":
+        icon_path = base_path / "web" / "templates" / "favicon.icns"
+        if icon_path.exists():
+            return str(icon_path)
+            
     icon_path = base_path / "web" / "templates" / "favicon.png"
     if icon_path.exists():
         return str(icon_path)
@@ -88,9 +98,8 @@ def run_gui(debug: bool = False):
     )
 
     # 6. Block the main thread and start the operating system's native WebView loop
-    # Windows and macOS use system executable icons embedded at build time.
-    # Programmatic icon parameter is used for GTK/QT window environments (Linux).
-    if icon_path and sys.platform.startswith("linux"):
+    # Programmatic icon parameter is used for taskbar and window frames.
+    if icon_path:
         webview.start(debug=debug, icon=icon_path)
     else:
         webview.start(debug=debug)

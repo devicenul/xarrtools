@@ -98,6 +98,18 @@
                         </div>
                     </div>
                 </div>
+                
+                <div class="form-group" style="margin-top: 10px; margin-bottom: 10px;">
+                    <label for="select-sort" style="display: block; margin-bottom: 5px; font-size: 12px; color: var(--text-secondary); font-weight: 500;">Sort By</label>
+                    <select id="select-sort" style="background: rgba(0, 0, 0, 0.3); border: 1px solid var(--border-color); border-radius: 8px; padding: 8px 10px; color: var(--text-primary); font-size: 13px; width: 100%; outline: none; cursor: pointer;">
+                        <option value="date-asc">Release Date (Ascending)</option>
+                        <option value="date-desc">Release Date (Descending)</option>
+                        <option value="title-asc">Title (A-Z)</option>
+                        <option value="title-desc">Title (Z-A)</option>
+                        <option value="studio-asc">Studio/Network (A-Z)</option>
+                        <option value="studio-desc">Studio/Network (Z-A)</option>
+                    </select>
+                </div>
 
                 <div class="filter-checkbox-group">
                     <label class="checkbox-container">
@@ -244,7 +256,7 @@
                                 <span class="checkmark"></span>
                                 Monitor Release
                             </label>
-                            <label class="checkbox-container">
+                            <label class="checkbox-container" style="display: none;">
                                 <input type="checkbox" id="check-search" checked>
                                 <span class="checkmark"></span>
                                 Search Immediately
@@ -261,6 +273,7 @@
             <div class="modal-footer">
                 <button id="btn-modal-back" class="btn btn-secondary hidden">Back</button>
                 <button id="btn-modal-cancel" class="btn btn-secondary">Cancel</button>
+                <button id="btn-modal-add-only" class="btn btn-primary hidden">Add Only</button>
                 <button id="btn-modal-confirm" class="btn btn-success hidden">Add and Search</button>
             </div>
         </div>
@@ -295,6 +308,12 @@
                             <label for="input-radarr-key">Radarr API Key</label>
                             <input type="text" id="input-radarr-key" placeholder="API Key">
                         </div>
+                        <div class="form-group">
+                            <label for="input-radarr-default-profile">Default Quality Profile</label>
+                            <select id="input-radarr-default-profile" style="background:rgba(0, 0, 0, 0.3); border:1px solid var(--border-color); border-radius:8px; padding:10px 12px; color:var(--text-primary); font-size:14px; width:100%; outline:none;">
+                                <option value="">None (Select in modal)</option>
+                            </select>
+                        </div>
                         
                         <h3 style="font-family:'Outfit', sans-serif; font-size:14px; color:var(--accent-blue); text-transform:uppercase; margin-top:20px; margin-bottom:12px; border-bottom:1px solid var(--border-color); padding-bottom:4px;">Sonarr Server</h3>
                         <div class="form-group">
@@ -304,6 +323,12 @@
                         <div class="form-group">
                             <label for="input-sonarr-key">Sonarr API Key</label>
                             <input type="text" id="input-sonarr-key" placeholder="API Key">
+                        </div>
+                        <div class="form-group">
+                            <label for="input-sonarr-default-profile">Default Quality Profile</label>
+                            <select id="input-sonarr-default-profile" style="background:rgba(0, 0, 0, 0.3); border:1px solid var(--border-color); border-radius:8px; padding:10px 12px; color:var(--text-primary); font-size:14px; width:100%; outline:none;">
+                                <option value="">None (Select in modal)</option>
+                            </select>
                         </div>
                     </div>
 

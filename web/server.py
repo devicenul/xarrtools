@@ -70,6 +70,19 @@ def get_clients():
         
     return radarr_client, sonarr_client
 
+def is_incomplete_metadata(item: dict) -> bool:
+    """Checks if an item has invalid or missing values for title, cast, and plot (description) all combined."""
+    title = item.get("title")
+    is_title_missing = not title or str(title).strip() in ("", "Unknown", "None")
+    
+    cast = item.get("cast")
+    is_cast_missing = not cast or str(cast).strip() in ("", "Cast details not available.", "None")
+    
+    plot = item.get("plot") or item.get("description") or item.get("overview")
+    is_plot_missing = not plot or str(plot).strip() in ("", "No plot summary available.", "None")
+    
+    return is_title_missing and is_cast_missing and is_plot_missing
+
 @app.route("/")
 def index():
     """Serves the primary UI page."""
@@ -281,6 +294,7 @@ def discover_releases():
                 "is_archived": bool(row["is_archived"]),
                 "is_returning": bool(row["is_returning"]),
                 "date_str": row["date_str"],
+                "date_obj": row["date_obj"] or "",
                 "raw_metadata": None,
                 "rating_imdb": row.get("rating_imdb", "") or "",
                 "rating_metacritic": row.get("rating_metacritic", "") or "",
@@ -329,17 +343,20 @@ def discover_releases():
                 "is_in_library": in_library,
                 "is_archived": bool(row["is_archived"]),
                 "date_str": row["date_str"],
+                "date_obj": row["date_obj"] or "",
                 "raw_metadata": None,
                 "rating_imdb": row.get("rating_imdb", "") or "",
                 "rating_metacritic": row.get("rating_metacritic", "") or "",
-                "rating_rt": row.get("rating_rt", "") or ""
+                "rating_rt": row.get("rating_rt", "") or "",
+                "director": row.get("director", "") or "",
+                "producer": row.get("producer", "") or ""
             }
             enriched_movies.append(data)
             
         return jsonify({
             "status": "success",
-            "tv": enriched_tv,
-            "movies": enriched_movies
+            "tv": [item for item in enriched_tv if not is_incomplete_metadata(item)],
+            "movies": [item for item in enriched_movies if not is_incomplete_metadata(item)]
         })
         
     try:
@@ -415,6 +432,7 @@ def discover_releases():
                         "network": cached["network"],
                         "is_in_library": in_library,
                         "is_archived": bool(cached["is_archived"]),
+                        "date_obj": cached["date_obj"] or "",
                         "raw_metadata": None,
                         "rating_imdb": cached.get("rating_imdb", "") or "",
                         "rating_metacritic": cached.get("rating_metacritic", "") or "",
@@ -450,17 +468,20 @@ def discover_releases():
                         
                     data["is_in_library"] = in_library
                     data["date_str"] = item.get("date_str", "")
-                    data["date_obj"] = item.get("date_obj")
+                    data["date_obj"] = item.get("date_obj").strftime("%Y-%m-%d") if isinstance(item.get("date_obj"), datetime) else (str(item.get("date_obj")) if item.get("date_obj") else "")
                     data["href"] = item.get("href", "")
                         
                     # Cache newly fetched details
                     add_cached_item("tv", data)
                     
                 data["date_str"] = item["date_str"]
+                data["date_obj"] = data.get("date_obj") or (item.get("date_obj").strftime("%Y-%m-%d") if isinstance(item.get("date_obj"), datetime) else (str(item.get("date_obj")) if item.get("date_obj") else ""))
                 data["is_returning"] = item.get("is_returning", False)
                 enriched_tv.append(data)
             except Exception as e:
                 app.logger.error(f"Error enriching TV show '{item['title']}': {e}")
+                if item.get("date_obj"):
+                    item["date_obj"] = item["date_obj"].strftime("%Y-%m-%d") if isinstance(item["date_obj"], datetime) else str(item["date_obj"])
                 item["plot"] = item["description"]
                 item["cast"] = "Cast details not available."
                 item["genres"] = []
@@ -537,10 +558,13 @@ def discover_releases():
                         "network": cached["network"],
                         "is_in_library": in_library,
                         "is_archived": bool(cached["is_archived"]),
+                        "date_obj": cached["date_obj"] or "",
                         "raw_metadata": None,
                         "rating_imdb": cached.get("rating_imdb", "") or "",
                         "rating_metacritic": cached.get("rating_metacritic", "") or "",
-                        "rating_rt": cached.get("rating_rt", "") or ""
+                        "rating_rt": cached.get("rating_rt", "") or "",
+                        "director": cached.get("director", "") or "",
+                        "producer": cached.get("producer", "") or ""
                     }
                 else:
                     data = enrich_movie(item["title"], item["date_obj"].year, radarr_client, item.get("imdbId"))
@@ -573,18 +597,21 @@ def discover_releases():
                         
                     data["is_in_library"] = in_library
                     data["date_str"] = item.get("date_str", "")
-                    data["date_obj"] = item.get("date_obj")
+                    data["date_obj"] = item.get("date_obj").strftime("%Y-%m-%d") if isinstance(item.get("date_obj"), datetime) else (str(item.get("date_obj")) if item.get("date_obj") else "")
                     data["href"] = item.get("href", "")
                         
                     # Cache newly fetched details
                     add_cached_item("movie", data)
                     
                 data["date_str"] = item["date_str"]
+                data["date_obj"] = data.get("date_obj") or (item.get("date_obj").strftime("%Y-%m-%d") if isinstance(item.get("date_obj"), datetime) else (str(item.get("date_obj")) if item.get("date_obj") else ""))
                 if "imdbId" not in data or not data["imdbId"]:
                     data["imdbId"] = item.get("imdbId")
                 enriched_movies.append(data)
             except Exception as e:
                 app.logger.error(f"Error enriching movie '{item['title']}': {e}")
+                if item.get("date_obj"):
+                    item["date_obj"] = item["date_obj"].strftime("%Y-%m-%d") if isinstance(item["date_obj"], datetime) else str(item["date_obj"])
                 item["plot"] = item["description"]
                 item["cast"] = "Cast details not available."
                 item["genres"] = []
@@ -598,8 +625,8 @@ def discover_releases():
                 
         return jsonify({
             "status": "success",
-            "tv": enriched_tv,
-            "movies": enriched_movies
+            "tv": [item for item in enriched_tv if not is_incomplete_metadata(item)],
+            "movies": [item for item in enriched_movies if not is_incomplete_metadata(item)]
         })
     finally:
         update_scan_progress("idle", "Idle", 0, 0)
@@ -753,12 +780,14 @@ def lookup_media():
             if not sonarr_client:
                 return jsonify({"status": "error", "message": "Sonarr server is not configured."}), 400
             results = sonarr_client.lookup_series(title)
-            return jsonify({"status": "success", "results": results})
+            filtered = [item for item in results if not is_incomplete_metadata(item)]
+            return jsonify({"status": "success", "results": filtered})
         elif type_ == "movie":
             if not radarr_client:
                 return jsonify({"status": "error", "message": "Radarr server is not configured."}), 400
             results = radarr_client.lookup_movie(title)
-            return jsonify({"status": "success", "results": results})
+            filtered = [item for item in results if not is_incomplete_metadata(item)]
+            return jsonify({"status": "success", "results": filtered})
         else:
             return jsonify({"status": "error", "message": "Invalid type parameter"}), 400
     except Exception as e:

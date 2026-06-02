@@ -194,6 +194,70 @@ def enrich_tv_show(title: str, year: int, sonarr_client: Optional[SonarrClient] 
             
     return data
 
+def get_wikipedia_movie_details(title: str, year: int) -> Dict[str, str]:
+    """Queries Wikipedia search API to locate a page and parses Starring, Directed by, and Produced by from the infobox."""
+    details = {"cast": "", "director": "", "producer": ""}
+    search_url = "https://en.wikipedia.org/w/api.php"
+    search_query = f"{title} {year} film"
+    
+    search_params = {
+        "action": "query",
+        "list": "search",
+        "srsearch": search_query,
+        "format": "json"
+    }
+    
+    headers = {
+        "User-Agent": "xarrtools/0.1.0 (mercurius@example.com)"
+    }
+    
+    try:
+        res = requests.get(search_url, params=search_params, headers=headers, timeout=10)
+        if res.status_code != 200:
+            return details
+        search_data = res.json()
+        search_results = search_data.get("query", {}).get("search", [])
+        if not search_results:
+            return details
+            
+        page_title = search_results[0]["title"]
+        
+        parse_params = {
+            "action": "parse",
+            "page": page_title,
+            "prop": "text",
+            "format": "json"
+        }
+        res2 = requests.get(search_url, params=parse_params, headers=headers, timeout=10)
+        if res2.status_code != 200:
+            return details
+            
+        parse_data = res2.json()
+        html = parse_data.get("parse", {}).get("text", {}).get("*", "")
+        
+        soup = BeautifulSoup(html, "html.parser")
+        
+        for th in soup.find_all("th", class_="infobox-label"):
+            label_text = th.get_text(strip=True).lower()
+            if label_text in ("starring", "directed by", "produced by"):
+                td = th.find_next_sibling("td", class_="infobox-data")
+                if td:
+                    names = [a.get_text(strip=True) for a in td.find_all("a")]
+                    if not names:
+                        names = [li.get_text(strip=True) for li in td.find_all("li")]
+                    if not names:
+                        names = [td.get_text(separator=", ", strip=True)]
+                    names = [n for n in names if n]
+                    if label_text == "starring":
+                        details["cast"] = ", ".join(names[:6])
+                    elif label_text == "directed by":
+                        details["director"] = ", ".join(names[:3])
+                    elif label_text == "produced by":
+                        details["producer"] = ", ".join(names[:3])
+    except Exception:
+        pass
+    return details
+
 def enrich_movie(title: str, year: int, radarr_client: Optional[RadarrClient] = None, imdb_id: Optional[str] = None) -> Dict[str, Any]:
     """Retrieves plot, cast, genres, trailer and TMDB ID for a movie using Radarr and Wikipedia."""
     data = {
@@ -211,7 +275,9 @@ def enrich_movie(title: str, year: int, radarr_client: Optional[RadarrClient] = 
         "raw_metadata": None,
         "rating_imdb": "",
         "rating_metacritic": "",
-        "rating_rt": ""
+        "rating_rt": "",
+        "director": "",
+        "producer": ""
     }
     
     # 1. Query Radarr lookup
@@ -278,9 +344,13 @@ def enrich_movie(title: str, year: int, radarr_client: Optional[RadarrClient] = 
         except ArrAPIError:
             pass
 
-    # 2. Get Cast from Wikipedia
-    wiki_cast = get_wikipedia_cast(title, year, is_tv=False)
-    if wiki_cast:
-        data["cast"] = wiki_cast
+    # 2. Get Cast, Director, and Producer from Wikipedia
+    wiki_details = get_wikipedia_movie_details(title, year)
+    if wiki_details.get("cast"):
+        data["cast"] = wiki_details["cast"]
+    if wiki_details.get("director"):
+        data["director"] = wiki_details["director"]
+    if wiki_details.get("producer"):
+        data["producer"] = wiki_details["producer"]
         
     return data

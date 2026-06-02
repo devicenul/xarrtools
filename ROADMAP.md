@@ -59,36 +59,6 @@ This document tracks planned future functionality, architectural changes, and us
   - **Python Package (PyPI)**: Distribute the app as a standard package on PyPI, enabling installation via `pipx install xarrtools` to bypass OS code-signing limitations completely.
 - **Code files involved**: [build.sh](file:///Users/rrjefferson/Workspaces/Projects/xarrtools/build.sh), [build.bat](file:///Users/rrjefferson/Workspaces/Projects/xarrtools/build.bat).
 
-### 10. Filter Scanned Items with Missing Crucial Metadata
-- **Goal**: Ignore found items that do not have a title, studio/network, cast, or plot available when scanning, keeping the discovery list clean of incomplete entries.
-- **Implementation Strategy**:
-  - Update scanning/enrichment loops to inspect the resolved metadata fields.
-  - Exclude items that fail to resolve essential fields (title, studio, cast, or plot).
-- **Code files involved**: [core/scraper.py](file:///Users/rrjefferson/Workspaces/Projects/xarrtools/core/scraper.py), [core/enricher.py](file:///Users/rrjefferson/Workspaces/Projects/xarrtools/core/enricher.py).
-
-### 11. Server-Specific Default Quality Profiles
-- **Goal**: Allow users to select a default quality profile for Radarr and Sonarr individually inside the Settings panel.
-- **Implementation Strategy**:
-  - Add database settings for default Radarr and Sonarr quality profile IDs.
-  - Render dropdown selectors populated from available profiles in the Settings UI under Server configs.
-  - Automatically pre-select these configured profiles when opening the media addition confirmation modals.
-- **Code files involved**: [core/db.py](file:///Users/rrjefferson/Workspaces/Projects/xarrtools/core/db.py), [web/server.py](file:///Users/rrjefferson/Workspaces/Projects/xarrtools/web/server.py), [web/templates/app.js](file:///Users/rrjefferson/Workspaces/Projects/xarrtools/web/templates/app.js), [web/templates/index.html](file:///Users/rrjefferson/Workspaces/Projects/xarrtools/web/templates/index.html).
-
-### 12. "Add Only" Option in Media Addition Modals
-- **Goal**: Provide a separate "Add" button alongside the existing "Add and Search" button when queueing movie/show additions.
-- **Implementation Strategy**:
-  - Add a secondary submission button to the addition confirmation modal.
-  - Configure the backend payload to omit the instant indexer search trigger command (`addSearch = false`) when this secondary button is clicked.
-- **Code files involved**: [web/templates/index.html](file:///Users/rrjefferson/Workspaces/Projects/xarrtools/web/templates/index.html), [web/templates/app.js](file:///Users/rrjefferson/Workspaces/Projects/xarrtools/web/templates/app.js), [web/server.py](file:///Users/rrjefferson/Workspaces/Projects/xarrtools/web/server.py).
-
-### 13. Sorting Options for Scanned Media lists
-- **Goal**: Enable users to sort movies and TV shows dynamically by release/premiere date, title, or studio. The default sorting behavior should sort items by release date in ascending order.
-- **Implementation Strategy**:
-  - Add a "Sort By" dropdown control to the sidebar filter panel or settings tab.
-  - Implement client-side or backend sorting rules targeting the cache payload fields (`date_obj`, `title`, `network` / `studio`).
-  - Default the initial view state to sort ascending by release date.
-- **Code files involved**: [web/templates/index.html](file:///Users/rrjefferson/Workspaces/Projects/xarrtools/web/templates/index.html), [web/templates/app.js](file:///Users/rrjefferson/Workspaces/Projects/xarrtools/web/templates/app.js), [web/server.py](file:///Users/rrjefferson/Workspaces/Projects/xarrtools/web/server.py).
-
 ### 14. Protocol Fallback for Server Configurations
 - **Goal**: Handle Radarr/Sonarr server addresses configured without explicit `http://` or `https://` schemes by automatically checking connectivity using `https://` first, and falling back to `http://`.
 - **Implementation Strategy**:
@@ -96,25 +66,28 @@ This document tracks planned future functionality, architectural changes, and us
   - If no scheme is present, attempt requests with `https://` prefix, catching connection errors and retrying with `http://` before raising configuration validation errors.
 - **Code files involved**: [core/client.py](file:///Users/rrjefferson/Workspaces/Projects/xarrtools/core/client.py), [web/server.py](file:///Users/rrjefferson/Workspaces/Projects/xarrtools/web/server.py).
 
-### 15. Director and Producer Metadata in Movie Cards
-- **Goal**: Scrape, enrich, and display the director and producer names on movie discovery cards when the information is available.
-- **Implementation Strategy**:
-  - Extend the metadata scraper to query TMDB/IMDb cast/crew APIs for directors and producers.
-  - Add `director` and `producer` text columns to the cache database table.
-  - Render these fields on UI cards under a metadata block in the split-view layout.
-- **Code files involved**: [core/db.py](file:///Users/rrjefferson/Workspaces/Projects/xarrtools/core/db.py), [core/enricher.py](file:///Users/rrjefferson/Workspaces/Projects/xarrtools/core/enricher.py), [web/templates/index.html](file:///Users/rrjefferson/Workspaces/Projects/xarrtools/web/templates/index.html), [web/templates/app.js](file:///Users/rrjefferson/Workspaces/Projects/xarrtools/web/templates/app.js).
-
-### 16. Embed App Icons in Compiled Binaries
-- **Goal**: Add standard application icon assets (`.ico` for Windows, `.icns` for macOS) to PyInstaller compilation pipelines to display visual icons for the executable files.
-- **Implementation Strategy**:
-  - Convert existing logo graphics to target formats (`.ico` and `.icns`).
-  - Add the `--icon` argument to `build.sh` and `build.bat` PyInstaller execution profiles, pointing to the converted icon resources.
-- **Code files involved**: [build.sh](file:///Users/rrjefferson/Workspaces/Projects/xarrtools/build.sh), [build.bat](file:///Users/rrjefferson/Workspaces/Projects/xarrtools/build.bat).
-
 
 ---
 
 ## Completed Features
+
+### ✓ Embed App Icons in Compiled Binaries & Runtime (Roadmap Item 16)
+Embeds application icon assets (`.ico` for Windows, `.icns` for macOS, and `.png` for Linux) inside PyInstaller executable builds and resolves them dynamically at runtime to show app icons on window headers and taskbars.
+
+### ✓ Director and Producer Movie Metadata (Roadmap Item 15)
+Retrieves movie directors and producers via Wikipedia and displays them inline on movie cards (e.g., `Director: Ridley Scott | Producer: Douglas Wick`).
+
+### ✓ Sorting Options for Scanned Media lists (Roadmap Item 13)
+Enables sorting TV shows and movies dynamically by release/premiere date, title, or studio, defaulting to chronological ascending.
+
+### ✓ "Add Only" Option in Media Addition Modals (Roadmap Item 12)
+Provides an "Add Only" option when adding a show/movie to download clients without triggering an immediate indexer search scan.
+
+### ✓ Server-Specific Default Quality Profiles (Roadmap Item 11)
+Allows setting individual default quality profiles for Radarr and Sonarr settings, pre-selecting them during media additions.
+
+### ✓ Filtering Incomplete Metadata Releases (Roadmap Item 10)
+Expunges and suppresses indexer discoveries and search lookup results that miss crucial title, cast, and plot information.
 
 ### ✓ User-Defined Custom Feeds (RSS, JSON, HTML)
 Supports custom media discovery calendars/feeds beyond the built-in Metacritic and DVD release schedules. Users can define custom RSS/XML feeds, JSON API sources, or raw HTML tables with custom CSS selectors/JSONPath mapping configurations directly in the Settings GUI. Includes automated validation controls, SSRF protections, a dry-run diagnostic preview panel, and a "Restore Defaults" button to reload seeded presets.

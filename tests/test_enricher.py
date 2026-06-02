@@ -468,7 +468,7 @@ def test_enrich_movie_radarr_sync():
     ]
     radarr.lookup_movie.return_value = lookup_mock_imdb
     
-    with patch("core.enricher.get_wikipedia_cast", return_value="Paul Mescal"):
+    with patch("core.enricher.get_wikipedia_movie_details", return_value={"cast": "Paul Mescal", "director": "Ridley Scott", "producer": "Douglas Wick"}):
         data = enrich_movie("Gladiator II", 2024, radarr_client=radarr, imdb_id="tt1234567")
         assert data["is_in_library"] is True
         assert data["tmdbId"] == 12345
@@ -482,6 +482,8 @@ def test_enrich_movie_radarr_sync():
         assert data["rating_rt"] == "78"
         assert data["trailer"] == "https://www.youtube.com/watch?v=trailer_id"
         assert data["cast"] == "Paul Mescal"
+        assert data["director"] == "Ridley Scott"
+        assert data["producer"] == "Douglas Wick"
 
     # 2. Test Radarr lookup by title fallback, relative poster image cover, and ArrAPIError handling
     lookup_mock_title = [
@@ -494,7 +496,7 @@ def test_enrich_movie_radarr_sync():
         }
     ]
     radarr.lookup_movie.side_effect = [None, lookup_mock_title] # First IMDb fails, fallback to title search succeeds
-    with patch("core.enricher.get_wikipedia_cast", return_value=""):
+    with patch("core.enricher.get_wikipedia_movie_details", return_value={"cast": "", "director": "", "producer": ""}):
         data = enrich_movie("Gladiator II", 2024, radarr_client=radarr, imdb_id="tt1234567")
         assert data["poster_url"] == "http://radarr:7878/api/v3/media/5.jpg?apikey=radarr_key"
 
@@ -509,7 +511,7 @@ def test_enrich_movie_radarr_sync():
         }
     ]
     radarr.lookup_movie.side_effect = [None, lookup_mock_relative_no_params]
-    with patch("core.enricher.get_wikipedia_cast", return_value=""):
+    with patch("core.enricher.get_wikipedia_movie_details", return_value={"cast": "", "director": "", "producer": ""}):
         data = enrich_movie("Gladiator II", 2024, radarr_client=radarr, imdb_id="tt1234567")
         assert data["poster_url"] == "http://radarr:7878/api/v3/media/5.jpg?width=250&apikey=radarr_key"
 
@@ -526,19 +528,19 @@ def test_enrich_movie_radarr_sync():
     # Reset mock call side effects
     radarr.lookup_movie.side_effect = None
     radarr.lookup_movie.return_value = lookup_mock_no_year_match
-    with patch("core.enricher.get_wikipedia_cast", return_value=""):
+    with patch("core.enricher.get_wikipedia_movie_details", return_value={"cast": "", "director": "", "producer": ""}):
         data = enrich_movie("Gladiator II", 2024, radarr_client=radarr)
         assert data["poster_url"] == "http://other-site/cover.jpg"
 
     # 3b. Test Radarr lookup returns empty results
     radarr.lookup_movie.return_value = []
-    with patch("core.enricher.get_wikipedia_cast", return_value=""):
+    with patch("core.enricher.get_wikipedia_movie_details", return_value={"cast": "", "director": "", "producer": ""}):
         data = enrich_movie("Gladiator II", 2024, radarr_client=radarr)
         assert data["poster_url"] == ""
 
     # 4. Test Radarr raising ArrAPIError
     radarr.lookup_movie.side_effect = ArrAPIError("Radarr lookup error")
-    with patch("core.enricher.get_wikipedia_cast", return_value=""):
+    with patch("core.enricher.get_wikipedia_movie_details", return_value={"cast": "", "director": "", "producer": ""}):
         data = enrich_movie("Gladiator II", 2024, radarr_client=radarr)
         assert data["is_in_library"] is False
 
@@ -566,10 +568,12 @@ def test_enrich_tv_show_skip_poster_when_already_populated():
         assert data["poster_url"] == "http://tvmaze/medium.jpg"
 
 def test_enrich_movie_no_radarr_client():
-    with patch("core.enricher.get_wikipedia_cast", return_value="Some Cast"):
+    with patch("core.enricher.get_wikipedia_movie_details", return_value={"cast": "Some Cast", "director": "Some Director", "producer": "Some Producer"}):
         data = enrich_movie("Gladiator II", 2024, radarr_client=None)
         assert data["is_in_library"] is False
         assert data["cast"] == "Some Cast"
+        assert data["director"] == "Some Director"
+        assert data["producer"] == "Some Producer"
 
 def test_enrich_movie_images_edge_cases():
     radarr = MagicMock(spec=RadarrClient)
@@ -590,7 +594,67 @@ def test_enrich_movie_images_edge_cases():
         }
     ]
     radarr.lookup_movie.return_value = lookup_mock
-    with patch("core.enricher.get_wikipedia_cast", return_value=""):
+    with patch("core.enricher.get_wikipedia_movie_details", return_value={"cast": "", "director": "", "producer": ""}):
         data = enrich_movie("Gladiator II", 2024, radarr_client=radarr)
         assert data["poster_url"] == ""
+
+def test_get_wikipedia_movie_details_success():
+    from core.enricher import get_wikipedia_movie_details
+    search_mock = {
+        "query": {
+            "search": [{"title": "Gladiator II"}]
+        }
+    }
+    parse_mock = {
+        "parse": {
+            "text": {
+                "*": """
+                <table class="infobox">
+                    <tr>
+                        <th class="infobox-label">Directed by</th>
+                        <td class="infobox-data">Ridley Scott</td>
+                    </tr>
+                    <tr>
+                        <th class="infobox-label">Produced by</th>
+                        <td class="infobox-data">Douglas Wick, Lucy Fisher</td>
+                    </tr>
+                    <tr>
+                        <th class="infobox-label">Starring</th>
+                        <td class="infobox-data">
+                            <a href="/wiki/Paul_Mescal">Paul Mescal</a><br/>
+                            <a href="/wiki/Pedro_Pascal">Pedro Pascal</a>
+                        </td>
+                    </tr>
+                </table>
+                """
+            }
+        }
+    }
+    
+    with patch("requests.get") as mock_get:
+        r1 = MagicMock()
+        r1.status_code = 200
+        r1.json.return_value = search_mock
+        
+        r2 = MagicMock()
+        r2.status_code = 200
+        r2.json.return_value = parse_mock
+        
+        mock_get.side_effect = [r1, r2]
+        
+        details = get_wikipedia_movie_details("Gladiator II", 2024)
+        assert details["cast"] == "Paul Mescal, Pedro Pascal"
+        assert details["director"] == "Ridley Scott"
+        assert details["producer"] == "Douglas Wick, Lucy Fisher"
+
+def test_get_wikipedia_movie_details_failures():
+    from core.enricher import get_wikipedia_movie_details
+    # Search request fails
+    with patch("requests.get") as mock_get:
+        r = MagicMock()
+        r.status_code = 500
+        mock_get.return_value = r
+        details = get_wikipedia_movie_details("Gladiator II", 2024)
+        assert details == {"cast": "", "director": "", "producer": ""}
+
 

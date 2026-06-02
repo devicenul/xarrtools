@@ -727,6 +727,21 @@ select option {
     color: var(--text-secondary);
 }
 
+/* Crew */
+.card-crew {
+    font-size: 13px;
+    line-height: 1.4;
+    color: var(--text-secondary);
+}
+
+.card-crew strong {
+    color: var(--text-primary);
+}
+
+.card-crew span {
+    color: var(--text-secondary);
+}
+
 /* Plot Description */
 .card-plot {
     font-size: 13px;

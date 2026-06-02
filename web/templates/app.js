@@ -83,6 +83,10 @@ const inputSonarrUrl = document.getElementById("input-sonarr-url");
 const inputSonarrKey = document.getElementById("input-sonarr-key");
 const inputPastMonths = document.getElementById("input-past-months");
 const inputFutureMonths = document.getElementById("input-future-months");
+const inputRadarrDefaultProfile = document.getElementById("input-radarr-default-profile");
+const inputSonarrDefaultProfile = document.getElementById("input-sonarr-default-profile");
+const btnModalAddOnly = document.getElementById("btn-modal-add-only");
+const selectSort = document.getElementById("select-sort");
 
 // --- Theme Helpers ---
 function initTheme() {
@@ -178,6 +182,66 @@ function initializeSettingsDefaults() {
     document.getElementById("check-show-returning").checked = appSettings.default_show_returning === "1";
     document.getElementById("check-show-library").checked = appSettings.default_show_library === "1";
     document.getElementById("check-show-archived").checked = appSettings.default_show_archived === "1";
+    
+    populateSettingsProfiles();
+}
+
+function populateSettingsProfiles() {
+    if (!inputRadarrDefaultProfile || !inputSonarrDefaultProfile) return;
+    
+    // Populate Radarr Profiles
+    inputRadarrDefaultProfile.innerHTML = '<option value="">None (Select in modal)</option>';
+    if (appConfig && appConfig.radarr && appConfig.radarr.profiles && appConfig.radarr.profiles.length > 0) {
+        appConfig.radarr.profiles.forEach(p => {
+            const opt = document.createElement("option");
+            opt.value = p.id;
+            opt.textContent = p.name;
+            inputRadarrDefaultProfile.appendChild(opt);
+        });
+    } else {
+        // Fallback demo mock profiles if unconfigured
+        const mockProfiles = [
+            { id: 1, name: "Any (Default)" },
+            { id: 2, name: "Ultra-HD 4K" },
+            { id: 3, name: "HD - 1080p/720p" }
+        ];
+        mockProfiles.forEach(p => {
+            const opt = document.createElement("option");
+            opt.value = p.id;
+            opt.textContent = p.name;
+            inputRadarrDefaultProfile.appendChild(opt);
+        });
+    }
+    if (appSettings && appSettings.radarr_default_profile_id) {
+        inputRadarrDefaultProfile.value = appSettings.radarr_default_profile_id;
+    }
+    
+    // Populate Sonarr Profiles
+    inputSonarrDefaultProfile.innerHTML = '<option value="">None (Select in modal)</option>';
+    if (appConfig && appConfig.sonarr && appConfig.sonarr.profiles && appConfig.sonarr.profiles.length > 0) {
+        appConfig.sonarr.profiles.forEach(p => {
+            const opt = document.createElement("option");
+            opt.value = p.id;
+            opt.textContent = p.name;
+            inputSonarrDefaultProfile.appendChild(opt);
+        });
+    } else {
+        // Fallback demo mock profiles if unconfigured
+        const mockProfiles = [
+            { id: 1, name: "Any (Default)" },
+            { id: 2, name: "Ultra-HD 4K" },
+            { id: 3, name: "HD - 1080p/720p" }
+        ];
+        mockProfiles.forEach(p => {
+            const opt = document.createElement("option");
+            opt.value = p.id;
+            opt.textContent = p.name;
+            inputSonarrDefaultProfile.appendChild(opt);
+        });
+    }
+    if (appSettings && appSettings.sonarr_default_profile_id) {
+        inputSonarrDefaultProfile.value = appSettings.sonarr_default_profile_id;
+    }
 }
 
 function updateStatusBadges() {
@@ -327,7 +391,7 @@ async function scanReleases(skipScrape = false) {
 }
 
 // 3. Add item to *Arr
-async function addMediaItem() {
+async function addMediaItem(searchNow = null) {
     if (!selectedItemForAdd || !selectedItemForAdd.raw_metadata) return;
 
     const type = selectedItemForAdd.type;
@@ -395,7 +459,7 @@ async function addMediaItem() {
         profile_id: selectProfile.value,
         lang_profile_id: type === "tv" ? selectLangProfile.value : null,
         monitored: checkMonitored.checked,
-        search_now: checkSearch.checked,
+        search_now: (searchNow !== null) ? searchNow : checkSearch.checked,
         add_collection: (type === "movie" && checkTrackCollection && checkTrackCollection.checked)
     };
 
@@ -536,7 +600,9 @@ async function saveSettings() {
         default_show_returning: document.getElementById("input-show-returning").checked ? "1" : "0",
         default_show_library: document.getElementById("input-show-library").checked ? "1" : "0",
         default_show_archived: document.getElementById("input-show-archived").checked ? "1" : "0",
-        default_match_ignore_year: document.getElementById("input-match-ignore-year").checked ? "1" : "0"
+        default_match_ignore_year: document.getElementById("input-match-ignore-year").checked ? "1" : "0",
+        radarr_default_profile_id: inputRadarrDefaultProfile ? inputRadarrDefaultProfile.value : "",
+        sonarr_default_profile_id: inputSonarrDefaultProfile ? inputSonarrDefaultProfile.value : ""
     };
     
     closeSettingsModal();
@@ -597,6 +663,38 @@ function renderMediaLists() {
 
         return true;
     });
+
+    const sortVal = selectSort ? selectSort.value : "date-asc";
+    const sortItems = (a, b) => {
+        if (sortVal.startsWith("date")) {
+            const dateA = a.date_obj || "";
+            const dateB = b.date_obj || "";
+            if (sortVal === "date-asc") {
+                return dateA.localeCompare(dateB) || a.title.localeCompare(b.title);
+            } else {
+                return dateB.localeCompare(dateA) || a.title.localeCompare(b.title);
+            }
+        } else if (sortVal.startsWith("title")) {
+            const titleA = a.title || "";
+            const titleB = b.title || "";
+            if (sortVal === "title-asc") {
+                return titleA.localeCompare(titleB);
+            } else {
+                return titleB.localeCompare(titleA);
+            }
+        } else if (sortVal.startsWith("studio")) {
+            const netA = a.network || "";
+            const netB = b.network || "";
+            if (sortVal === "studio-asc") {
+                return netA.localeCompare(netB) || a.title.localeCompare(b.title);
+            } else {
+                return netB.localeCompare(netA) || a.title.localeCompare(b.title);
+            }
+        }
+        return 0;
+    };
+    tvMatches.sort(sortItems);
+
     tvMatches.forEach((item, index) => {
         // Since we filtered tvMatches, the index in tvMatches is different from currentDiscoveries.tv.
         // We find the original index in currentDiscoveries.tv
@@ -628,6 +726,7 @@ function renderMediaLists() {
 
         return true;
     });
+    movieMatches.sort(sortItems);
     movieMatches.forEach((item, index) => {
         const origIndex = currentDiscoveries.movies.indexOf(item);
         const card = createMediaCard(item, "movie", origIndex);
@@ -788,6 +887,13 @@ function createMediaCard(item, type, index) {
             ${buildRatingBadgesHtml(item)}
             <div class="genres-list">${genres}</div>
             <div class="card-cast"><strong>Cast:</strong> <span>${item.cast}</span></div>
+            ${(type === "movie" && (item.director || item.producer)) ? `
+                <div class="card-crew">
+                    ${item.director ? `<strong>Director:</strong> <span>${item.director}</span>` : ""}
+                    ${(item.director && item.producer) ? " | " : ""}
+                    ${item.producer ? `<strong>Producer:</strong> <span>${item.producer}</span>` : ""}
+                </div>
+            ` : ""}
             <div class="card-plot">${plotHtml}</div>
             
             <div class="details-toggle-row" style="margin-top: auto; border-top: 1px dashed var(--border-color); padding-top: 8px; display: flex; justify-content: space-between; align-items: center;">
@@ -1033,6 +1139,14 @@ function goToOptionsStep(metadataItem) {
         selectProfile.appendChild(opt);
     });
 
+    // Pre-select default profile if set
+    if (appSettings) {
+        const defaultProfileId = type === "tv" ? appSettings.sonarr_default_profile_id : appSettings.radarr_default_profile_id;
+        if (defaultProfileId) {
+            selectProfile.value = defaultProfileId;
+        }
+    }
+
     // Populate Languages (Sonarr TV only)
     if (type === "tv" && targetConfig.language_profiles && targetConfig.language_profiles.length > 0) {
         groupLangProfile.classList.remove("hidden");
@@ -1069,6 +1183,7 @@ function goToOptionsStep(metadataItem) {
     modalStepSearch.classList.add("hidden");
     modalStepOptions.classList.remove("hidden");
     btnModalBack.classList.remove("hidden");
+    if (btnModalAddOnly) btnModalAddOnly.classList.remove("hidden");
     btnModalConfirm.classList.remove("hidden");
 }
 
@@ -1079,6 +1194,7 @@ function goBackToSearchStep() {
     modalStepSearch.classList.remove("hidden");
     modalStepOptions.classList.add("hidden");
     btnModalBack.classList.add("hidden");
+    if (btnModalAddOnly) btnModalAddOnly.classList.add("hidden");
     btnModalConfirm.classList.add("hidden");
 }
 
@@ -1102,6 +1218,8 @@ function openSettingsModal() {
         document.getElementById("input-show-library").checked = appSettings.default_show_library === "1";
         document.getElementById("input-show-archived").checked = appSettings.default_show_archived === "1";
         document.getElementById("input-match-ignore-year").checked = appSettings.default_match_ignore_year !== "0";
+        if (inputRadarrDefaultProfile) inputRadarrDefaultProfile.value = appSettings.radarr_default_profile_id || "";
+        if (inputSonarrDefaultProfile) inputSonarrDefaultProfile.value = appSettings.sonarr_default_profile_id || "";
     }
     
     // Set theme selector value inside View Options tab to current theme
@@ -2135,8 +2253,16 @@ function setupEventListeners() {
     btnScan.addEventListener("click", scanReleases);
     modalClose.addEventListener("click", closeModal);
     btnModalCancel.addEventListener("click", closeModal);
-    btnModalConfirm.addEventListener("click", addMediaItem);
+    btnModalConfirm.addEventListener("click", () => addMediaItem(true));
+    if (btnModalAddOnly) {
+        btnModalAddOnly.addEventListener("click", () => addMediaItem(false));
+    }
     btnModalBack.addEventListener("click", goBackToSearchStep);
+    
+    // Sort Select change handler
+    if (selectSort) {
+        selectSort.addEventListener("change", renderMediaLists);
+    }
 
     // Instant Search
     searchBar.addEventListener("input", renderMediaLists);
