@@ -963,12 +963,13 @@ select option {
     display: flex;
     justify-content: flex-end;
     flex-wrap: wrap;
-    gap: 12px;
+    gap: 10px;
 }
 
 .modal-footer .btn {
     width: auto;
-    min-width: 120px;
+    min-width: 100px;
+    padding: 8px 16px;
 }
 
 /* Utilities */
