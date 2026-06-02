@@ -537,6 +537,15 @@
                             <button type="button" id="btn-cache-prune" class="btn btn-secondary" style="font-size:12px; padding:8px 12px; display: block; width: 100%;">🧹 Prune Expired Cache (>12 months)</button>
                             <button type="button" id="btn-cache-clear" class="btn" style="background: rgba(255, 42, 133, 0.1); border: 1px solid rgba(255, 42, 133, 0.3); color: var(--accent-magenta); font-size:12px; padding:8px 12px; display: block; width: 100%;">🚨 Wipe Discovery Cache</button>
                         </div>
+
+                        <h3 style="font-family:'Outfit', sans-serif; font-size:14px; color:var(--accent-blue); text-transform:uppercase; margin-top:20px; margin-bottom:12px; border-bottom:1px solid var(--border-color); padding-bottom:4px;">Backup & Restore</h3>
+                        <div style="display: flex; flex-direction: column; gap: 10px;">
+                            <div style="display: flex; gap: 8px;">
+                                <button type="button" id="btn-backup-export" class="btn btn-secondary" style="font-size:12px; padding:8px 12px; flex: 1;">📤 Export Backup</button>
+                                <button type="button" id="btn-backup-import" class="btn btn-secondary" style="font-size:12px; padding:8px 12px; flex: 1;">📥 Import Backup</button>
+                            </div>
+                            <input type="file" id="file-backup-import" style="display: none;" accept=".json">
+                        </div>
                     </div>
                 </form>
             </div>

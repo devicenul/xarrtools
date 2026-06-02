@@ -1353,6 +1353,50 @@ async function wipeCacheManually() {
     }
 }
 
+function exportBackup() {
+    const includeMedia = confirm("Include cached media details (identifiers & library indicators) in the backup JSON file?");
+    window.location.href = `/api/backup/export?include_media=${includeMedia}`;
+}
+
+function triggerBackupImport() {
+    const fileInput = document.getElementById("file-backup-import");
+    if (fileInput) fileInput.click();
+}
+
+async function importBackup(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+    
+    const btnImport = document.getElementById("btn-backup-import");
+    const originalText = btnImport.textContent;
+    btnImport.textContent = "⏳ Importing...";
+    btnImport.disabled = true;
+    
+    const formData = new FormData();
+    formData.append("file", file);
+    
+    try {
+        const response = await fetch("/api/backup/import", {
+            method: "POST",
+            body: formData
+        });
+        const data = await response.json();
+        if (response.ok && data.status === "success") {
+            alert(`Backup imported successfully!\n\nImported/Updated:\n- Settings: ${data.settings_count}\n- Media Items: ${data.media_count}`);
+            location.reload();
+        } else {
+            alert(`Failed to import backup: ${data.message}`);
+        }
+    } catch (error) {
+        alert(`Error importing backup: ${error.message}`);
+    } finally {
+        btnImport.textContent = originalText;
+        btnImport.disabled = false;
+        e.target.value = "";
+    }
+}
+
+
 // --- Custom Feeds Management ---
 
 const DEFAULT_PARSER_CONFIGS = {
@@ -2404,6 +2448,16 @@ function setupEventListeners() {
     // Maintenance button clicks
     document.getElementById("btn-cache-prune").addEventListener("click", pruneCacheManually);
     document.getElementById("btn-cache-clear").addEventListener("click", wipeCacheManually);
+
+    // Backup & Restore controls
+    const btnBackupExport = document.getElementById("btn-backup-export");
+    if (btnBackupExport) btnBackupExport.addEventListener("click", exportBackup);
+    
+    const btnBackupImport = document.getElementById("btn-backup-import");
+    if (btnBackupImport) btnBackupImport.addEventListener("click", triggerBackupImport);
+    
+    const fileBackupImport = document.getElementById("file-backup-import");
+    if (fileBackupImport) fileBackupImport.addEventListener("change", importBackup);
 
     // Custom Feed Events
     const btnFeedRestore = document.getElementById("btn-feed-restore");

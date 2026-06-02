@@ -1,3 +1,4 @@
+import json
 import pytest
 from unittest.mock import patch, MagicMock
 from core.client import ArrAPIError
@@ -755,8 +756,8 @@ def test_run_cli_menu_loop_with_invalid_options(
 ):
     # Choice side effects:
     # 1. "invalid" choice -> prompts choice again
-    # 2. "4" -> exit menu loop
-    mock_ask.side_effect = ["invalid", "4"]
+    # 2. "6" -> exit menu loop
+    mock_ask.side_effect = ["invalid", "6"]
     run_cli()
     
     # Verify exit message printed
@@ -777,8 +778,8 @@ def test_run_cli_menu_options_1_2_3(
     # - choice "1", then return to menu
     # - choice "2", then return to menu
     # - choice "3", then return to menu
-    # - choice "4" (exit)
-    mock_ask.side_effect = ["1", "", "2", "", "3", "", "4"]
+    # - choice "6" (exit)
+    mock_ask.side_effect = ["1", "", "2", "", "3", "", "6"]
     run_cli()
     mock_radarr.assert_called_once()
     mock_sonarr.assert_called_once()
@@ -962,3 +963,47 @@ def test_handle_discovery_workflow_falsy_branches(
     
     # Since radarr_client is None, it should skip adding/searching and print 'Could not find Movie Extra'
     assert any("Could not find 'Movie Extra' in Sonarr/Radarr indexers" in str(call[0][0]) for call in mock_print.call_args_list if call[0])
+
+
+@patch("cli.cli.Prompt.ask")
+@patch("cli.cli.Confirm.ask")
+@patch("cli.cli.console.print")
+def test_handle_export_and_import_workflows(mock_print, mock_confirm, mock_ask):
+    from cli.cli import handle_export_workflow, handle_import_workflow
+    import tempfile
+    import os
+    
+    # 1. Test Export Workflow
+    mock_confirm.return_value = True # include_media = True
+    
+    with tempfile.TemporaryDirectory() as tmpdir:
+        dest_file = os.path.join(tmpdir, "backup.json")
+        mock_ask.return_value = dest_file
+        
+        with patch("core.db.export_to_dict", return_value={"settings": {"test_key": "val"}, "media_items": []}) as mock_export:
+            handle_export_workflow()
+            mock_export.assert_called_once_with(include_media=True)
+            
+        assert os.path.exists(dest_file)
+        with open(dest_file, "r", encoding="utf-8") as f:
+            saved_data = json.load(f)
+            assert saved_data["settings"]["test_key"] == "val"
+            
+    # 2. Test Import Workflow
+    mock_ask.side_effect = ["nonexistent_backup.json", dest_file]
+    handle_import_workflow() # Should print file does not exist
+    assert any("does not exist" in str(call[0][0]) for call in mock_print.call_args_list if call[0])
+    
+    # Prepare valid file and import
+    with tempfile.TemporaryDirectory() as tmpdir:
+        dest_file = os.path.join(tmpdir, "backup.json")
+        with open(dest_file, "w", encoding="utf-8") as f:
+            json.dump({"settings": {"test_key": "val"}}, f)
+            
+        mock_ask.side_effect = [dest_file]
+        with patch("core.db.import_from_dict", return_value=(1, 0)) as mock_import:
+            handle_import_workflow()
+            mock_import.assert_called_once()
+            
+        assert any("Successfully imported backup" in str(call[0][0]) for call in mock_print.call_args_list if call[0])
+

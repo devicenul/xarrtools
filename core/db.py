@@ -707,3 +707,99 @@ def update_cached_library_status(type_: str, title: str, year: int, is_in_librar
     finally:
         conn.close()
 
+
+def export_to_dict(include_media: bool = True) -> dict:
+    """Exports all settings and optionally basic details of cached media objects to a dict."""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    # 1. Fetch settings
+    cursor.execute("SELECT key, value FROM settings")
+    settings = {row["key"]: row["value"] for row in cursor.fetchall()}
+    
+    data = {"settings": settings}
+    
+    # 2. Optionally fetch basic media items
+    if include_media:
+        cursor.execute("""
+            SELECT type, title, year, imdb_id, tvdb_id, tmdb_id, is_in_library, is_archived 
+            FROM cache
+        """)
+        media_items = []
+        for row in cursor.fetchall():
+            media_items.append({
+                "type": row["type"],
+                "title": row["title"],
+                "year": row["year"],
+                "imdb_id": row["imdb_id"],
+                "tvdb_id": row["tvdb_id"],
+                "tmdb_id": row["tmdb_id"],
+                "is_in_library": int(row["is_in_library"]),
+                "is_archived": int(row["is_archived"])
+            })
+        data["media_items"] = media_items
+        
+    conn.close()
+    return data
+
+
+def import_from_dict(data: dict) -> tuple[int, int]:
+    """Imports settings and basic details of cached media objects from a dict."""
+    settings_count = 0
+    media_count = 0
+    
+    conn = get_db_connection()
+    conn.execute("BEGIN IMMEDIATE")
+    try:
+        cursor = conn.cursor()
+        
+        # 1. Import settings
+        settings_data = data.get("settings", {})
+        for key, val in settings_data.items():
+            cursor.execute("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", (key, str(val)))
+            settings_count += 1
+            
+        # 2. Import media items
+        media_items = data.get("media_items", [])
+        for item in media_items:
+            type_ = item.get("type")
+            title = item.get("title")
+            year = item.get("year")
+            imdb_id = item.get("imdb_id")
+            tvdb_id = item.get("tvdb_id")
+            tmdb_id = item.get("tmdb_id")
+            is_in_library = int(item.get("is_in_library", 0))
+            is_archived = int(item.get("is_archived", 0))
+            
+            if not type_ or not title:
+                continue
+                
+            # Try to find existing cached item
+            existing = get_cached_item(type_, title, year, imdb_id=imdb_id, conn=conn)
+            
+            if existing:
+                # Update indicators and identifiers
+                cursor.execute("""
+                    UPDATE cache 
+                    SET is_in_library = ?, is_archived = ?, imdb_id = COALESCE(imdb_id, ?), tvdb_id = COALESCE(tvdb_id, ?), tmdb_id = COALESCE(tmdb_id, ?)
+                    WHERE id = ?
+                """, (is_in_library, is_archived, imdb_id, tvdb_id, tmdb_id, existing["id"]))
+            else:
+                # Insert skeleton/stub media cache record
+                norm_title = normalize_title(title, is_tv=(type_ == "tv"))
+                cursor.execute("""
+                    INSERT INTO cache (type, title, year, imdb_id, tvdb_id, tmdb_id, is_in_library, is_archived, normalized_title)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, (type_, title, year, imdb_id, tvdb_id, tmdb_id, is_in_library, is_archived, norm_title))
+            media_count += 1
+            
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+        
+    return settings_count, media_count
+
+

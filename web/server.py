@@ -24,7 +24,9 @@ from core.db import (
     update_cached_library_status,
     normalize_title,
     get_setting,
-    get_db_connection
+    get_db_connection,
+    export_to_dict,
+    import_from_dict
 )
 
 # Initialize Database and Prune Expired cache entries
@@ -127,6 +129,53 @@ def manage_settings():
         return jsonify({"status": "success", "message": "Settings saved successfully."})
     else:
         return jsonify(get_all_settings())
+
+@app.route("/api/backup/export", methods=["GET"])
+def backup_export():
+    """Exports settings and optionally cached media data as a JSON file attachment."""
+    include_media = request.args.get("include_media", "true").lower() == "true"
+    try:
+        data = export_to_dict(include_media=include_media)
+        import json
+        json_data = json.dumps(data, indent=2)
+        return json_data, 200, {
+            "Content-Type": "application/json",
+            "Content-Disposition": "attachment; filename=xarrtools_backup.json"
+        }
+    except Exception as e:
+        app.logger.error(f"Error exporting backup: {e}")
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+@app.route("/api/backup/import", methods=["POST"])
+def backup_import():
+    """Imports settings and cached media data from an uploaded JSON file."""
+    if "file" not in request.files:
+        return jsonify({"status": "error", "message": "No file uploaded."}), 400
+        
+    file = request.files["file"]
+    if not file or not file.filename:
+        return jsonify({"status": "error", "message": "No file selected."}), 400
+        
+    try:
+        import json
+        content = file.read().decode("utf-8")
+        data = json.loads(content)
+        
+        if not isinstance(data, dict):
+            return jsonify({"status": "error", "message": "Invalid backup file structure."}), 400
+            
+        settings_count, media_count = import_from_dict(data)
+        
+        return jsonify({
+            "status": "success",
+            "message": "Backup imported successfully.",
+            "settings_count": settings_count,
+            "media_count": media_count
+        })
+    except Exception as e:
+        app.logger.error(f"Error importing backup: {e}")
+        return jsonify({"status": "error", "message": str(e)}), 500
+
 
 @app.route("/api/archive", methods=["POST"])
 def archive_media():

@@ -532,6 +532,56 @@ def handle_discovery_workflow():
                 console.print(f"[red]Error fetching Radarr config options: {e}[/red]")
 
 
+def handle_export_workflow():
+    console.print("\n[bold yellow]Backup Settings & Cache[/bold yellow]")
+    include_media = Confirm.ask("Include basic details of cached media objects?", default=True)
+    
+    default_filename = "xarrtools_backup.json"
+    filename = Prompt.ask("Enter destination file path", default=default_filename)
+    
+    try:
+        from core.db import export_to_dict
+        data = export_to_dict(include_media=include_media)
+        import json
+        content = json.dumps(data, indent=2)
+        
+        with open(filename, "w", encoding="utf-8") as f:
+            f.write(content)
+            
+        console.print(f"[green]✓ Successfully exported backup to '{filename}'[/green]")
+    except Exception as e:
+        console.print(f"[red]Error exporting backup: {e}[/red]")
+
+
+def handle_import_workflow():
+    console.print("\n[bold yellow]Restore Settings & Cache[/bold yellow]")
+    filename = Prompt.ask("Enter path to backup file (.json)")
+    
+    import os
+    if not os.path.exists(filename):
+        console.print(f"[red]File '{filename}' does not exist.[/red]")
+        return
+        
+    try:
+        with open(filename, "r", encoding="utf-8") as f:
+            content = f.read()
+            
+        import json
+        data = json.loads(content)
+        
+        if not isinstance(data, dict):
+            console.print("[red]Invalid backup file structure.[/red]")
+            return
+            
+        from core.db import import_from_dict
+        s_count, m_count = import_from_dict(data)
+        console.print(f"[green]✓ Successfully imported backup from '{filename}'![/green]")
+        console.print(f"  - Settings imported/updated: [bold]{s_count}[/bold]")
+        console.print(f"  - Media items imported/updated: [bold]{m_count}[/bold]")
+    except Exception as e:
+        console.print(f"[red]Error importing backup: {e}[/red]")
+
+
 def run_cli():
     while True:
         console.clear()
@@ -547,9 +597,11 @@ def run_cli():
         console.print(" [1] Search & Add Movie (Radarr)")
         console.print(" [2] Search & Add TV Show (Sonarr)")
         console.print(" [3] Discover New Releases (Metacritic)")
-        console.print(" [4] Exit")
+        console.print(" [4] Export Settings & Cache (Backup)")
+        console.print(" [5] Import Settings & Cache (Restore)")
+        console.print(" [6] Exit")
 
-        choice = Prompt.ask("\nChoose an option", choices=["1", "2", "3", "4"], default="4")
+        choice = Prompt.ask("\nChoose an option", choices=["1", "2", "3", "4", "5", "6"], default="6")
         
         if choice == "1":
             handle_radarr_workflow()
@@ -561,5 +613,12 @@ def run_cli():
             handle_discovery_workflow()
             Prompt.ask("\nPress Enter to return to menu...")
         elif choice == "4":
+            handle_export_workflow()
+            Prompt.ask("\nPress Enter to return to menu...")
+        elif choice == "5":
+            handle_import_workflow()
+            Prompt.ask("\nPress Enter to return to menu...")
+        elif choice == "6":
             console.print("[yellow]Goodbye![/yellow]")
             break
+
