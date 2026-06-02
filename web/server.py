@@ -271,11 +271,11 @@ def discover_releases():
                         row_year = row["year"]
                         has_title_match = any(abs(y - row_year) <= 1 for y in sonarr_titles[title_norm])
                         
-                in_library = has_tvdb_match or has_imdb_match or has_title_match
+                in_library = has_tvdb_match or has_imdb_match or has_title_match or bool(row["is_in_library"])
                 
                 # Sync status if changed
-                if in_library != bool(row["is_in_library"]):
-                    update_cached_library_status("tv", row["title"], row["year"], in_library, imdb_id)
+                if in_library and not bool(row["is_in_library"]):
+                    update_cached_library_status("tv", row["title"], row["year"], True, imdb_id)
             else:
                 in_library = bool(row["is_in_library"])
                 
@@ -321,11 +321,11 @@ def discover_releases():
                         row_year = row["year"]
                         has_title_match = any(abs(y - row_year) <= 1 for y in radarr_titles[title_norm])
                         
-                in_library = has_tmdb_match or has_imdb_match or has_title_match
+                in_library = has_tmdb_match or has_imdb_match or has_title_match or bool(row["is_in_library"])
                 
                 # Sync status if changed
-                if in_library != bool(row["is_in_library"]):
-                    update_cached_library_status("movie", row["title"], row["year"], in_library, imdb_id)
+                if in_library and not bool(row["is_in_library"]):
+                    update_cached_library_status("movie", row["title"], row["year"], True, imdb_id)
             else:
                 in_library = bool(row["is_in_library"])
                 
@@ -411,11 +411,11 @@ def discover_releases():
                             else:
                                 has_title_match = any(abs(y - cached["year"]) <= 1 for y in sonarr_titles[title_norm])
                                 
-                        in_library = has_tvdb_match or has_imdb_match or has_title_match
+                        in_library = has_tvdb_match or has_imdb_match or has_title_match or bool(cached["is_in_library"])
                         
                         # Sync status if changed
-                        if in_library != bool(cached["is_in_library"]):
-                            update_cached_library_status("tv", cached["title"], cached["year"], in_library, imdb_val)
+                        if in_library and not bool(cached["is_in_library"]):
+                            update_cached_library_status("tv", cached["title"], cached["year"], True, imdb_val)
                     else:
                         in_library = bool(cached["is_in_library"])
                         
@@ -462,7 +462,7 @@ def discover_releases():
                             else:
                                 has_title_match = any(abs(y - data["year"]) <= 1 for y in sonarr_titles[title_norm])
                                 
-                        in_library = has_tvdb_match or has_imdb_match or has_title_match
+                        in_library = has_tvdb_match or has_imdb_match or has_title_match or (bool(cached["is_in_library"]) if cached else False)
                     else:
                         in_library = bool(cached["is_in_library"]) if cached else False
                         
@@ -537,11 +537,11 @@ def discover_releases():
                             else:
                                 has_title_match = any(abs(y - cached["year"]) <= 1 for y in radarr_titles[title_norm])
                                 
-                        in_library = has_tmdb_match or has_imdb_match or has_title_match
+                        in_library = has_tmdb_match or has_imdb_match or has_title_match or bool(cached["is_in_library"])
                         
                         # Sync status if changed
-                        if in_library != bool(cached["is_in_library"]):
-                            update_cached_library_status("movie", cached["title"], cached["year"], in_library, imdb_val)
+                        if in_library and not bool(cached["is_in_library"]):
+                            update_cached_library_status("movie", cached["title"], cached["year"], True, imdb_val)
                     else:
                         in_library = bool(cached["is_in_library"])
                         
@@ -591,7 +591,7 @@ def discover_releases():
                             else:
                                 has_title_match = any(abs(y - data["year"]) <= 1 for y in radarr_titles[title_norm])
                                 
-                        in_library = has_tmdb_match or has_imdb_match or has_title_match
+                        in_library = has_tmdb_match or has_imdb_match or has_title_match or (bool(cached["is_in_library"]) if cached else False)
                     else:
                         in_library = bool(cached["is_in_library"]) if cached else False
                         
@@ -696,7 +696,7 @@ def cache_refresh_item():
                         else:
                             has_title_match = any(abs(y - year_val) <= 1 for y in sonarr_titles_local[title_norm])
                             
-                    in_library = has_tvdb_match or has_imdb_match or has_title_match
+                    in_library = has_tvdb_match or has_imdb_match or has_title_match or (bool(existing["is_in_library"]) if existing else False)
                 except Exception:
                     pass
             else:
@@ -748,7 +748,7 @@ def cache_refresh_item():
                         else:
                             has_title_match = any(abs(y - year_val) <= 1 for y in radarr_titles_local[title_norm])
                             
-                    in_library = has_tmdb_match or has_imdb_match or has_title_match
+                    in_library = has_tmdb_match or has_imdb_match or has_title_match or (bool(existing["is_in_library"]) if existing else False)
                 except Exception:
                     pass
             else:
@@ -877,6 +877,65 @@ def add_media():
             return jsonify({"status": "success", "message": f"Successfully added Movie '{res.get('title')}'!"})
     except ArrAPIError as e:
         return jsonify({"status": "error", "message": str(e)}), 500
+
+@app.route("/api/link_library", methods=["POST"])
+def link_library():
+    """Manually link a discovery item to an existing Sonarr/Radarr library match and mark it in-library."""
+    req_data = request.json or {}
+    type_ = req_data.get("type")
+    title = req_data.get("title")
+    year = req_data.get("year")
+    imdb_id = req_data.get("imdbId")
+    link_metadata = req_data.get("link_metadata") or {}
+    
+    if not type_ or not title or not year:
+        return jsonify({"status": "error", "message": "Missing required fields (type, title, year)"}), 400
+        
+    try:
+        from core.db import get_db_connection, get_cached_item
+        conn = get_db_connection()
+        conn.execute("BEGIN IMMEDIATE")
+        try:
+            # Look up existing cached item
+            existing = get_cached_item(type_, title, int(year), imdb_id, conn=conn)
+            
+            # Extract IDs from link_metadata
+            tvdb_val = link_metadata.get("tvdbId")
+            tmdb_val = link_metadata.get("tmdbId")
+            imdb_val = link_metadata.get("imdbId")
+            
+            if existing:
+                cursor = conn.cursor()
+                # Update existing cache item, setting is_in_library = 1 and copying IDs
+                cursor.execute('''
+                    UPDATE cache SET
+                        is_in_library = 1,
+                        tvdb_id = COALESCE(?, tvdb_id),
+                        tmdb_id = COALESCE(?, tmdb_id),
+                        imdb_id = COALESCE(?, imdb_id)
+                    WHERE id = ?
+                ''', (tvdb_val, tmdb_val, imdb_val, existing["id"]))
+                conn.commit()
+            else:
+                cursor = conn.cursor()
+                normalized_title = normalize_title(title, is_tv=(type_ == "tv"))
+                cursor.execute('''
+                    INSERT INTO cache (
+                        type, title, year, is_in_library, tvdb_id, tmdb_id, imdb_id, normalized_title, added_at
+                    ) VALUES (?, ?, ?, 1, ?, ?, ?, ?, ?)
+                ''', (type_, title, int(year), tvdb_val, tmdb_val, imdb_val, normalized_title, datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
+                conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
+        finally:
+            conn.close()
+            
+        return jsonify({"status": "success", "message": f"Successfully linked '{title}' and marked In Library."})
+    except Exception as e:
+        app.logger.error(f"Error linking library item '{title}': {e}")
+        return jsonify({"status": "error", "message": str(e)}), 500
+
 
 
 import threading

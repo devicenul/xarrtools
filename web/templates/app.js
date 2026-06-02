@@ -62,6 +62,10 @@ const modalStepSearch = document.getElementById("modal-step-search");
 const modalStepOptions = document.getElementById("modal-step-options");
 const lookupLoading = document.getElementById("lookup-loading");
 const lookupResultsList = document.getElementById("lookup-results-list");
+const btnModalMarkLibrary = document.getElementById("btn-modal-mark-library");
+const linkHelperBanner = document.getElementById("link-helper-banner");
+let isMarkInLibraryMode = false;
+
 
 const selectFolder = document.getElementById("select-folder");
 const selectProfile = document.getElementById("select-profile");
@@ -991,6 +995,12 @@ async function openAddModal(type, index) {
     }
 
     // Step 1 UI Setup: Show Search match list, hide Options select
+    isMarkInLibraryMode = false;
+    linkHelperBanner.classList.add("hidden");
+    btnModalMarkLibrary.classList.remove("hidden");
+    btnModalMarkLibrary.classList.remove("btn-modal-mark-library-active");
+    btnModalMarkLibrary.textContent = "Mark In Library";
+
     modalTitle.textContent = `Search Indexer for '${item.title}'`;
     modalStepSearch.classList.remove("hidden");
     modalStepOptions.classList.add("hidden");
@@ -1077,7 +1087,12 @@ function renderLookupResults(results, type, discoveryItem) {
         `;
         
         // Bind Click handler to select and transition to Step 2
+        // Bind Click handler to select and transition to Step 2
         itemRow.addEventListener("click", () => {
+            if (isMarkInLibraryMode) {
+                linkDiscoveryToLibrary(res, discoveryItem);
+                return;
+            }
             if (inLibrary) {
                 alert(`'${res.title}' is already in your library!`);
                 return;
@@ -1087,6 +1102,41 @@ function renderLookupResults(results, type, discoveryItem) {
         
         lookupResultsList.appendChild(itemRow);
     });
+}
+
+async function linkDiscoveryToLibrary(metadataItem, discoveryItem) {
+    const type = selectedItemForAdd.type;
+    try {
+        const response = await fetch("/api/link_library", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify({
+                type: type,
+                title: discoveryItem.title,
+                year: discoveryItem.year,
+                imdbId: discoveryItem.imdbId,
+                link_metadata: metadataItem
+            })
+        });
+        const data = await response.json();
+        if (response.ok && data.status === "success") {
+            // Update local memory
+            discoveryItem.is_in_library = true;
+            discoveryItem.tvdbId = metadataItem.tvdbId || discoveryItem.tvdbId;
+            discoveryItem.tmdbId = metadataItem.tmdbId || discoveryItem.tmdbId;
+            discoveryItem.imdbId = metadataItem.imdbId || discoveryItem.imdbId;
+            
+            modalOverlay.classList.add("hidden");
+            alert(data.message);
+            renderDiscoveries();
+        } else {
+            alert(`Link failed: ${data.message}`);
+        }
+    } catch (error) {
+        alert(`Link error: ${error.message}`);
+    }
 }
 
 // Transition to Step 2 (Download path and profile options)
@@ -1183,6 +1233,7 @@ function goToOptionsStep(metadataItem) {
     modalStepSearch.classList.add("hidden");
     modalStepOptions.classList.remove("hidden");
     btnModalBack.classList.remove("hidden");
+    btnModalMarkLibrary.classList.add("hidden");
     if (btnModalAddOnly) btnModalAddOnly.classList.remove("hidden");
     btnModalConfirm.classList.remove("hidden");
 }
@@ -1194,6 +1245,7 @@ function goBackToSearchStep() {
     modalStepSearch.classList.remove("hidden");
     modalStepOptions.classList.add("hidden");
     btnModalBack.classList.add("hidden");
+    btnModalMarkLibrary.classList.remove("hidden");
     if (btnModalAddOnly) btnModalAddOnly.classList.add("hidden");
     btnModalConfirm.classList.add("hidden");
 }
@@ -2258,6 +2310,21 @@ function setupEventListeners() {
         btnModalAddOnly.addEventListener("click", () => addMediaItem(false));
     }
     btnModalBack.addEventListener("click", goBackToSearchStep);
+    if (btnModalMarkLibrary) {
+        btnModalMarkLibrary.addEventListener("click", () => {
+            isMarkInLibraryMode = !isMarkInLibraryMode;
+            if (isMarkInLibraryMode) {
+                btnModalMarkLibrary.classList.add("btn-modal-mark-library-active");
+                btnModalMarkLibrary.textContent = "Cancel Link Mode";
+                linkHelperBanner.classList.remove("hidden");
+            } else {
+                btnModalMarkLibrary.classList.remove("btn-modal-mark-library-active");
+                btnModalMarkLibrary.textContent = "Mark In Library";
+                linkHelperBanner.classList.add("hidden");
+            }
+        });
+    }
+
     
     // Sort Select change handler
     if (selectSort) {

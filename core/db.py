@@ -438,6 +438,8 @@ def add_cached_item(type_: str, item: dict, conn = None):
         tvdb_id = item.get("tvdbId") or item.get("tvdb_id")
         tmdb_id = item.get("tmdbId") or item.get("tmdb_id")
         is_in_lib = 1 if item.get("is_in_library") else 0
+        if existing and existing.get("is_in_library"):
+            is_in_lib = 1
         source_feed_id = item.get("source_feed_id")
         
         normalized_title = normalize_title(item["title"], is_tv=(type_ == "tv"))
@@ -693,8 +695,12 @@ def update_cached_library_status(type_: str, title: str, year: int, is_in_librar
         cursor = conn.cursor()
         existing = get_cached_item(type_, title, year, imdb_id, conn=conn)
         if existing:
+            if existing.get("is_in_library") and not is_in_library:
+                # Never transition from True to False
+                return
             cursor.execute("UPDATE cache SET is_in_library = ? WHERE id = ?", (1 if is_in_library else 0, existing["id"]))
             conn.commit()
+
     except Exception:
         conn.rollback()
         raise

@@ -2070,3 +2070,34 @@ body.light-theme #feed-test-results::-webkit-scrollbar-thumb,
 body.light-theme .table-container::-webkit-scrollbar-thumb {
     background: rgba(0, 0, 0, 0.1);
 }
+
+/* Link Helper Banner */
+.link-helper-banner {
+    background: rgba(255, 204, 0, 0.08);
+    border: 1px solid rgba(255, 204, 0, 0.25);
+    border-radius: 8px;
+    padding: 10px 12px;
+    font-size: 13px;
+    color: #ffcc00;
+    margin-bottom: 12px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    animation: fadeIn 0.2s ease;
+    box-shadow: 0 0 10px rgba(255, 204, 0, 0.1);
+}
+
+body.light-theme .link-helper-banner {
+    background: rgba(230, 160, 0, 0.08);
+    border-color: rgba(230, 160, 0, 0.3);
+    color: #b37400;
+    box-shadow: none;
+}
+
+.btn-modal-mark-library-active {
+    background: rgba(255, 204, 0, 0.15) !important;
+    border-color: #ffcc00 !important;
+    color: #ffcc00 !important;
+    box-shadow: 0 0 12px rgba(255, 204, 0, 0.3) !important;
+}
+

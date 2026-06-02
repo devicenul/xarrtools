@@ -217,6 +217,9 @@
                 <!-- Step 1: Match Selection -->
                 <div id="modal-step-search" class="modal-step">
                     <p class="step-instruction">Select the correct match from indexers:</p>
+                    <div id="link-helper-banner" class="link-helper-banner hidden">
+                        <span>⚠️ Choose a match below to manually link and mark this item as In Library.</span>
+                    </div>
                     <div id="lookup-loading" class="lookup-status">
                         <div class="spinner-small"></div> Searching indexers...
                     </div>
@@ -272,6 +275,7 @@
             </div>
             <div class="modal-footer">
                 <button id="btn-modal-back" class="btn btn-secondary hidden">Back</button>
+                <button id="btn-modal-mark-library" class="btn btn-secondary hidden">Mark In Library</button>
                 <button id="btn-modal-cancel" class="btn btn-secondary">Cancel</button>
                 <button id="btn-modal-add-only" class="btn btn-primary hidden">Add Only</button>
                 <button id="btn-modal-confirm" class="btn btn-success hidden">Add and Search</button>

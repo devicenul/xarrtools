@@ -171,7 +171,7 @@ def test_cache_crud(temp_db):
         "date_obj": datetime(2026, 5, 29),
         "date_str": "May 29, 2026",
         "rating_imdb": "8.5",
-        "is_in_library": True
+        "is_in_library": False
     }
     
     # 1. Add item
@@ -182,7 +182,7 @@ def test_cache_crud(temp_db):
     assert cached is not None
     assert cached["title"] == "Antigravity Movie"
     assert cached["year"] == 2026
-    assert bool(cached["is_in_library"]) is True
+    assert bool(cached["is_in_library"]) is False
     
     # 3. Get item (Title match within 1 year range, settings = ignore_year = 0)
     cached_range = core.db.get_cached_item("movie", "Antigravity Movie", 2027)
@@ -218,12 +218,17 @@ def test_cache_crud(temp_db):
     item["date_obj"] = None
     core.db.add_cached_item("movie", item)
     
-    # 7. Update library status
-    core.db.update_cached_library_status("movie", "Antigravity Movie", 2026, False, "tt1234567")
+    # 7. Update library status (False to True transitions)
+    core.db.update_cached_library_status("movie", "Antigravity Movie", 2026, True, "tt1234567")
     updated_lib = core.db.get_cached_item("movie", "Antigravity Movie", 2026, "tt1234567")
-    assert bool(updated_lib["is_in_library"]) is False
+    assert bool(updated_lib["is_in_library"]) is True
     
-    # 7b. Update library status for non-existent item (covers no-op branch)
+    # 7b. Attempt to transition back to False (should be ignored / remain True)
+    core.db.update_cached_library_status("movie", "Antigravity Movie", 2026, False, "tt1234567")
+    updated_lib2 = core.db.get_cached_item("movie", "Antigravity Movie", 2026, "tt1234567")
+    assert bool(updated_lib2["is_in_library"]) is True
+    
+    # 7c. Update library status for non-existent item (covers no-op branch)
     core.db.update_cached_library_status("movie", "Non Existent Movie", 2026, True)
 
 def test_archive_cached_item(temp_db):

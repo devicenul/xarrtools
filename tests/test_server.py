@@ -1436,6 +1436,13 @@ def test_discover_cached_movie_title_library_match(client):
             assert data["movies"][0]["is_in_library"] is True
 
     # Year difference > 1
+    # Reset cached in-library status for this test step since it was set to True in previous step
+    import core.db
+    conn = core.db.get_db_connection()
+    conn.execute("UPDATE cache SET is_in_library = 0")
+    conn.commit()
+    conn.close()
+    
     mock_radarr.get_library.return_value = [{"tmdbId": None, "imdbId": None, "title": "MatchTitle Movie", "year": 2020}]
     with patch("web.server.get_clients", return_value=(mock_radarr, None)):
         with patch("web.server.get_discoveries", return_value=((), movie_raw)):
@@ -1654,6 +1661,13 @@ def test_discover_live_scrape_tv_title_library_match(client):
                 assert data["tv"][0]["is_in_library"] is True
 
     # Year difference > 1
+    # Reset cached in-library status for this test step since it was set to True in previous step
+    import core.db
+    conn = core.db.get_db_connection()
+    conn.execute("UPDATE cache SET is_in_library = 0")
+    conn.commit()
+    conn.close()
+    
     mock_sonarr.get_library.return_value = [{"tvdbId": None, "imdbId": None, "title": "MatchTitle TV", "year": 2020}]
     with patch("web.server.get_clients", return_value=(None, mock_sonarr)):
         with patch("web.server.get_discoveries", return_value=(tv_raw, ())):
@@ -1711,6 +1725,13 @@ def test_discover_live_scrape_movie_title_library_match(client):
                 assert data["movies"][0]["is_in_library"] is True
 
     # Year difference > 1
+    # Reset cached in-library status for this test step since it was set to True in previous step
+    import core.db
+    conn = core.db.get_db_connection()
+    conn.execute("UPDATE cache SET is_in_library = 0")
+    conn.commit()
+    conn.close()
+    
     mock_radarr.get_library.return_value = [{"tmdbId": None, "imdbId": None, "title": "MatchTitle Movie", "year": 2020}]
     with patch("web.server.get_clients", return_value=(mock_radarr, None)):
         with patch("web.server.get_discoveries", return_value=((), movie_raw)):
@@ -2064,6 +2085,61 @@ def test_custom_feed_test_discovery(client):
         # Verify it verified both https and http, and fetched from http:
         mock_fetch.assert_any_call("https://test-feed.local/rss", headers={}, timeout=5)
         mock_fetch.assert_any_call("http://test-feed.local/rss", headers={})
+
+def test_link_library_endpoint(client):
+    from core.db import add_cached_item, get_cached_item
+    
+    # 1. Test validation error (missing fields)
+    response = client.post("/api/link_library", json={"type": "movie"})
+    assert response.status_code == 400
+    
+    # 2. Test successful linking of existing cache item
+    add_cached_item("movie", {
+        "title": "To Link Movie",
+        "year": 2026,
+        "is_in_library": False
+    })
+    
+    payload = {
+        "type": "movie",
+        "title": "To Link Movie",
+        "year": 2026,
+        "imdbId": "",
+        "link_metadata": {
+            "tmdbId": 12345,
+            "imdbId": "tt55555"
+        }
+    }
+    
+    response = client.post("/api/link_library", json=payload)
+    assert response.status_code == 200
+    data = response.get_json()
+    assert data["status"] == "success"
+    
+    cached = get_cached_item("movie", "To Link Movie", 2026)
+    assert cached is not None
+    assert bool(cached["is_in_library"]) is True
+    assert cached["tmdb_id"] == 12345
+    assert cached["imdb_id"] == "tt55555"
+
+    # 3. Test successful linking of non-existent cache item (skeleton insertion)
+    payload_new = {
+        "type": "tv",
+        "title": "New Linked TV",
+        "year": 2026,
+        "imdbId": "",
+        "link_metadata": {
+            "tvdbId": 67890
+        }
+    }
+    response = client.post("/api/link_library", json=payload_new)
+    assert response.status_code == 200
+    
+    cached_new = get_cached_item("tv", "New Linked TV", 2026)
+    assert cached_new is not None
+    assert bool(cached_new["is_in_library"]) is True
+    assert cached_new["tvdb_id"] == 67890
+
 
 
 
