@@ -6,7 +6,7 @@ This document tracks planned future functionality, architectural changes, and us
 
 ## Planned Enhancements
 
-### 2. Dockerization for NAS/Server Hosting
+### 1. Dockerization for NAS/Server Hosting (Roadmap Item 2)
 - **Goal**: Allow running the application inside a lightweight container on NAS systems (Synology, Unraid, QNAP) or homelab servers.
 - **Implementation Strategy**:
   - Create a `Dockerfile` based on `python:3.11-alpine` to keep the footprint small (<100MB).
@@ -15,7 +15,7 @@ This document tracks planned future functionality, architectural changes, and us
   - Create a `docker-compose.yml` template to easily stand up the tool alongside Radarr and Sonarr containers.
 - **Code files involved**: [Dockerfile](file:///d:/Workspaces/Projects/xarrtools/Dockerfile), [docker-compose.yml](file:///d:/Workspaces/Projects/xarrtools/docker-compose.yml), [core/db.py](file:///d:/Workspaces/Projects/xarrtools/core/db.py) (relocate database if running in Docker to `/config/xarrtools.db`).
 
-### 3. Background Scheduled Refreshes
+### 2. Background Scheduled Refreshes (Roadmap Item 3)
 - **Goal**: Automatically scan Metacritic and DVD releases on a daily schedule, ensuring cache records stay updated without manual user trigger clicks.
 - **Implementation Strategy**:
   - Integrate a background daemon thread or Python task library (like `APScheduler`) inside `server.py` starting on Flask boot.
@@ -24,17 +24,13 @@ This document tracks planned future functionality, architectural changes, and us
   - Log scan statistics and broadcast a notification update payload to the UI sidebar (using simple long-polling or WebSockets).
 - **Code files involved**: [web/server.py](file:///d:/Workspaces/Projects/xarrtools/web/server.py), [web/templates/app.js](file:///d:/Workspaces/Projects/xarrtools/web/templates/app.js)
 
-### 4. Code and Agentic Review
+### 3. Code and Agentic Review (Roadmap Item 4)
 - **Goal**: Complete a thorough security and performance review of database locks, scraper concurrency, and exception mapping layers.
 
-### 5. GitHub Builds and Releases Setup
+### 4. GitHub Builds and Releases Setup (Roadmap Item 5)
 - **Goal**: Automate PyInstaller compilation and packaging workflows on GitHub tag triggers, distributing binary builds directly via GitHub Releases.
 
-### 6. Standalone Desktop App UI (Captive Browser Window)
-- **Goal**: Enable running the application as a standalone desktop program using a captive web-view wrapper (like `pywebview` or `PyQtWebEngine`) to run the server in the background and display the UI inside a dedicated application frame.
-- **Code files involved**: [main.py](file:///d:/Workspaces/Projects/xarrtools/main.py), [gui/gui.py](file:///d:/Workspaces/Projects/xarrtools/gui/gui.py) [NEW].
-
-### 7. Sufficient Logging
+### 5. Sufficient Logging (Roadmap Item 7)
 - **Goal**: Implement systematic, configurable, structured logging across all core scraper classes, API wrappers, database operations, and server endpoints to facilitate easier troubleshooting and telemetry.
 - **Implementation Strategy**:
   - Re-architect simple print statements and sporadic `app.logger.error` instances into a unified Python standard `logging` setup.
@@ -42,15 +38,7 @@ This document tracks planned future functionality, architectural changes, and us
   - Set up rotating log file handler (`xarrtools.log`) alongside console logging.
 - **Code files involved**: [core/config.py](file:///d:/Workspaces/Projects/xarrtools/core/config.py), [web/server.py](file:///d:/Workspaces/Projects/xarrtools/web/server.py), [cli/cli.py](file:///d:/Workspaces/Projects/xarrtools/cli/cli.py).
 
-### 8. Sufficient Comments in the Code
-- **Goal**: Standardize and enrich inline code documentation, block comments, and docstrings across all modules to improve code legibility and ease codebase onboarding for external developers or automated agents.
-- **Implementation Strategy**:
-  - Perform a thorough audit of the code modules, ensuring all classes, utility functions, routes, and complex regex matching/parsing blocks have descriptive PEP 257 compliant docstrings.
-  - Standardize docstring structure (describing arguments, return types, and potential side-effects).
-  - Add context comments explaining non-trivial business logic, database queries, and test isolation design details.
-- **Code files involved**: all Python files under `core/`, `web/`, and `cli/`.
-
-### 9. Free Packaging and Distribution Pipeline
+### 6. Free Packaging and Distribution Pipeline (Roadmap Item 9)
 - **Goal**: Create cross-platform installation packages and setup distribution channels completely free of charge, avoiding developer registration fees.
 - **Implementation Strategy**:
   - **macOS (Homebrew Tap & DMG)**: Distribute the compiled `.app` bundle inside an unsigned drag-and-drop `.dmg` using `create-dmg` or `dmgbuild`. Create a custom Homebrew Tap repository (`homebrew-xarrtools`) with a Ruby formula to distribute the pre-compiled binary seamlessly via `brew install xarrtools`. Provide clear instructions for Gatekeeper bypass (`xattr -d com.apple.quarantine`).
@@ -59,7 +47,7 @@ This document tracks planned future functionality, architectural changes, and us
   - **Python Package (PyPI)**: Distribute the app as a standard package on PyPI, enabling installation via `pipx install xarrtools` to bypass OS code-signing limitations completely.
 - **Code files involved**: [build.sh](file:///Users/rrjefferson/Workspaces/Projects/xarrtools/build.sh), [build.bat](file:///Users/rrjefferson/Workspaces/Projects/xarrtools/build.bat).
 
-### 14. Protocol Fallback for Server Configurations
+### 7. Protocol Fallback for Server Configurations (Roadmap Item 14)
 - **Goal**: Handle Radarr/Sonarr server addresses configured without explicit `http://` or `https://` schemes by automatically checking connectivity using `https://` first, and falling back to `http://`.
 - **Implementation Strategy**:
   - Update server validation and client wrappers (`RadarrClient` / `SonarrClient`) to parse user-entered URLs.
@@ -70,6 +58,12 @@ This document tracks planned future functionality, architectural changes, and us
 ---
 
 ## Completed Features
+
+### ✓ Sufficient Comments and Code Documentation (Roadmap Item 8)
+Standardized inline comments, code block descriptions, and PEP-257 compliant docstrings across all modules (`core`, `web`, `cli`, and `gui`) to improve code legibility and onboarding.
+
+### ✓ Standalone Desktop App UI (Roadmap Item 6)
+Integrates a standalone captive web-view frame using `pywebview` to run the Flask backend and load the UI within native OS application frames.
 
 ### ✓ Embed App Icons in Compiled Binaries & Runtime (Roadmap Item 16)
 Embeds application icon assets (`.ico` for Windows, `.icns` for macOS, and `.png` for Linux) inside PyInstaller executable builds and resolves them dynamically at runtime to show app icons on window headers and taskbars.
