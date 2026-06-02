@@ -891,13 +891,8 @@ function createMediaCard(item, type, index) {
             ${buildRatingBadgesHtml(item)}
             <div class="genres-list">${genres}</div>
             <div class="card-cast"><strong>Cast:</strong> <span>${item.cast}</span></div>
-            ${(type === "movie" && (item.director || item.producer)) ? `
-                <div class="card-crew">
-                    ${item.director ? `<strong>Director:</strong> <span>${item.director}</span>` : ""}
-                    ${(item.director && item.producer) ? " | " : ""}
-                    ${item.producer ? `<strong>Producer:</strong> <span>${item.producer}</span>` : ""}
-                </div>
-            ` : ""}
+            ${(type === "movie" && item.director) ? `<div class="card-crew"><strong>Director:</strong> <span>${item.director}</span></div>` : ""}
+            ${(type === "movie" && item.producer) ? `<div class="card-crew"><strong>Producer:</strong> <span>${item.producer}</span></div>` : ""}
             <div class="card-plot">${plotHtml}</div>
             
             <div class="details-toggle-row" style="margin-top: auto; border-top: 1px dashed var(--border-color); padding-top: 8px; display: flex; justify-content: space-between; align-items: center;">
