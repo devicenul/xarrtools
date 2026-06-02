@@ -1055,6 +1055,25 @@ def test_custom_feed():
     try:
         import time
         start_time = time.time()
+        
+        if not (url.startswith("http://") or url.startswith("https://")):
+            import requests
+            from core.scraper import HEADERS
+            https_url = f"https://{url}"
+            http_url = f"http://{url}"
+            discovered_url = http_url
+            for test_url in (https_url, http_url):
+                try:
+                    if feed_type in ("metacritic_tv", "metacritic_movie", "dvds_releases"):
+                        requests.get(test_url, headers=HEADERS, timeout=5)
+                    else:
+                        safe_fetch_feed(test_url, headers=http_headers, timeout=5)
+                    discovered_url = test_url
+                    break
+                except Exception:
+                    continue
+            url = discovered_url
+            
         raw_payload = safe_fetch_feed(url, headers=http_headers)
         
         # Inject details into parser config for standardize_item

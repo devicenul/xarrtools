@@ -300,3 +300,49 @@ def test_get_discoveries():
         # Test negative ranges to cover the loop bypass and equal year/month branch (284->289 False)
         tv_neg, movies_neg = get_discoveries(past_days=-5, future_days=-10)
         assert tv_neg == []
+
+def test_custom_feed_url_discovery():
+    # Mock SQLite DB, requests, and safe_fetch_feed
+    mock_feed = {
+        "id": 1,
+        "name": "Custom JSON Feed",
+        "url": "my-feed.local/json",
+        "feed_type": "json",
+        "enabled": 1,
+        "http_headers": '{"Authorization": "Bearer token"}',
+        "parser_config": '{"item_selector": "items", "mappings": {"title": {"selector": "title"}}}',
+        "default_media_type": "movie"
+    }
+    
+    with patch("core.db.get_db_connection") as mock_conn_func, \
+         patch("core.scraper.safe_fetch_feed") as mock_fetch, \
+         patch("core.scraper.requests.get") as mock_req_get:
+         
+        mock_conn = MagicMock()
+        mock_cursor = MagicMock()
+        mock_conn.cursor.return_value = mock_cursor
+        mock_conn_func.return_value = mock_conn
+        
+        # SQLite table check returns custom_feeds table exists, and then returns mock_feed
+        mock_cursor.fetchone.return_value = ("custom_feeds",)
+        mock_cursor.fetchall.return_value = [mock_feed]
+        
+        # First test_url (https://my-feed.local/json) fails, second (http) succeeds,
+        # third (the actual fetch during processing) also succeeds.
+        mock_fetch.side_effect = [
+            ValueError("Private range or connection failure"), # https fails
+            '{"items": [{"title": "My Discovered Movie"}]}',   # http succeeds
+            '{"items": [{"title": "My Discovered Movie"}]}'    # actual fetch succeeds
+        ]
+        
+        tv, movies = get_discoveries(past_days=100, future_days=100)
+        
+        # Check that we performed the update query
+        mock_cursor.execute.assert_any_call(
+            "UPDATE custom_feeds SET url = ? WHERE id = ?",
+            ("http://my-feed.local/json", 1)
+        )
+        assert len(movies) == 1
+        assert movies[0]["title"] == "My Discovered Movie"
+
+

@@ -671,8 +671,28 @@ def get_discoveries(past_days: int = 30, future_days: int = 60) -> Tuple[List[Di
         
     for feed in feeds:
         try:
+            url = feed["url"]
             feed_type = feed["feed_type"]
-            
+            if not (url.startswith("http://") or url.startswith("https://")):
+                https_url = f"https://{url}"
+                http_url = f"http://{url}"
+                discovered_url = http_url
+                for test_url in (https_url, http_url):
+                    try:
+                        if feed_type in ("metacritic_tv", "metacritic_movie", "dvds_releases"):
+                            requests.get(test_url, headers=HEADERS, timeout=5)
+                        else:
+                            headers_dict = json.loads(feed["http_headers"]) if feed["http_headers"] else {}
+                            safe_fetch_feed(test_url, headers=headers_dict, timeout=5)
+                        discovered_url = test_url
+                        break
+                    except Exception:
+                        continue
+                
+                cursor.execute("UPDATE custom_feeds SET url = ? WHERE id = ?", (discovered_url, feed["id"]))
+                conn.commit()
+                feed["url"] = discovered_url
+                
             # Built-in custom scrapers
             if feed_type == "metacritic_tv":
                 items = scrape_new_releases(feed["url"], is_tv=True)

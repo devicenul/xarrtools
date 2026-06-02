@@ -2030,5 +2030,41 @@ def test_is_incomplete_metadata_and_suppression(client):
         assert len(results) == 1
         assert results[0]["title"] == "Valid Movie"
 
+def test_custom_feed_test_discovery(client):
+    test_payload = {
+        "url": "test-feed.local/rss",
+        "feed_type": "rss",
+        "default_media_type": "movie",
+        "http_headers": {},
+        "parser_config": {
+            "item_selector": "item",
+            "mappings": {
+                "title": {"selector": "title"}
+            }
+        }
+    }
+    
+    # Mocking: first HTTPS request fails, second HTTP request succeeds
+    with patch("web.server.safe_fetch_feed") as mock_fetch:
+        mock_fetch.side_effect = [
+            ValueError("Connection refused for HTTPS"),
+            "<rss><channel><item><title>Feed Discovery Movie</title></item></channel></rss>",
+            "<rss><channel><item><title>Feed Discovery Movie</title></item></channel></rss>"
+        ]
+
+
+        
+        response = client.post("/api/feeds/test", json=test_payload)
+        assert response.status_code == 200
+        data = response.get_json()
+        assert data["status"] == "success"
+        assert len(data["results"]) == 1
+        assert data["results"][0]["title"] == "Feed Discovery Movie"
+        
+        # Verify it verified both https and http, and fetched from http:
+        mock_fetch.assert_any_call("https://test-feed.local/rss", headers={}, timeout=5)
+        mock_fetch.assert_any_call("http://test-feed.local/rss", headers={})
+
+
 
 

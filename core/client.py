@@ -19,7 +19,38 @@ class BaseArrClient:
             "Content-Type": "application/json"
         }
 
+    def _discover_protocol(self) -> str:
+        raw_host = self.base_url
+        https_url = f"https://{raw_host}"
+        http_url = f"http://{raw_host}"
+        
+        for test_url in (https_url, http_url):
+            url = f"{test_url}/api/v3/system/status"
+            try:
+                response = requests.request(
+                    method="GET",
+                    url=url,
+                    headers=self.headers,
+                    timeout=5
+                )
+                from core.db import set_setting
+                setting_key = "radarr_url" if self.name.lower() == "radarr" else "sonarr_url"
+                set_setting(setting_key, test_url)
+                return test_url
+            except (requests.exceptions.ConnectionError, requests.exceptions.Timeout):
+                continue
+            except requests.exceptions.RequestException:
+                from core.db import set_setting
+                setting_key = "radarr_url" if self.name.lower() == "radarr" else "sonarr_url"
+                set_setting(setting_key, test_url)
+                return test_url
+                
+        return http_url
+
     def _request(self, method: str, endpoint: str, params: Optional[Dict[str, Any]] = None, json_data: Optional[Dict[str, Any]] = None) -> Any:
+        if not (self.base_url.startswith("http://") or self.base_url.startswith("https://")):
+            self.base_url = self._discover_protocol()
+            
         url = f"{self.base_url}/api/v3/{endpoint.lstrip('/')}"
         try:
             response = requests.request(

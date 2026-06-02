@@ -47,17 +47,10 @@ This document tracks planned future functionality, architectural changes, and us
   - **Python Package (PyPI)**: Distribute the app as a standard package on PyPI, enabling installation via `pipx install xarrtools` to bypass OS code-signing limitations completely.
 - **Code files involved**: [build.sh](file:///Users/rrjefferson/Workspaces/Projects/xarrtools/build.sh), [build.bat](file:///Users/rrjefferson/Workspaces/Projects/xarrtools/build.bat).
 
-### 7. Protocol Fallback for Server Configurations (Roadmap Item 14)
-- **Goal**: Handle Radarr/Sonarr server addresses configured without explicit `http://` or `https://` schemes by automatically checking connectivity using `https://` first, and falling back to `http://`.
-- **Implementation Strategy**:
-  - Update server validation and client wrappers (`RadarrClient` / `SonarrClient`) to parse user-entered URLs.
-  - If no scheme is present, attempt requests with `https://` prefix, catching connection errors and retrying with `http://` before raising configuration validation errors.
-- **Code files involved**: [core/client.py](file:///Users/rrjefferson/Workspaces/Projects/xarrtools/core/client.py), [web/server.py](file:///Users/rrjefferson/Workspaces/Projects/xarrtools/web/server.py).
-
-
----
-
 ## Completed Features
+
+### ✓ Protocol Fallback for Server Configurations & Custom Feeds (Roadmap Item 14 / #7)
+Automatically detects and falls back between HTTPS and HTTP protocols for scheme-less addresses configured in Sonarr/Radarr settings or custom feed URLs. Probes via HTTPS first, falling back to HTTP upon connection issues, and persisting the resolved scheme back to the database.
 
 ### ✓ Sufficient Comments and Code Documentation (Roadmap Item 8)
 Standardized inline comments, code block descriptions, and PEP-257 compliant docstrings across all modules (`core`, `web`, `cli`, and `gui`) to improve code legibility and onboarding.

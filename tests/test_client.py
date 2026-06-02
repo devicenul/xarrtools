@@ -241,3 +241,67 @@ def test_sonarr_client_methods():
                 }
             }
         )
+
+def test_client_protocol_discovery_https_success():
+    # Test case where HTTPS is checked first and succeeds
+    radarr = RadarrClient("localhost:7878", "radarrkey")
+    with patch("requests.request") as mock_req, \
+         patch("core.db.set_setting") as mock_set_setting:
+         
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {"status": "ok"}
+        mock_req.return_value = mock_response
+        
+        # Calling lookup_movie which triggers _request -> _discover_protocol
+        res = radarr.lookup_movie("test")
+        
+        # It should try HTTPS first and succeed
+        mock_set_setting.assert_any_call("radarr_url", "https://localhost:7878")
+        assert radarr.base_url == "https://localhost:7878"
+
+def test_client_protocol_discovery_https_fails_http_succeeds():
+    # Test case where HTTPS fails (ConnectionError) and HTTP succeeds
+    radarr = RadarrClient("localhost:7878", "radarrkey")
+    with patch("requests.request") as mock_req, \
+         patch("core.db.set_setting") as mock_set_setting:
+         
+        mock_response_http = MagicMock()
+        mock_response_http.status_code = 200
+        mock_response_http.json.return_value = {"status": "ok"}
+        
+        # Side effect: first call (https) raises ConnectionError, second (http) succeeds,
+        # third call (the actual request /movie/lookup) succeeds.
+        mock_req.side_effect = [
+            requests.exceptions.ConnectionError("Failed https"),
+            mock_response_http,
+            mock_response_http
+        ]
+        
+        res = radarr.lookup_movie("test")
+        
+        # Should record http setting
+        mock_set_setting.assert_any_call("radarr_url", "http://localhost:7878")
+        assert radarr.base_url == "http://localhost:7878"
+
+def test_client_protocol_discovery_general_request_exception():
+    # Test case where a RequestException (other than timeout/connection) is raised
+    sonarr = SonarrClient("localhost:8989", "sonarrkey")
+    with patch("requests.request") as mock_req, \
+         patch("core.db.set_setting") as mock_set_setting:
+         
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {"status": "ok"}
+        
+        # First call raises general requests.exceptions.RequestException (e.g. invalid response / ssl error)
+        # In this case it falls back immediately and returns the URL
+        mock_req.side_effect = [
+            requests.exceptions.RequestException("SSL error"),
+            mock_response
+        ]
+        
+        res = sonarr.lookup_series("test")
+        
+        mock_set_setting.assert_any_call("sonarr_url", "https://localhost:8989")
+        assert sonarr.base_url == "https://localhost:8989"
