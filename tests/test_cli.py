@@ -6,6 +6,7 @@ from cli.cli import (
     parse_indices,
     show_config_status,
     select_from_list,
+    resolve_preset_index,
     handle_radarr_workflow,
     handle_sonarr_workflow,
     handle_discovery_workflow,
@@ -352,11 +353,9 @@ def test_handle_sonarr_workflow_add_success(
     client_inst.lookup_series.return_value = shows
     client_inst.get_quality_profiles.return_value = [{"id": 1, "name": "HD"}]
     client_inst.get_root_folders.return_value = [{"path": "/tv"}]
-    # Test multiple language profiles branch
-    client_inst.get_language_profiles.return_value = [{"id": 1, "name": "English"}, {"id": 2, "name": "Spanish"}]
     
-    # 1. Folder, 2. Profile, 3. Language Profile
-    mock_select.side_effect = [{"path": "/tv"}, {"id": 1, "name": "HD"}, {"id": 2, "name": "Spanish"}]
+    # 1. Folder, 2. Profile
+    mock_select.side_effect = [{"path": "/tv"}, {"id": 1, "name": "HD"}]
     
     client_inst.add_series.return_value = {"title": "Rivals"}
     
@@ -367,8 +366,7 @@ def test_handle_sonarr_workflow_add_success(
         quality_profile_id=1,
         root_folder_path="/tv",
         monitored=True,
-        search_now=True,
-        language_profile_id=2
+        search_now=True
     )
     assert any("Successfully added" in str(call[0][0]) for call in mock_print.call_args_list if call[0])
 
@@ -376,7 +374,7 @@ def test_handle_sonarr_workflow_add_success(
 @patch("cli.cli.Prompt.ask")
 @patch("cli.cli.console.print")
 @patch("cli.cli.SonarrClient")
-def test_handle_sonarr_workflow_single_language_profile_and_add_failure(mock_sonarr, mock_print, mock_ask, mock_config):
+def test_handle_sonarr_workflow_add_failure(mock_sonarr, mock_print, mock_ask, mock_config):
     mock_config.validate_sonarr.return_value = True
     mock_ask.side_effect = ["Rivals", "1"]
     
@@ -385,10 +383,8 @@ def test_handle_sonarr_workflow_single_language_profile_and_add_failure(mock_son
     client_inst.lookup_series.return_value = shows
     client_inst.get_quality_profiles.return_value = [{"id": 1, "name": "HD"}]
     client_inst.get_root_folders.return_value = [{"path": "/tv"}]
-    # Test single language profiles branch (skips language prompt)
-    client_inst.get_language_profiles.return_value = [{"id": 1, "name": "English"}]
     
-    # 1. Folder, 2. Profile (no lang selection)
+    # 1. Folder, 2. Profile
     with patch("cli.cli.select_from_list") as mock_select, \
          patch("cli.cli.Confirm.ask", return_value=True):
         mock_select.side_effect = [{"path": "/tv"}, {"id": 1, "name": "HD"}]
@@ -454,7 +450,6 @@ def test_handle_discovery_workflow_add_all(
     sonarr_inst = mock_sonarr.return_value
     sonarr_inst.get_quality_profiles.return_value = [{"id": 1, "name": "HD"}]
     sonarr_inst.get_root_folders.return_value = [{"path": "/tv"}]
-    sonarr_inst.get_language_profiles.return_value = []
     
     radarr_inst = mock_radarr.return_value
     radarr_inst.get_quality_profiles.return_value = [{"id": 2, "name": "HD"}]
@@ -615,7 +610,6 @@ def test_handle_discovery_workflow_enrichment_fails_and_missing_raw_metadata_loo
     sonarr_inst.lookup_series.return_value = [{"title": "Show Fail", "id": None}]
     sonarr_inst.get_quality_profiles.return_value = [{"id": 1, "name": "HD"}]
     sonarr_inst.get_root_folders.return_value = [{"path": "/tv"}]
-    sonarr_inst.get_language_profiles.return_value = []
     
     radarr_inst = mock_radarr.return_value
     # Triggered lookup fallback returns a movie payload
@@ -884,7 +878,7 @@ def test_handle_discovery_workflow_additional_branches(
 @patch("cli.cli.enrich_movie")
 @patch("cli.cli.RadarrClient")
 @patch("cli.cli.SonarrClient")
-def test_handle_discovery_workflow_bulk_failures_and_language_profiles(
+def test_handle_discovery_workflow_bulk_failures(
     mock_sonarr, mock_radarr, mock_enrich_movie, mock_enrich_tv,
     mock_get_disc, mock_select, mock_print, mock_confirm, mock_ask, mock_config
 ):
@@ -905,8 +899,6 @@ def test_handle_discovery_workflow_bulk_failures_and_language_profiles(
     sonarr_inst = mock_sonarr.return_value
     sonarr_inst.get_quality_profiles.return_value = [{"id": 1, "name": "HD"}]
     sonarr_inst.get_root_folders.return_value = [{"path": "/tv"}]
-    # multiple language profiles to cover the len > 1 selection branch
-    sonarr_inst.get_language_profiles.return_value = [{"id": 1, "name": "English"}, {"id": 2, "name": "French"}]
     sonarr_inst.add_series.side_effect = ArrAPIError("Sonarr Disk error")
     
     radarr_inst = mock_radarr.return_value
@@ -915,7 +907,7 @@ def test_handle_discovery_workflow_bulk_failures_and_language_profiles(
     radarr_inst.add_movie.side_effect = ArrAPIError("Radarr Disk error")
     
     mock_select.side_effect = [
-        {"path": "/tv"}, {"id": 1, "name": "HD"}, {"id": 2, "name": "French"}, # TV selection
+        {"path": "/tv"}, {"id": 1, "name": "HD"}, # TV selection
         {"path": "/movies"}, {"id": 2, "name": "HD"} # Movie selection
     ]
     
@@ -1006,4 +998,570 @@ def test_handle_export_and_import_workflows(mock_print, mock_confirm, mock_ask):
             mock_import.assert_called_once()
             
         assert any("Successfully imported backup" in str(call[0][0]) for call in mock_print.call_args_list if call[0])
+
+
+# ==============================================================================
+# Milestone 2: Hybrid Preset Resolution & MRU Persistence Unit Tests
+# ==============================================================================
+
+@patch("cli.cli.IntPrompt.ask")
+@patch("cli.cli.console.print")
+def test_select_from_list_default_index_and_clamping(mock_print, mock_ask):
+    items = [{"name": "Profile A"}, {"name": "Profile B"}, {"name": "Profile C"}]
+
+    # 1. Valid custom default_index (1-based index 2)
+    mock_ask.return_value = 2
+    res = select_from_list("Select Option", items, "name", default_index=2)
+    assert res == items[1]
+    mock_ask.assert_called_with("Select Option", default=2)
+
+    # 2. Out-of-bounds low (0 or negative) clamped to 1
+    mock_ask.return_value = 1
+    res = select_from_list("Select Option", items, "name", default_index=0)
+    assert res == items[0]
+    mock_ask.assert_called_with("Select Option", default=1)
+
+    mock_ask.return_value = 1
+    res = select_from_list("Select Option", items, "name", default_index=-3)
+    assert res == items[0]
+    mock_ask.assert_called_with("Select Option", default=1)
+
+    # 3. Out-of-bounds high (> len(items)) clamped to 1
+    mock_ask.return_value = 1
+    res = select_from_list("Select Option", items, "name", default_index=10)
+    assert res == items[0]
+    mock_ask.assert_called_with("Select Option", default=1)
+
+    # 4. Non-integer default_index clamped to 1
+    mock_ask.return_value = 1
+    res = select_from_list("Select Option", items, "name", default_index="invalid")
+    assert res == items[0]
+    mock_ask.assert_called_with("Select Option", default=1)
+
+    # 5. Empty items list returns empty dict
+    res_empty = select_from_list("Select Option", [], "name")
+    assert res_empty == {}
+
+
+def test_resolve_preset_index_unit():
+    profiles = [
+        {"id": 1, "name": "HD - 720p"},
+        {"id": 2, "name": "Ultra-HD 4K"},
+        {"id": 3, "name": "Any"}
+    ]
+    folders = [
+        {"id": 10, "path": "/data/media/movies"},
+        {"id": 20, "path": "/data/media/4k_movies"}
+    ]
+
+    # 1. Empty items returns 1
+    assert resolve_preset_index([], "id", ["explicit"], ["mru"]) == 1
+
+    # 2. Explicit match by ID (string or int)
+    with patch("cli.cli.get_setting", side_effect=lambda k, d="": "2" if k == "exp_prof" else ""):
+        idx = resolve_preset_index(profiles, key_field="id", explicit_keys=["exp_prof"], mru_keys=["mru_prof"])
+        assert idx == 2
+
+    # 3. Explicit match by Name (case-insensitive)
+    with patch("cli.cli.get_setting", side_effect=lambda k, d="": "ultra-hd 4k" if k == "exp_prof" else ""):
+        idx = resolve_preset_index(profiles, key_field="id", explicit_keys=["exp_prof"], mru_keys=["mru_prof"])
+        assert idx == 2
+
+    # 4. Explicit match by Path (with trailing slash difference)
+    with patch("cli.cli.get_setting", side_effect=lambda k, d="": "/data/media/4k_movies/" if k == "exp_folder" else ""):
+        idx = resolve_preset_index(folders, key_field="path", explicit_keys=["exp_folder"], mru_keys=["mru_folder"])
+        assert idx == 2
+
+    # 5. Explicit match by custom key
+    custom_items = [{"tag": "standard"}, {"tag": "premium"}]
+    with patch("cli.cli.get_setting", side_effect=lambda k, d="": "premium" if k == "exp_tag" else ""):
+        idx = resolve_preset_index(custom_items, key_field="tag", explicit_keys=["exp_tag"], mru_keys=["mru_tag"])
+        assert idx == 2
+
+    # 6. MRU fallback when explicit is not set
+    with patch("cli.cli.get_setting", side_effect=lambda k, d="": "3" if k == "mru_prof" else ""):
+        idx = resolve_preset_index(profiles, key_field="id", explicit_keys=["exp_prof"], mru_keys=["mru_prof"])
+        assert idx == 3
+
+    # 7. Fallback to MRU when explicit ID is invalid/deleted
+    with patch("cli.cli.get_setting", side_effect=lambda k, d="": "999" if k == "exp_prof" else ("2" if k == "mru_prof" else "")):
+        idx = resolve_preset_index(profiles, key_field="id", explicit_keys=["exp_prof"], mru_keys=["mru_prof"])
+        assert idx == 2
+
+    # 8. Safety fallback when both explicit and MRU are invalid/missing
+    with patch("cli.cli.get_setting", side_effect=lambda k, d="": "999" if k == "exp_prof" else ("888" if k == "mru_prof" else "")):
+        idx = resolve_preset_index(profiles, key_field="id", explicit_keys=["exp_prof"], mru_keys=["mru_prof"])
+        assert idx == 1
+
+    with patch("cli.cli.get_setting", return_value=""):
+        idx = resolve_preset_index(profiles, key_field="id", explicit_keys=["exp_prof"], mru_keys=["mru_prof"])
+        assert idx == 1
+
+    # 9. Exception in get_setting falls back to config or safety fallback 1
+    with patch("cli.cli.get_setting", side_effect=Exception("DB locked")):
+        with patch("cli.cli.config") as mock_conf:
+            mock_conf.exp_prof = "2"
+            idx = resolve_preset_index(profiles, key_field="id", explicit_keys=["exp_prof"], mru_keys=["mru_prof"])
+            assert idx == 2
+
+    with patch("cli.cli.get_setting", side_effect=Exception("DB locked")):
+        with patch("cli.cli.config") as mock_conf:
+            mock_conf.exp_prof = ""
+            mock_conf.mru_prof = ""
+            idx = resolve_preset_index(profiles, key_field="id", explicit_keys=["exp_prof"], mru_keys=["mru_prof"])
+            assert idx == 1
+
+
+@patch("cli.cli.config")
+@patch("cli.cli.Prompt.ask")
+@patch("cli.cli.Confirm.ask")
+@patch("cli.cli.console.print")
+@patch("cli.cli.select_from_list")
+@patch("cli.cli.set_setting")
+@patch("cli.cli.get_setting")
+@patch("cli.cli.RadarrClient")
+def test_handle_radarr_workflow_hybrid_presets_explicit(
+    mock_radarr, mock_get_setting, mock_set_setting, mock_select, mock_print, mock_confirm, mock_ask, mock_config
+):
+    mock_config.validate_radarr.return_value = True
+    mock_ask.side_effect = ["Matrix", "1"]
+    mock_confirm.side_effect = [True, True]
+
+    client_inst = mock_radarr.return_value
+    movies = [{"title": "The Matrix", "year": 1999, "tmdbId": 603}]
+    client_inst.lookup_movie.return_value = movies
+    folders = [{"path": "/movies/standard"}, {"path": "/movies/4k"}]
+    profiles = [{"id": 1, "name": "HD"}, {"id": 2, "name": "Ultra-HD"}]
+    client_inst.get_root_folders.return_value = folders
+    client_inst.get_quality_profiles.return_value = profiles
+
+    # Explicit settings configured for 2nd folder and 2nd profile
+    def get_setting_side_effect(key, default=""):
+        if key == "radarr_default_root_folder":
+            return "/movies/4k"
+        if key == "radarr_default_quality_profile":
+            return "2"
+        return ""
+
+    mock_get_setting.side_effect = get_setting_side_effect
+    mock_select.side_effect = [folders[1], profiles[1]]
+    client_inst.add_movie.return_value = {"title": "The Matrix"}
+
+    handle_radarr_workflow()
+
+    # Verify select_from_list was called with default_index=2 for both
+    assert mock_select.call_args_list[0][1]["default_index"] == 2
+    assert mock_select.call_args_list[1][1]["default_index"] == 2
+
+    # Verify MRU settings updated upon successful addition
+    mock_set_setting.assert_any_call("radarr_mru_quality_profile", "2")
+    mock_set_setting.assert_any_call("radarr_mru_root_folder", "/movies/4k")
+
+
+@patch("cli.cli.config")
+@patch("cli.cli.Prompt.ask")
+@patch("cli.cli.Confirm.ask")
+@patch("cli.cli.console.print")
+@patch("cli.cli.select_from_list")
+@patch("cli.cli.set_setting")
+@patch("cli.cli.get_setting")
+@patch("cli.cli.RadarrClient")
+def test_handle_radarr_workflow_hybrid_presets_mru_fallback(
+    mock_radarr, mock_get_setting, mock_set_setting, mock_select, mock_print, mock_confirm, mock_ask, mock_config
+):
+    mock_config.validate_radarr.return_value = True
+    mock_ask.side_effect = ["Matrix", "1"]
+    mock_confirm.side_effect = [True, True]
+
+    client_inst = mock_radarr.return_value
+    movies = [{"title": "The Matrix", "year": 1999, "tmdbId": 603}]
+    client_inst.lookup_movie.return_value = movies
+    folders = [{"path": "/movies/standard"}, {"path": "/movies/4k"}]
+    profiles = [{"id": 1, "name": "HD"}, {"id": 2, "name": "Ultra-HD"}]
+    client_inst.get_root_folders.return_value = folders
+    client_inst.get_quality_profiles.return_value = profiles
+
+    # No explicit settings, but MRU set for 2nd folder and 2nd profile
+    def get_setting_side_effect(key, default=""):
+        if key == "radarr_mru_root_folder":
+            return "/movies/4k"
+        if key == "radarr_mru_quality_profile":
+            return "2"
+        return ""
+
+    mock_get_setting.side_effect = get_setting_side_effect
+    mock_select.side_effect = [folders[1], profiles[1]]
+    client_inst.add_movie.return_value = {"title": "The Matrix"}
+
+    handle_radarr_workflow()
+
+    assert mock_select.call_args_list[0][1]["default_index"] == 2
+    assert mock_select.call_args_list[1][1]["default_index"] == 2
+
+
+@patch("cli.cli.config")
+@patch("cli.cli.Prompt.ask")
+@patch("cli.cli.Confirm.ask")
+@patch("cli.cli.console.print")
+@patch("cli.cli.select_from_list")
+@patch("cli.cli.set_setting")
+@patch("cli.cli.get_setting")
+@patch("cli.cli.RadarrClient")
+def test_handle_radarr_workflow_hybrid_presets_invalid_fallback(
+    mock_radarr, mock_get_setting, mock_set_setting, mock_select, mock_print, mock_confirm, mock_ask, mock_config
+):
+    mock_config.validate_radarr.return_value = True
+    mock_ask.side_effect = ["Matrix", "1"]
+    mock_confirm.side_effect = [True, True]
+
+    client_inst = mock_radarr.return_value
+    movies = [{"title": "The Matrix", "year": 1999, "tmdbId": 603}]
+    client_inst.lookup_movie.return_value = movies
+    folders = [{"path": "/movies/standard"}, {"path": "/movies/4k"}]
+    profiles = [{"id": 1, "name": "HD"}, {"id": 2, "name": "Ultra-HD"}]
+    client_inst.get_root_folders.return_value = folders
+    client_inst.get_quality_profiles.return_value = profiles
+
+    # Invalid / deleted folder and profile IDs
+    def get_setting_side_effect(key, default=""):
+        if key in ("radarr_default_root_folder", "radarr_mru_root_folder"):
+            return "/nonexistent/path"
+        if key in ("radarr_default_quality_profile", "radarr_mru_quality_profile"):
+            return "999"
+        return ""
+
+    mock_get_setting.side_effect = get_setting_side_effect
+    mock_select.side_effect = [folders[0], profiles[0]]
+    client_inst.add_movie.return_value = {"title": "The Matrix"}
+
+    handle_radarr_workflow()
+
+    # Should safely fall back to default_index=1
+    assert mock_select.call_args_list[0][1]["default_index"] == 1
+    assert mock_select.call_args_list[1][1]["default_index"] == 1
+
+
+@patch("cli.cli.config")
+@patch("cli.cli.Prompt.ask")
+@patch("cli.cli.Confirm.ask")
+@patch("cli.cli.console.print")
+@patch("cli.cli.select_from_list")
+@patch("cli.cli.set_setting")
+@patch("cli.cli.get_setting")
+@patch("cli.cli.SonarrClient")
+def test_handle_sonarr_workflow_hybrid_presets_explicit(
+    mock_sonarr, mock_get_setting, mock_set_setting, mock_select, mock_print, mock_confirm, mock_ask, mock_config
+):
+    mock_config.validate_sonarr.return_value = True
+    mock_ask.side_effect = ["Severance", "1"]
+    mock_confirm.side_effect = [True, True]
+
+    client_inst = mock_sonarr.return_value
+    shows = [{"title": "Severance", "year": 2022, "tvdbId": 371980}]
+    client_inst.lookup_series.return_value = shows
+    folders = [{"path": "/tv/standard"}, {"path": "/tv/4k"}]
+    profiles = [{"id": 1, "name": "HD"}, {"id": 2, "name": "Ultra-HD"}]
+    client_inst.get_root_folders.return_value = folders
+    client_inst.get_quality_profiles.return_value = profiles
+
+    # Explicit settings configured for 2nd folder and 2nd profile
+    def get_setting_side_effect(key, default=""):
+        if key == "sonarr_default_root_folder":
+            return "/tv/4k"
+        if key == "sonarr_default_quality_profile":
+            return "2"
+        return ""
+
+    mock_get_setting.side_effect = get_setting_side_effect
+    mock_select.side_effect = [folders[1], profiles[1]]
+    client_inst.add_series.return_value = {"title": "Severance"}
+
+    handle_sonarr_workflow()
+
+    assert mock_select.call_args_list[0][1]["default_index"] == 2
+    assert mock_select.call_args_list[1][1]["default_index"] == 2
+
+    # Verify MRU updated
+    mock_set_setting.assert_any_call("sonarr_mru_quality_profile", "2")
+    mock_set_setting.assert_any_call("sonarr_mru_root_folder", "/tv/4k")
+
+
+@patch("cli.cli.config")
+@patch("cli.cli.Prompt.ask")
+@patch("cli.cli.Confirm.ask")
+@patch("cli.cli.console.print")
+@patch("cli.cli.select_from_list")
+@patch("cli.cli.set_setting")
+@patch("cli.cli.get_setting")
+@patch("cli.cli.SonarrClient")
+def test_handle_sonarr_workflow_hybrid_presets_mru_fallback(
+    mock_sonarr, mock_get_setting, mock_set_setting, mock_select, mock_print, mock_confirm, mock_ask, mock_config
+):
+    mock_config.validate_sonarr.return_value = True
+    mock_ask.side_effect = ["Severance", "1"]
+    mock_confirm.side_effect = [True, True]
+
+    client_inst = mock_sonarr.return_value
+    shows = [{"title": "Severance", "year": 2022, "tvdbId": 371980}]
+    client_inst.lookup_series.return_value = shows
+    folders = [{"path": "/tv/standard"}, {"path": "/tv/4k"}]
+    profiles = [{"id": 1, "name": "HD"}, {"id": 2, "name": "Ultra-HD"}]
+    client_inst.get_root_folders.return_value = folders
+    client_inst.get_quality_profiles.return_value = profiles
+
+    # No explicit, but MRU configured
+    def get_setting_side_effect(key, default=""):
+        if key == "sonarr_mru_root_folder":
+            return "/tv/4k"
+        if key == "sonarr_mru_quality_profile":
+            return "2"
+        return ""
+
+    mock_get_setting.side_effect = get_setting_side_effect
+    mock_select.side_effect = [folders[1], profiles[1]]
+    client_inst.add_series.return_value = {"title": "Severance"}
+
+    handle_sonarr_workflow()
+
+    assert mock_select.call_args_list[0][1]["default_index"] == 2
+    assert mock_select.call_args_list[1][1]["default_index"] == 2
+
+
+@patch("cli.cli.config")
+@patch("cli.cli.Prompt.ask")
+@patch("cli.cli.Confirm.ask")
+@patch("cli.cli.console.print")
+@patch("cli.cli.select_from_list")
+@patch("cli.cli.set_setting")
+@patch("cli.cli.get_setting")
+@patch("cli.cli.SonarrClient")
+def test_handle_sonarr_workflow_hybrid_presets_invalid_fallback(
+    mock_sonarr, mock_get_setting, mock_set_setting, mock_select, mock_print, mock_confirm, mock_ask, mock_config
+):
+    mock_config.validate_sonarr.return_value = True
+    mock_ask.side_effect = ["Severance", "1"]
+    mock_confirm.side_effect = [True, True]
+
+    client_inst = mock_sonarr.return_value
+    shows = [{"title": "Severance", "year": 2022, "tvdbId": 371980}]
+    client_inst.lookup_series.return_value = shows
+    folders = [{"path": "/tv/standard"}, {"path": "/tv/4k"}]
+    profiles = [{"id": 1, "name": "HD"}, {"id": 2, "name": "Ultra-HD"}]
+    client_inst.get_root_folders.return_value = folders
+    client_inst.get_quality_profiles.return_value = profiles
+
+    # Invalid / deleted folder and profile IDs
+    def get_setting_side_effect(key, default=""):
+        if key in ("sonarr_default_root_folder", "sonarr_mru_root_folder"):
+            return "/deleted/path"
+        if key in ("sonarr_default_quality_profile", "sonarr_mru_quality_profile"):
+            return "999"
+        return ""
+
+    mock_get_setting.side_effect = get_setting_side_effect
+    mock_select.side_effect = [folders[0], profiles[0]]
+    client_inst.add_series.return_value = {"title": "Severance"}
+
+    handle_sonarr_workflow()
+
+    assert mock_select.call_args_list[0][1]["default_index"] == 1
+    assert mock_select.call_args_list[1][1]["default_index"] == 1
+
+
+@patch("cli.cli.config")
+@patch("cli.cli.Prompt.ask")
+@patch("cli.cli.Confirm.ask")
+@patch("cli.cli.console.print")
+@patch("cli.cli.select_from_list")
+@patch("cli.cli.get_discoveries")
+@patch("cli.cli.enrich_tv_show")
+@patch("cli.cli.enrich_movie")
+@patch("cli.cli.set_setting")
+@patch("cli.cli.get_setting")
+@patch("cli.cli.RadarrClient")
+@patch("cli.cli.SonarrClient")
+def test_handle_discovery_workflow_presets_and_mru_persistence(
+    mock_sonarr, mock_radarr, mock_get_setting, mock_set_setting,
+    mock_enrich_movie, mock_enrich_tv, mock_get_disc, mock_select,
+    mock_print, mock_confirm, mock_ask, mock_config
+):
+    mock_config.validate_radarr.return_value = True
+    mock_config.validate_sonarr.return_value = True
+
+    mock_ask.side_effect = ["2", "all"]
+    mock_confirm.side_effect = [True, True, True, True]
+
+    from datetime import datetime
+    tv_raw = [{"title": "Disc Show", "date_obj": datetime(2026, 5, 30), "description": "TV Plot", "date_str": "May 30"}]
+    movie_raw = [{"title": "Disc Movie", "date_obj": datetime(2026, 5, 30), "description": "Movie Plot", "date_str": "May 30"}]
+    mock_get_disc.return_value = (tv_raw, movie_raw)
+
+    mock_enrich_tv.return_value = {
+        "title": "Disc Show", "year": 2026, "plot": "TV Plot", "cast": "Cast",
+        "genres": ["Drama"], "trailer": "http://youtube", "tvdbId": 101,
+        "imdbId": "tt101", "is_in_library": False, "raw_metadata": {"title": "Disc Show", "id": None}
+    }
+    mock_enrich_movie.return_value = {
+        "title": "Disc Movie", "year": 2026, "plot": "Movie Plot", "cast": "Cast",
+        "genres": ["Action"], "trailer": "http://youtube", "tmdbId": 202,
+        "imdbId": "tt202", "is_in_library": False, "raw_metadata": {"title": "Disc Movie", "id": None}
+    }
+
+    sonarr_inst = mock_sonarr.return_value
+    sonarr_folders = [{"path": "/tv/1"}, {"path": "/tv/2"}]
+    sonarr_profiles = [{"id": 10, "name": "TV HD"}, {"id": 20, "name": "TV 4K"}]
+    sonarr_inst.get_quality_profiles.return_value = sonarr_profiles
+    sonarr_inst.get_root_folders.return_value = sonarr_folders
+    sonarr_inst.add_series.return_value = {"title": "Disc Show"}
+
+    radarr_inst = mock_radarr.return_value
+    radarr_folders = [{"path": "/movies/1"}, {"path": "/movies/2"}]
+    radarr_profiles = [{"id": 30, "name": "Movie HD"}, {"id": 40, "name": "Movie 4K"}]
+    radarr_inst.get_quality_profiles.return_value = radarr_profiles
+    radarr_inst.get_root_folders.return_value = radarr_folders
+    radarr_inst.add_movie.return_value = {"title": "Disc Movie"}
+
+    def get_setting_side_effect(key, default=""):
+        if key == "sonarr_default_root_folder":
+            return "/tv/2"
+        if key == "sonarr_default_quality_profile":
+            return "20"
+        if key == "radarr_mru_root_folder":
+            return "/movies/2"
+        if key == "radarr_mru_quality_profile":
+            return "40"
+        return ""
+
+    mock_get_setting.side_effect = get_setting_side_effect
+
+    mock_select.side_effect = [
+        sonarr_folders[1], sonarr_profiles[1], # TV
+        radarr_folders[1], radarr_profiles[1]  # Movie
+    ]
+
+    handle_discovery_workflow()
+
+    # TV: default_index should be 2 for both folder and profile (from explicit default)
+    assert mock_select.call_args_list[0][1]["default_index"] == 2
+    assert mock_select.call_args_list[1][1]["default_index"] == 2
+
+    # Movie: default_index should be 2 for both folder and profile (from MRU fallback)
+    assert mock_select.call_args_list[2][1]["default_index"] == 2
+    assert mock_select.call_args_list[3][1]["default_index"] == 2
+
+    # Verify MRU updates
+    mock_set_setting.assert_any_call("sonarr_mru_quality_profile", "20")
+    mock_set_setting.assert_any_call("sonarr_mru_root_folder", "/tv/2")
+    mock_set_setting.assert_any_call("radarr_mru_quality_profile", "40")
+    mock_set_setting.assert_any_call("radarr_mru_root_folder", "/movies/2")
+
+
+# ==============================================================================
+# Milestone 2: Discovery Workflow with has_new_metadata & Low-Metadata Releases
+# ==============================================================================
+
+@patch("cli.cli.config")
+@patch("cli.cli.Prompt.ask")
+@patch("cli.cli.console.print")
+@patch("cli.cli.get_discoveries")
+@patch("cli.cli.enrich_tv_show")
+@patch("cli.cli.enrich_movie")
+def test_handle_discovery_workflow_with_has_new_metadata_cleanly(
+    mock_enrich_movie, mock_enrich_tv, mock_get_disc, mock_print, mock_ask, mock_config
+):
+    """Verifies that CLI discovery workflow handles items with has_new_metadata cleanly."""
+    mock_config.validate_radarr.return_value = True
+    mock_config.validate_sonarr.return_value = True
+
+    # 1. Timeframe = "2"
+    # 2. Selection = "c" (cancel after listing)
+    mock_ask.side_effect = ["2", "c"]
+
+    from datetime import datetime
+    tv_raw = [{"title": "Badge Show", "date_obj": datetime(2026, 5, 30), "description": "TV Plot", "date_str": "May 30", "is_returning": False}]
+    movie_raw = [{"title": "Badge Movie", "date_obj": datetime(2026, 5, 30), "description": "Movie Plot", "date_str": "May 30"}]
+    mock_get_disc.return_value = (tv_raw, movie_raw)
+
+    mock_enrich_tv.return_value = {
+        "title": "Badge Show", "year": 2026, "plot": "Enriched TV Plot", "cast": "Star A, Star B",
+        "genres": ["Drama"], "trailer": "http://youtube/tv", "tvdbId": 12,
+        "imdbId": "tt12", "network": "HBO", "is_in_library": True,
+        "has_new_metadata": True, "is_archived": False, "raw_metadata": {"title": "Badge Show"}
+    }
+    mock_enrich_movie.return_value = {
+        "title": "Badge Movie", "year": 2026, "plot": "Enriched Movie Plot", "cast": "Star C",
+        "genres": ["Action"], "trailer": "http://youtube/movie", "tmdbId": 34,
+        "imdbId": "tt34", "network": "Paramount", "is_in_library": True,
+        "has_new_metadata": True, "is_archived": False, "raw_metadata": {"title": "Badge Movie"}
+    }
+
+    handle_discovery_workflow()
+
+    # Assert that titles were rendered to console without error and with tags
+    printed_texts = [str(call[0][0]) for call in mock_print.call_args_list if call[0]]
+    assert any("TV SHOW: Badge Show (2026)" in t and "[New metadata]" in t and "(In Library)" in t for t in printed_texts)
+    assert any("MOVIE: Badge Movie (2026)" in t and "[New metadata]" in t and "(In Library)" in t for t in printed_texts)
+
+
+@patch("cli.cli.config")
+@patch("cli.cli.Prompt.ask")
+@patch("cli.cli.Confirm.ask")
+@patch("cli.cli.console.print")
+@patch("cli.cli.select_from_list")
+@patch("cli.cli.get_discoveries")
+@patch("cli.cli.enrich_tv_show")
+@patch("cli.cli.enrich_movie")
+@patch("cli.cli.RadarrClient")
+@patch("cli.cli.SonarrClient")
+def test_handle_discovery_workflow_auto_archived_low_metadata_selection(
+    mock_sonarr, mock_radarr, mock_enrich_movie, mock_enrich_tv,
+    mock_get_disc, mock_select, mock_print, mock_confirm, mock_ask, mock_config
+):
+    """Verifies that CLI discovery workflow handles auto-archived/low-metadata items during bulk addition."""
+    mock_config.validate_radarr.return_value = True
+    mock_config.validate_sonarr.return_value = True
+
+    # 1. Timeframe = "2", 2. Selection = "1, 2"
+    mock_ask.side_effect = ["2", "1, 2"]
+    mock_confirm.side_effect = [True, True, True, True]
+
+    from datetime import datetime
+    tv_raw = [{"title": "Low Meta TV Show", "date_obj": datetime(2026, 5, 30), "description": "Scraped Desc", "date_str": "May 30", "is_returning": False}]
+    movie_raw = [{"title": "Low Meta Film", "date_obj": datetime(2026, 5, 30), "description": "Scraped Desc", "date_str": "May 30"}]
+    mock_get_disc.return_value = (tv_raw, movie_raw)
+
+    # Mock enrichment returning low metadata (auto-archived items)
+    mock_enrich_tv.return_value = {
+        "title": "Low Meta TV Show", "year": 2026, "plot": "", "cast": "Cast details not available.",
+        "genres": [], "trailer": "", "tvdbId": None, "imdbId": None, "network": "Unknown",
+        "is_in_library": False, "is_archived": True, "has_new_metadata": False, "raw_metadata": None
+    }
+    mock_enrich_movie.return_value = {
+        "title": "Low Meta Film", "year": 2026, "plot": "", "cast": "Cast details not available.",
+        "genres": [], "trailer": "", "tmdbId": None, "imdbId": None, "network": "Unknown",
+        "is_in_library": False, "is_archived": True, "has_new_metadata": False, "raw_metadata": None
+    }
+
+    sonarr_inst = mock_sonarr.return_value
+    sonarr_inst.lookup_series.return_value = [{"title": "Low Meta TV Show", "id": None}]
+    sonarr_inst.get_quality_profiles.return_value = [{"id": 1, "name": "HD"}]
+    sonarr_inst.get_root_folders.return_value = [{"path": "/tv"}]
+    sonarr_inst.add_series.return_value = {"title": "Low Meta TV Show"}
+
+    radarr_inst = mock_radarr.return_value
+    radarr_inst.lookup_movie.return_value = [{"title": "Low Meta Film", "id": None}]
+    radarr_inst.get_quality_profiles.return_value = [{"id": 2, "name": "HD"}]
+    radarr_inst.get_root_folders.return_value = [{"path": "/movies"}]
+    radarr_inst.add_movie.return_value = {"title": "Low Meta Film"}
+
+    mock_select.side_effect = [
+        {"path": "/tv"}, {"id": 1, "name": "HD"},
+        {"path": "/movies"}, {"id": 2, "name": "HD"}
+    ]
+
+    handle_discovery_workflow()
+
+    sonarr_inst.add_series.assert_called_once()
+    radarr_inst.add_movie.assert_called_once()
+
 

@@ -135,6 +135,7 @@ def test_init_db_adds_missing_columns():
     assert "rating_metacritic" in columns
     assert "rating_rt" in columns
     assert "is_in_library" in columns
+    assert "has_new_metadata" in columns
     
     # Cleanup
     core.db.DB_PATH = old_db_path
@@ -283,23 +284,23 @@ def test_clean_expired_cache(temp_db):
     # 1. Insert item that is expired from premiere date (date_obj)
     old_date = (datetime.now() - timedelta(days=400)).strftime("%Y-%m-%d")
     cursor.execute('''
-        INSERT INTO cache (type, title, year, date_obj, added_at)
-        VALUES ('movie', 'Expired Movie', 2024, ?, ?)
-    ''', (old_date, datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
+        INSERT INTO cache (type, title, year, date_obj, added_at, normalized_title)
+        VALUES ('movie', 'Expired Movie', 2024, ?, ?, ?)
+    ''', (old_date, datetime.now().strftime("%Y-%m-%d %H:%M:%S"), core.db.normalize_title("Expired Movie", is_tv=False)))
     
     # 2. Insert item that is expired by added_at (date_obj is 1900-01-01)
     old_added_at = (datetime.now() - timedelta(days=400)).strftime("%Y-%m-%d %H:%M:%S")
     cursor.execute('''
-        INSERT INTO cache (type, title, year, date_obj, added_at)
-        VALUES ('tv', 'Expired TV', 2024, '1900-01-01', ?)
-    ''', (old_added_at,))
+        INSERT INTO cache (type, title, year, date_obj, added_at, normalized_title)
+        VALUES ('tv', 'Expired TV', 2024, '1900-01-01', ?, ?)
+    ''', (old_added_at, core.db.normalize_title("Expired TV", is_tv=True)))
     
     # 3. Insert item that is NOT expired
     recent_added_at = (datetime.now() - timedelta(days=10)).strftime("%Y-%m-%d %H:%M:%S")
     cursor.execute('''
-        INSERT INTO cache (type, title, year, date_obj, added_at)
-        VALUES ('tv', 'Recent TV', 2026, '1900-01-01', ?)
-    ''', (recent_added_at,))
+        INSERT INTO cache (type, title, year, date_obj, added_at, normalized_title)
+        VALUES ('tv', 'Recent TV', 2026, '1900-01-01', ?, ?)
+    ''', (recent_added_at, core.db.normalize_title("Recent TV", is_tv=True)))
     
     conn.commit()
     conn.close()
@@ -383,3 +384,207 @@ def test_db_frozen_path():
 def test_db_default_profile_settings_seeds(temp_db):
     assert core.db.get_setting("radarr_default_profile_id") == ""
     assert core.db.get_setting("sonarr_default_profile_id") == ""
+
+
+def test_init_db_creates_has_new_metadata_column(temp_db):
+    conn = core.db.get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("PRAGMA table_info(cache)")
+    cols = {col["name"]: col["type"] for col in cursor.fetchall()}
+    conn.close()
+    assert "has_new_metadata" in cols
+    assert "INTEGER" in cols["has_new_metadata"].upper()
+
+
+def test_init_db_migrates_legacy_cache_table_missing_has_new_metadata():
+    fd, temp_path = tempfile.mkstemp(suffix=".db")
+    os.close(fd)
+    old_db_path = core.db.DB_PATH
+    core.db.DB_PATH = Path(temp_path)
+    try:
+        # Create legacy cache table without has_new_metadata
+        conn = sqlite3.connect(temp_path)
+        conn.execute("CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT)")
+        conn.execute("""
+            CREATE TABLE cache (
+                id INTEGER PRIMARY KEY, type TEXT, title TEXT, year INTEGER,
+                is_archived INTEGER DEFAULT 0
+            )
+        """)
+        conn.execute("INSERT INTO cache (type, title, year, is_archived) VALUES ('movie', 'Legacy Movie', 2024, 0)")
+        conn.commit()
+        conn.close()
+
+        # Run init_db migration
+        core.db.init_db()
+
+        # Verify column added
+        conn = core.db.get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("PRAGMA table_info(cache)")
+        col_names = [col["name"] for col in cursor.fetchall()]
+        assert "has_new_metadata" in col_names
+
+        # Verify existing row can be fetched and default value is 0 (or coerced to 0)
+        cursor.execute("SELECT id, title, has_new_metadata FROM cache WHERE title = 'Legacy Movie'")
+        row = cursor.fetchone()
+        assert row["has_new_metadata"] in (0, None)
+        conn.close()
+    finally:
+        core.db.DB_PATH = old_db_path
+        if os.path.exists(temp_path):
+            os.remove(temp_path)
+
+
+def test_add_cached_item_auto_archiving_on_insert(temp_db):
+    # Insert item with low metadata (missing network and plot -> 2 missing)
+    low_meta_item = {
+        "title": "Low Meta Movie",
+        "year": 2026,
+        "network": "Unknown",
+        "cast": "Actor One",
+        "plot": "No plot summary available.",
+    }
+    core.db.add_cached_item("movie", low_meta_item)
+    cached = core.db.get_cached_item("movie", "Low Meta Movie", 2026)
+    assert cached is not None
+    assert cached["is_archived"] == 1
+    assert cached["has_new_metadata"] == 0
+
+
+def test_add_cached_item_rich_metadata_unarchived_on_insert(temp_db):
+    rich_item = {
+        "title": "Rich Movie",
+        "year": 2026,
+        "network": "Universal Pictures",
+        "cast": "Actor One, Actor Two",
+        "plot": "An exciting cinematic storyline.",
+    }
+    core.db.add_cached_item("movie", rich_item)
+    cached = core.db.get_cached_item("movie", "Rich Movie", 2026)
+    assert cached is not None
+    assert cached["is_archived"] == 0
+    assert cached["has_new_metadata"] == 0
+
+
+def test_add_cached_item_smart_unarchiving_on_update(temp_db):
+    # 1. Insert item as low-metadata (auto-archived)
+    low_item = {
+        "title": "Smart Show",
+        "year": 2026,
+        "network": "Unknown",
+        "cast": "Unknown",
+        "plot": "Unknown",
+    }
+    core.db.add_cached_item("tv", low_item)
+    cached_1 = core.db.get_cached_item("tv", "Smart Show", 2026)
+    assert cached_1["is_archived"] == 1
+    assert cached_1["has_new_metadata"] == 0
+
+    # 2. Rescan/update item with newly discovered rich metadata
+    enriched_item = {
+        "title": "Smart Show",
+        "year": 2026,
+        "network": "Apple TV+",
+        "cast": "Gary Oldman, Jack Lowden",
+        "plot": "A team of British intelligence agents serve in Slough House.",
+    }
+    core.db.add_cached_item("tv", enriched_item)
+    cached_2 = core.db.get_cached_item("tv", "Smart Show", 2026)
+    assert cached_2["is_archived"] == 0        # AUTO-UNARCHIVED!
+    assert cached_2["has_new_metadata"] == 1   # NEW METADATA BADGE SET!
+
+
+def test_add_cached_item_preserves_badge_on_subsequent_updates(temp_db):
+    # 1. Create unarchived badged item
+    low_item = {"title": "Badge Item", "year": 2026, "network": "Unknown", "cast": "Unknown", "plot": "Unknown"}
+    core.db.add_cached_item("movie", low_item)
+    rich_item = {"title": "Badge Item", "year": 2026, "network": "HBO", "cast": "Actor A", "plot": "Plot B"}
+    core.db.add_cached_item("movie", rich_item)
+    cached = core.db.get_cached_item("movie", "Badge Item", 2026)
+    assert cached["has_new_metadata"] == 1
+
+    # 2. Update with rich metadata again (should keep badge)
+    rich_item["plot"] = "Updated rich plot."
+    core.db.add_cached_item("movie", rich_item)
+    cached_again = core.db.get_cached_item("movie", "Badge Item", 2026)
+    assert cached_again["is_archived"] == 0
+    assert cached_again["has_new_metadata"] == 1
+
+
+def test_add_cached_item_clears_badge_on_degraded_metadata(temp_db):
+    # 1. Create unarchived badged item
+    low_item = {"title": "Degraded Item", "year": 2026, "network": "Unknown", "cast": "Unknown", "plot": "Unknown"}
+    core.db.add_cached_item("movie", low_item)
+    rich_item = {"title": "Degraded Item", "year": 2026, "network": "HBO", "cast": "Actor A", "plot": "Plot B"}
+    core.db.add_cached_item("movie", rich_item)
+    cached = core.db.get_cached_item("movie", "Degraded Item", 2026)
+    assert cached["has_new_metadata"] == 1
+
+    # 2. Rescan with degraded / low metadata
+    degraded = {"title": "Degraded Item", "year": 2026, "network": "Unknown", "cast": "Unknown", "plot": "Unknown"}
+    core.db.add_cached_item("movie", degraded)
+    cached_degraded = core.db.get_cached_item("movie", "Degraded Item", 2026)
+    assert cached_degraded["is_archived"] == 1
+    assert cached_degraded["has_new_metadata"] == 0
+
+
+def test_archive_cached_item_resets_has_new_metadata_flag(temp_db):
+    # 1. Create an item that has has_new_metadata = 1
+    low_item = {"title": "Badge Reset Item", "year": 2026, "network": "Unknown", "cast": "Unknown", "plot": "Unknown"}
+    core.db.add_cached_item("movie", low_item)
+    rich_item = {"title": "Badge Reset Item", "year": 2026, "network": "HBO", "cast": "Actor A", "plot": "Plot B"}
+    core.db.add_cached_item("movie", rich_item)
+    
+    cached = core.db.get_cached_item("movie", "Badge Reset Item", 2026)
+    assert cached["is_archived"] == 0
+    assert cached["has_new_metadata"] == 1
+
+    # 2. Manually re-archive the item
+    core.db.archive_cached_item("movie", "Badge Reset Item", 2026, is_archived=True)
+    
+    cached_archived = core.db.get_cached_item("movie", "Badge Reset Item", 2026)
+    assert cached_archived["is_archived"] == 1
+    assert cached_archived["has_new_metadata"] == 0  # BADGE RESET TO 0!
+
+
+def test_archive_cached_item_skeleton_has_zero_badge(temp_db):
+    # Archive skeleton item with raw_item
+    raw_item = {"imdb_id": "tt8888888", "network": "Unknown", "cast": "Unknown"}
+    core.db.archive_cached_item("tv", "Skeleton Show", 2026, is_archived=True, raw_item=raw_item)
+    cached = core.db.get_cached_item("tv", "Skeleton Show", 2026, "tt8888888")
+    assert cached["is_archived"] == 1
+    assert cached["has_new_metadata"] == 0
+
+    # Archive skeleton item without raw_item
+    core.db.archive_cached_item("tv", "Skeleton Show 2", 2026, is_archived=True)
+    cached2 = core.db.get_cached_item("tv", "Skeleton Show 2", 2026)
+    assert cached2["is_archived"] == 1
+    assert cached2["has_new_metadata"] == 0
+
+
+def test_get_cached_discoveries_includes_has_new_metadata(temp_db):
+    low_item = {
+        "title": "Discovery Show",
+        "year": 2026,
+        "network": "Unknown",
+        "cast": "Unknown",
+        "plot": "Unknown",
+        "date_obj": datetime(2026, 6, 1),
+    }
+    core.db.add_cached_item("tv", low_item)
+    rich_item = {
+        "title": "Discovery Show",
+        "year": 2026,
+        "network": "HBO",
+        "cast": "Actor A",
+        "plot": "Plot B",
+        "date_obj": datetime(2026, 6, 1),
+    }
+    core.db.add_cached_item("tv", rich_item)
+
+    tv, movies = core.db.get_cached_discoveries("2026-06-01", "2026-06-10")
+    assert len(tv) == 1
+    assert tv[0]["title"] == "Discovery Show"
+    assert tv[0]["has_new_metadata"] == 1
+

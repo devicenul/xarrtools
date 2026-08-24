@@ -137,15 +137,7 @@ class SonarrClient(BaseArrClient):
         """Retrieve all root folder paths configured in Sonarr."""
         return self._request("GET", "rootfolder")
 
-    def get_language_profiles(self) -> List[Dict[str, Any]]:
-        """Retrieve all language profiles (often required in Sonarr v3 API)."""
-        try:
-            return self._request("GET", "languageprofile")
-        except ArrAPIError:
-            # If endpoint doesn't exist (e.g. Sonarr v4 has deprecations), return empty list
-            return []
-
-    def add_series(self, series_data: Dict[str, Any], quality_profile_id: int, root_folder_path: str, monitored: bool = True, search_now: bool = True, language_profile_id: Optional[int] = None) -> Dict[str, Any]:
+    def add_series(self, series_data: Dict[str, Any], quality_profile_id: int, root_folder_path: str, monitored: bool = True, search_now: bool = True) -> Dict[str, Any]:
         """Add a TV series to the Sonarr library."""
         payload = dict(series_data)
         payload.update({
@@ -156,6 +148,4 @@ class SonarrClient(BaseArrClient):
                 "searchForMissingEpisodes": search_now
             }
         })
-        if language_profile_id is not None:
-            payload["languageProfileId"] = language_profile_id
         return self._request("POST", "series", json_data=payload)

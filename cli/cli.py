@@ -8,6 +8,7 @@ from rich.status import Status
 from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TaskProgressColumn
 
 from core.config import config
+from core.db import get_setting, set_setting
 from core.client import RadarrClient, SonarrClient, ArrAPIError
 from core.scraper import get_discoveries
 from core.enricher import enrich_tv_show, enrich_movie
@@ -76,8 +77,71 @@ def show_config_status():
 
     console.print(Panel("\n".join(status_lines), title="[bold white]Service Status[/bold white]", expand=False))
 
-def select_from_list(prompt_text: str, items: list, display_key: str) -> dict:
+def resolve_preset_index(
+    items: list,
+    key_field: str,
+    explicit_keys: list,
+    mru_keys: list
+) -> int:
+    """
+    Resolves the 1-based index for default selection from items using a 3-tier hybrid strategy:
+    1. Explicit Default: Look up explicit settings keys. If set and matches an item, return its 1-based index.
+    2. MRU Fallback: Look up MRU settings keys. If set and matches an item, return its 1-based index.
+    3. Safety Fallback: Default to index 1.
+    Gracefully handles invalid/missing settings or deleted item IDs/paths.
+    """
+    if not items:
+        return 1
+
+    def _get_val(keys: list) -> str:
+        for k in keys:
+            try:
+                val = get_setting(k, "")
+                if val:
+                    return str(val).strip()
+            except Exception:
+                pass
+            val = getattr(config, k, "")
+            if val:
+                return str(val).strip()
+        return ""
+
+    def _find_index(val: str) -> int:
+        if not val:
+            return -1
+        for idx, item in enumerate(items, 1):
+            if key_field == "id":
+                if str(item.get("id")) == val or str(item.get("name", "")).strip().lower() == val.lower():
+                    return idx
+            elif key_field == "path":
+                item_path = str(item.get("path", "")).rstrip("/\\").lower()
+                val_path = val.rstrip("/\\").lower()
+                if item_path == val_path or str(item.get("path")) == val or str(item.get("id")) == val:
+                    return idx
+            else:
+                if str(item.get(key_field)) == val:
+                    return idx
+        return -1
+
+    # 1. Primary: Explicit Default
+    explicit_val = _get_val(explicit_keys)
+    idx = _find_index(explicit_val)
+    if idx != -1:
+        return idx
+
+    # 2. Fallback: MRU Setting
+    mru_val = _get_val(mru_keys)
+    idx = _find_index(mru_val)
+    if idx != -1:
+        return idx
+
+    # 3. Safety Fallback: Index 1
+    return 1
+
+def select_from_list(prompt_text: str, items: list, display_key: str = "name", default_index: int = 1) -> dict:
     """Uses a rich Table to let the user select a configuration parameter from a list."""
+    if not items:
+        return {}
     table = Table(show_header=True, header_style="bold magenta")
     table.add_column("No.", style="cyan", justify="right")
     table.add_column(display_key.capitalize(), style="white")
@@ -87,8 +151,10 @@ def select_from_list(prompt_text: str, items: list, display_key: str) -> dict:
         
     console.print(table)
     
+    clamped_default = default_index if (isinstance(default_index, int) and 1 <= default_index <= len(items)) else 1
+
     while True:
-        choice = IntPrompt.ask(prompt_text, default=1)
+        choice = IntPrompt.ask(prompt_text, default=clamped_default)
         if 1 <= choice <= len(items):
             return items[choice - 1]
         console.print("[red]Invalid selection. Please choose a valid index.[/red]")
@@ -161,8 +227,20 @@ def handle_radarr_workflow():
         return
 
     console.print(Panel(f"Adding [bold]{len(to_add)}[/bold] movies. Please select download options:", title="Options", expand=False))
-    selected_folder = select_from_list("Select Root Path", folders, "path")
-    selected_profile = select_from_list("Select Quality Profile", profiles, "name")
+    folder_default_idx = resolve_preset_index(
+        folders,
+        key_field="path",
+        explicit_keys=["radarr_default_root_folder"],
+        mru_keys=["radarr_mru_root_folder"]
+    )
+    profile_default_idx = resolve_preset_index(
+        profiles,
+        key_field="id",
+        explicit_keys=["radarr_default_quality_profile", "radarr_default_profile_id"],
+        mru_keys=["radarr_mru_quality_profile", "radarr_mru_profile_id"]
+    )
+    selected_folder = select_from_list("Select Root Path", folders, "path", default_index=folder_default_idx)
+    selected_profile = select_from_list("Select Quality Profile", profiles, "name", default_index=profile_default_idx)
     
     monitored = Confirm.ask("Monitor these movies?", default=True)
     search_now = Confirm.ask("Search immediately on add?", default=True)
@@ -178,6 +256,11 @@ def handle_radarr_workflow():
                     search_now=search_now
                 )
             console.print(f"{CHECK_MARK} Successfully added [bold]'{res.get('title')}'[/bold]!")
+            try:
+                set_setting("radarr_mru_quality_profile", str(selected_profile["id"]))
+                set_setting("radarr_mru_root_folder", str(selected_folder["path"]))
+            except Exception:
+                pass
         except ArrAPIError as e:
             console.print(f"{CROSS_MARK} Failed to add '{movie.get('title')}': {e}")
 
@@ -196,7 +279,6 @@ def handle_sonarr_workflow():
             results = client.lookup_series(query)
             profiles = client.get_quality_profiles()
             folders = client.get_root_folders()
-            lang_profiles = client.get_language_profiles()
     except ArrAPIError as e:
         console.print(f"[red]Error communicating with Sonarr: {e}[/red]")
         return
@@ -208,8 +290,6 @@ def handle_sonarr_workflow():
     if not profiles or not folders:
         console.print("[red]Could not retrieve required quality profiles or root folders from Sonarr.[/red]")
         return
-
-    lang_profile_id = lang_profiles[0]["id"] if lang_profiles else 1
 
     table = Table(title=f"Sonarr Search Results for '{query}'", show_header=True, header_style="bold cyan")
     table.add_column("No.", justify="right", style="cyan")
@@ -252,13 +332,20 @@ def handle_sonarr_workflow():
         return
 
     console.print(Panel(f"Adding [bold]{len(to_add)}[/bold] series. Please select download options:", title="Options", expand=False))
-    selected_folder = select_from_list("Select Root Path", folders, "path")
-    selected_profile = select_from_list("Select Quality Profile", profiles, "name")
-    
-    selected_lang_profile_id = lang_profile_id
-    if len(lang_profiles) > 1:
-        selected_lang_profile = select_from_list("Select Language Profile", lang_profiles, "name")
-        selected_lang_profile_id = selected_lang_profile["id"]
+    folder_default_idx = resolve_preset_index(
+        folders,
+        key_field="path",
+        explicit_keys=["sonarr_default_root_folder"],
+        mru_keys=["sonarr_mru_root_folder"]
+    )
+    profile_default_idx = resolve_preset_index(
+        profiles,
+        key_field="id",
+        explicit_keys=["sonarr_default_quality_profile", "sonarr_default_profile_id"],
+        mru_keys=["sonarr_mru_quality_profile", "sonarr_mru_profile_id"]
+    )
+    selected_folder = select_from_list("Select Root Path", folders, "path", default_index=folder_default_idx)
+    selected_profile = select_from_list("Select Quality Profile", profiles, "name", default_index=profile_default_idx)
 
     monitored = Confirm.ask("Monitor this series?", default=True)
     search_now = Confirm.ask("Search immediately on add?", default=True)
@@ -271,10 +358,14 @@ def handle_sonarr_workflow():
                     quality_profile_id=selected_profile["id"],
                     root_folder_path=selected_folder["path"],
                     monitored=monitored,
-                    search_now=search_now,
-                    language_profile_id=selected_lang_profile_id
+                    search_now=search_now
                 )
             console.print(f"{CHECK_MARK} Successfully added [bold]'{res.get('title')}'[/bold]!")
+            try:
+                set_setting("sonarr_mru_quality_profile", str(selected_profile["id"]))
+                set_setting("sonarr_mru_root_folder", str(selected_folder["path"]))
+            except Exception:
+                pass
         except ArrAPIError as e:
             console.print(f"{CROSS_MARK} Failed to add '{series.get('title')}': {e}")
 
@@ -380,10 +471,17 @@ def handle_discovery_workflow():
     for item in enriched_tv:
         combined_items.append({"type": "tv", "data": item})
         idx = len(combined_items)
-        lib_status = "[green](In Library)[/green]" if item["is_in_library"] else ""
+        status_tags = []
+        if item.get("is_in_library"):
+            status_tags.append("[green](In Library)[/green]")
+        if item.get("has_new_metadata"):
+            status_tags.append("[bold cyan][New metadata][/bold cyan]")
+        if item.get("is_archived"):
+            status_tags.append("[dim yellow](Archived)[/dim yellow]")
+        status_str = (" " + " ".join(status_tags)) if status_tags else ""
         genres = ", ".join(item["genres"]) if item["genres"] else "Unknown"
         
-        console.print(f"[bold]{idx}. TV SHOW: {item['title']} ({item['year']})[/bold] {lib_status}")
+        console.print(f"[bold]{idx}. TV SHOW: {item['title']} ({item['year']})[/bold]{status_str}")
         console.print(f"   [yellow]Released:[/yellow] {item['date_str']}")
         console.print(f"   [yellow]Genres:[/yellow] {genres} | [yellow]TVDB ID:[/yellow] {item['tvdbId'] or 'N/A'}")
         console.print(f"   [yellow]Cast:[/yellow] {item['cast']}")
@@ -396,10 +494,17 @@ def handle_discovery_workflow():
     for item in enriched_movies:
         combined_items.append({"type": "movie", "data": item})
         idx = len(combined_items)
-        lib_status = "[green](In Library)[/green]" if item["is_in_library"] else ""
+        status_tags = []
+        if item.get("is_in_library"):
+            status_tags.append("[green](In Library)[/green]")
+        if item.get("has_new_metadata"):
+            status_tags.append("[bold cyan][New metadata][/bold cyan]")
+        if item.get("is_archived"):
+            status_tags.append("[dim yellow](Archived)[/dim yellow]")
+        status_str = (" " + " ".join(status_tags)) if status_tags else ""
         genres = ", ".join(item["genres"]) if item["genres"] else "Unknown"
         
-        console.print(f"[bold]{idx}. MOVIE: {item['title']} ({item['year']})[/bold] {lib_status}")
+        console.print(f"[bold]{idx}. MOVIE: {item['title']} ({item['year']})[/bold]{status_str}")
         console.print(f"   [yellow]Released:[/yellow] {item['date_str']}")
         console.print(f"   [yellow]Genres:[/yellow] {genres} | [yellow]TMDB ID:[/yellow] {item['tmdbId'] or 'N/A'}")
         console.print(f"   [yellow]Cast:[/yellow] {item['cast']}")
@@ -465,19 +570,23 @@ def handle_discovery_workflow():
                 with console.status("[bold blue]Loading Sonarr configuration...[/bold blue]"):
                     profiles = sonarr_client.get_quality_profiles()
                     folders = sonarr_client.get_root_folders()
-                    lang_profiles = sonarr_client.get_language_profiles()
-                
-                lang_profile_id = lang_profiles[0]["id"] if lang_profiles else 1
                 
                 console.print(Panel(f"Adding [bold]{len(selected_tv_shows)}[/bold] series to Sonarr. Select options:", title="Sonarr Options", expand=False))
-                selected_folder = select_from_list("Select Root Path", folders, "path")
-                selected_profile = select_from_list("Select Quality Profile", profiles, "name")
+                folder_default_idx = resolve_preset_index(
+                    folders,
+                    key_field="path",
+                    explicit_keys=["sonarr_default_root_folder"],
+                    mru_keys=["sonarr_mru_root_folder"]
+                )
+                profile_default_idx = resolve_preset_index(
+                    profiles,
+                    key_field="id",
+                    explicit_keys=["sonarr_default_quality_profile", "sonarr_default_profile_id"],
+                    mru_keys=["sonarr_mru_quality_profile", "sonarr_mru_profile_id"]
+                )
+                selected_folder = select_from_list("Select Root Path", folders, "path", default_index=folder_default_idx)
+                selected_profile = select_from_list("Select Quality Profile", profiles, "name", default_index=profile_default_idx)
                 
-                selected_lang_profile_id = lang_profile_id
-                if len(lang_profiles) > 1:
-                    selected_lang_profile = select_from_list("Select Language Profile", lang_profiles, "name")
-                    selected_lang_profile_id = selected_lang_profile["id"]
-
                 monitored = Confirm.ask("Monitor these series?", default=True)
                 search_now = Confirm.ask("Search immediately on add?", default=True)
 
@@ -489,10 +598,14 @@ def handle_discovery_workflow():
                                 quality_profile_id=selected_profile["id"],
                                 root_folder_path=selected_folder["path"],
                                 monitored=monitored,
-                                search_now=search_now,
-                                language_profile_id=selected_lang_profile_id
+                                search_now=search_now
                             )
                         console.print(f"{CHECK_MARK} Successfully added [bold]'{res.get('title')}'[/bold]!")
+                        try:
+                            set_setting("sonarr_mru_quality_profile", str(selected_profile["id"]))
+                            set_setting("sonarr_mru_root_folder", str(selected_folder["path"]))
+                        except Exception:
+                            pass
                     except ArrAPIError as e:
                         console.print(f"{CROSS_MARK} Failed to add '{show.get('title')}': {e}")
             except ArrAPIError as e:
@@ -509,8 +622,20 @@ def handle_discovery_workflow():
                     folders = radarr_client.get_root_folders()
                 
                 console.print(Panel(f"Adding [bold]{len(selected_movies)}[/bold] movies to Radarr. Select options:", title="Radarr Options", expand=False))
-                selected_folder = select_from_list("Select Root Path", folders, "path")
-                selected_profile = select_from_list("Select Quality Profile", profiles, "name")
+                folder_default_idx = resolve_preset_index(
+                    folders,
+                    key_field="path",
+                    explicit_keys=["radarr_default_root_folder"],
+                    mru_keys=["radarr_mru_root_folder"]
+                )
+                profile_default_idx = resolve_preset_index(
+                    profiles,
+                    key_field="id",
+                    explicit_keys=["radarr_default_quality_profile", "radarr_default_profile_id"],
+                    mru_keys=["radarr_mru_quality_profile", "radarr_mru_profile_id"]
+                )
+                selected_folder = select_from_list("Select Root Path", folders, "path", default_index=folder_default_idx)
+                selected_profile = select_from_list("Select Quality Profile", profiles, "name", default_index=profile_default_idx)
                 
                 monitored = Confirm.ask("Monitor these movies?", default=True)
                 search_now = Confirm.ask("Search immediately on add?", default=True)
@@ -526,6 +651,11 @@ def handle_discovery_workflow():
                                 search_now=search_now
                             )
                         console.print(f"{CHECK_MARK} Successfully added [bold]'{res.get('title')}'[/bold]!")
+                        try:
+                            set_setting("radarr_mru_quality_profile", str(selected_profile["id"]))
+                            set_setting("radarr_mru_root_folder", str(selected_folder["path"]))
+                        except Exception:
+                            pass
                     except ArrAPIError as e:
                         console.print(f"{CROSS_MARK} Failed to add '{movie.get('title')}': {e}")
             except ArrAPIError as e:

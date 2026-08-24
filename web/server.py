@@ -52,6 +52,17 @@ scan_progress = {
 }
 scan_progress_lock = threading.Lock()
 
+library_cache = {
+    "radarr_tmdb_ids": set(),
+    "radarr_imdb_ids": set(),
+    "radarr_titles": {},
+    "sonarr_tvdb_ids": set(),
+    "sonarr_imdb_ids": set(),
+    "sonarr_titles": {},
+    "last_updated": None
+}
+library_cache_lock = threading.Lock()
+
 def update_scan_progress(status, message, current=0, total=0):
     with scan_progress_lock:
         scan_progress["status"] = status
@@ -85,10 +96,99 @@ def is_incomplete_metadata(item: dict) -> bool:
     
     return is_title_missing and is_cast_missing and is_plot_missing
 
+@app.before_request
+def enforce_api_key():
+    if request.method in ["POST", "PUT", "DELETE"] and request.path.startswith("/api/"):
+        api_key = request.headers.get("X-API-Key")
+        server_api_key = config._get_setting("api_key")
+        if not server_api_key:
+            import secrets
+            server_api_key = secrets.token_hex(16)
+            set_setting("api_key", server_api_key)
+            config.refresh()
+            
+        if not api_key or api_key != server_api_key:
+            return jsonify({"status": "error", "message": "Unauthorized"}), 401
+
 @app.route("/")
 def index():
     """Serves the primary UI page."""
-    return render_template("index.html")
+    server_api_key = config._get_setting("api_key")
+    if not server_api_key:
+        import secrets
+        server_api_key = secrets.token_hex(16)
+        set_setting("api_key", server_api_key)
+        config.refresh()
+    return render_template("index.html", api_key=server_api_key)
+
+def sync_library_cache():
+    try:
+        radarr_client, sonarr_client = get_clients()
+        radarr_tmdb_ids = set()
+        radarr_imdb_ids = set()
+        radarr_titles = {}
+        sonarr_tvdb_ids = set()
+        sonarr_imdb_ids = set()
+        sonarr_titles = {}
+        
+        if radarr_client:
+            try:
+                radarr_lib = radarr_client.get_library()
+                for movie in radarr_lib:
+                    if movie.get("tmdbId"):
+                        radarr_tmdb_ids.add(int(movie["tmdbId"]))
+                    if movie.get("imdbId"):
+                        imdb = str(movie["imdbId"]).strip().lower()
+                        if imdb:
+                            radarr_imdb_ids.add(imdb)
+                    title_norm = normalize_title(movie.get("title", ""), is_tv=False)
+                    if title_norm:
+                        if title_norm not in radarr_titles:
+                            radarr_titles[title_norm] = []
+                        if movie.get("year"):
+                            radarr_titles[title_norm].append(int(movie["year"]))
+            except Exception as e:
+                app.logger.error(f"Error fetching Radarr library for cache: {e}")
+                
+        if sonarr_client:
+            try:
+                sonarr_lib = sonarr_client.get_library()
+                for show in sonarr_lib:
+                    if show.get("tvdbId"):
+                        sonarr_tvdb_ids.add(int(show["tvdbId"]))
+                    if show.get("imdbId"):
+                        imdb = str(show["imdbId"]).strip().lower()
+                        if imdb:
+                            sonarr_imdb_ids.add(imdb)
+                    title_norm = normalize_title(show.get("title", ""), is_tv=True)
+                    if title_norm:
+                        if title_norm not in sonarr_titles:
+                            sonarr_titles[title_norm] = []
+                        if show.get("year"):
+                            sonarr_titles[title_norm].append(int(show["year"]))
+            except Exception as e:
+                app.logger.error(f"Error fetching Sonarr library for cache: {e}")
+                
+        with library_cache_lock:
+            library_cache["radarr_tmdb_ids"] = radarr_tmdb_ids
+            library_cache["radarr_imdb_ids"] = radarr_imdb_ids
+            library_cache["radarr_titles"] = radarr_titles
+            library_cache["sonarr_tvdb_ids"] = sonarr_tvdb_ids
+            library_cache["sonarr_imdb_ids"] = sonarr_imdb_ids
+            library_cache["sonarr_titles"] = sonarr_titles
+            library_cache["last_updated"] = datetime.now()
+    except Exception as e:
+        app.logger.error(f"Library cache thread error: {e}")
+
+def update_library_cache_loop():
+    while True:
+        sync_library_cache()
+        import time
+        time.sleep(300)
+
+import threading
+if "PYTEST_CURRENT_TEST" not in os.environ:
+    threading.Thread(target=update_library_cache_loop, daemon=True).start()
 
 @app.route("/api/config", methods=["GET"])
 def get_server_config():
@@ -97,7 +197,7 @@ def get_server_config():
     
     response_data = {
         "radarr": {"configured": False, "folders": [], "profiles": []},
-        "sonarr": {"configured": False, "folders": [], "profiles": [], "language_profiles": []}
+        "sonarr": {"configured": False, "folders": [], "profiles": []}
     }
     
     if radarr_client:
@@ -112,7 +212,6 @@ def get_server_config():
         try:
             response_data["sonarr"]["folders"] = sonarr_client.get_root_folders()
             response_data["sonarr"]["profiles"] = sonarr_client.get_quality_profiles()
-            response_data["sonarr"]["language_profiles"] = sonarr_client.get_language_profiles()
             response_data["sonarr"]["configured"] = True
         except Exception as e:
             app.logger.error(f"Error fetching Sonarr config: {e}")
@@ -126,6 +225,7 @@ def manage_settings():
         data = request.json or {}
         for key, val in data.items():
             set_setting(key, str(val))
+        config.refresh()
         return jsonify({"status": "success", "message": "Settings saved successfully."})
     else:
         return jsonify(get_all_settings())
@@ -176,6 +276,56 @@ def backup_import():
         app.logger.error(f"Error importing backup: {e}")
         return jsonify({"status": "error", "message": str(e)}), 500
 
+import re
+from flask import Response
+@app.route("/api/poster", methods=["GET"])
+def proxy_poster():
+    """Proxies poster images safely to prevent mixed content and SSRF/path traversal."""
+    url = request.args.get("url")
+    if not url:
+        return "Missing URL", 400
+        
+    # Prevent path traversal in file:// or other weird schemes
+    if not re.match(r"^https?://", url):
+        return "Invalid URL scheme", 400
+        
+    try:
+        import urllib.parse
+        import ipaddress
+        import socket
+        
+        parsed = urllib.parse.urlparse(url)
+        hostname = parsed.hostname
+        if not hostname:
+            return "Invalid URL", 400
+            
+        # Resolve IP to protect against SSRF to private/internal networks
+        ip = socket.gethostbyname(hostname)
+        ip_obj = ipaddress.ip_address(ip)
+        if ip_obj.is_private or ip_obj.is_loopback or ip_obj.is_link_local or str(ip_obj) == "169.254.169.254":
+            allowed = False
+            for srv_url in [config.radarr_url, config.sonarr_url]:
+                if srv_url:
+                    srv_parsed = urllib.parse.urlparse(srv_url)
+                    if srv_parsed.hostname == hostname:
+                        allowed = True
+                        break
+            if not allowed:
+                return "Forbidden destination IP", 403
+
+        import requests
+        resp = requests.get(url, stream=True, timeout=5)
+        resp.raise_for_status()
+        
+        def generate():
+            for chunk in resp.iter_content(chunk_size=4096):
+                yield chunk
+                
+        r = Response(generate(), mimetype=resp.headers.get("Content-Type", "image/jpeg"))
+        r.headers["X-Content-Type-Options"] = "nosniff"
+        return r
+    except Exception as e:
+        return "Error fetching image", 500
 
 @app.route("/api/archive", methods=["POST"])
 def archive_media():
@@ -245,51 +395,17 @@ def discover_releases():
     ignore_year = (get_setting("default_match_ignore_year", "1") == "1")
     radarr_client, sonarr_client = get_clients()
     
-    # 1. Fetch libraries in single queries to optimize check (collecting TVDB/TMDB and IMDb sets, and normalized titles for automatch)
-    radarr_tmdb_ids = set()
-    radarr_imdb_ids = set()
-    radarr_titles = {}
-    sonarr_tvdb_ids = set()
-    sonarr_imdb_ids = set()
-    sonarr_titles = {}
-    
-    if radarr_client:
-        try:
-            radarr_lib = radarr_client.get_library()
-            for movie in radarr_lib:
-                if movie.get("tmdbId"):
-                    radarr_tmdb_ids.add(int(movie["tmdbId"]))
-                if movie.get("imdbId"):
-                    imdb = str(movie["imdbId"]).strip().lower()
-                    if imdb:
-                        radarr_imdb_ids.add(imdb)
-                title_norm = normalize_title(movie.get("title", ""), is_tv=False)
-                if title_norm:
-                    if title_norm not in radarr_titles:
-                        radarr_titles[title_norm] = []
-                    if movie.get("year"):
-                        radarr_titles[title_norm].append(int(movie["year"]))
-        except Exception as e:
-            app.logger.error(f"Error fetching Radarr library: {e}")
-            
-    if sonarr_client:
-        try:
-            sonarr_lib = sonarr_client.get_library()
-            for show in sonarr_lib:
-                if show.get("tvdbId"):
-                    sonarr_tvdb_ids.add(int(show["tvdbId"]))
-                if show.get("imdbId"):
-                    imdb = str(show["imdbId"]).strip().lower()
-                    if imdb:
-                        sonarr_imdb_ids.add(imdb)
-                title_norm = normalize_title(show.get("title", ""), is_tv=True)
-                if title_norm:
-                    if title_norm not in sonarr_titles:
-                        sonarr_titles[title_norm] = []
-                    if show.get("year"):
-                        sonarr_titles[title_norm].append(int(show["year"]))
-        except Exception as e:
-            app.logger.error(f"Error fetching Sonarr library: {e}")
+    if "PYTEST_CURRENT_TEST" in os.environ or library_cache.get("last_updated") is None:
+        sync_library_cache()
+
+    # 1. Fetch libraries (using background cache)
+    with library_cache_lock:
+        radarr_tmdb_ids = set(library_cache["radarr_tmdb_ids"])
+        radarr_imdb_ids = set(library_cache["radarr_imdb_ids"])
+        radarr_titles = dict(library_cache["radarr_titles"])
+        sonarr_tvdb_ids = set(library_cache["sonarr_tvdb_ids"])
+        sonarr_imdb_ids = set(library_cache["sonarr_imdb_ids"])
+        sonarr_titles = dict(library_cache["sonarr_titles"])
             
     enriched_tv = []
     enriched_movies = []
@@ -341,6 +457,7 @@ def discover_releases():
                 "network": row["network"],
                 "is_in_library": in_library,
                 "is_archived": bool(row["is_archived"]),
+                "has_new_metadata": bool(row.get("has_new_metadata", 0)),
                 "is_returning": bool(row["is_returning"]),
                 "date_str": row["date_str"],
                 "date_obj": row["date_obj"] or "",
@@ -391,6 +508,7 @@ def discover_releases():
                 "network": row["network"],
                 "is_in_library": in_library,
                 "is_archived": bool(row["is_archived"]),
+                "has_new_metadata": bool(row.get("has_new_metadata", 0)),
                 "date_str": row["date_str"],
                 "date_obj": row["date_obj"] or "",
                 "raw_metadata": None,
@@ -482,6 +600,7 @@ def discover_releases():
                         "is_in_library": in_library,
                         "is_archived": bool(cached["is_archived"]),
                         "date_obj": cached["date_obj"] or "",
+                        "has_new_metadata": bool(cached.get("has_new_metadata", 0)),
                         "raw_metadata": None,
                         "rating_imdb": cached.get("rating_imdb", "") or "",
                         "rating_metacritic": cached.get("rating_metacritic", "") or "",
@@ -492,7 +611,6 @@ def discover_releases():
                     if not data["plot"] or data["plot"] == "No plot summary available.":
                         data["plot"] = item["description"]
                     data["is_returning"] = item.get("is_returning", False)
-                    data["is_archived"] = bool(cached["is_archived"]) if cached else False
                     
                     # Resolve library status
                     in_library = False
@@ -522,6 +640,13 @@ def discover_releases():
                         
                     # Cache newly fetched details
                     add_cached_item("tv", data)
+                    cached_after = get_cached_item("tv", data["title"], data.get("year", item["date_obj"].year), data.get("imdbId"))
+                    if cached_after:
+                        data["is_archived"] = bool(cached_after["is_archived"])
+                        data["has_new_metadata"] = bool(cached_after.get("has_new_metadata", 0))
+                    else:
+                        data["is_archived"] = bool(data.get("is_archived", False))
+                        data["has_new_metadata"] = bool(data.get("has_new_metadata", False))
                     
                 data["date_str"] = item["date_str"]
                 data["date_obj"] = data.get("date_obj") or (item.get("date_obj").strftime("%Y-%m-%d") if isinstance(item.get("date_obj"), datetime) else (str(item.get("date_obj")) if item.get("date_obj") else ""))
@@ -538,6 +663,7 @@ def discover_releases():
                 item["imdbId"] = None
                 item["is_in_library"] = False
                 item["is_archived"] = False
+                item["has_new_metadata"] = False
                 item["raw_metadata"] = None
                 item["is_returning"] = item.get("is_returning", False)
                 enriched_tv.append(item)
@@ -608,6 +734,7 @@ def discover_releases():
                         "is_in_library": in_library,
                         "is_archived": bool(cached["is_archived"]),
                         "date_obj": cached["date_obj"] or "",
+                        "has_new_metadata": bool(cached.get("has_new_metadata", 0)),
                         "raw_metadata": None,
                         "rating_imdb": cached.get("rating_imdb", "") or "",
                         "rating_metacritic": cached.get("rating_metacritic", "") or "",
@@ -621,7 +748,6 @@ def discover_releases():
                         data["plot"] = item["description"]
                     if "imdbId" not in data or not data["imdbId"]:
                         data["imdbId"] = item.get("imdbId")
-                    data["is_archived"] = bool(cached["is_archived"]) if cached else False
                     
                     # Resolve library status
                     in_library = False
@@ -651,6 +777,13 @@ def discover_releases():
                         
                     # Cache newly fetched details
                     add_cached_item("movie", data)
+                    cached_after = get_cached_item("movie", data["title"], data.get("year", item["date_obj"].year), data.get("imdbId"))
+                    if cached_after:
+                        data["is_archived"] = bool(cached_after["is_archived"])
+                        data["has_new_metadata"] = bool(cached_after.get("has_new_metadata", 0))
+                    else:
+                        data["is_archived"] = bool(data.get("is_archived", False))
+                        data["has_new_metadata"] = bool(data.get("has_new_metadata", False))
                     
                 data["date_str"] = item["date_str"]
                 data["date_obj"] = data.get("date_obj") or (item.get("date_obj").strftime("%Y-%m-%d") if isinstance(item.get("date_obj"), datetime) else (str(item.get("date_obj")) if item.get("date_obj") else ""))
@@ -667,6 +800,7 @@ def discover_releases():
                 item["tmdbId"] = None
                 item["is_in_library"] = False
                 item["is_archived"] = False
+                item["has_new_metadata"] = False
                 item["raw_metadata"] = None
                 if "imdbId" not in item or not item["imdbId"]:
                     item["imdbId"] = item.get("imdbId")
@@ -692,16 +826,12 @@ def cache_refresh_item():
     if not type_ or not title or not year:
         return jsonify({"status": "error", "message": "Missing required fields (type, title, year)"}), 400
         
-    radarr_client, sonarr_client = get_clients()
-    
     try:
-        # Check if currently marked as archived in cache to preserve it
+        radarr_client, sonarr_client = get_clients()
         existing = get_cached_item(type_, title, int(year), imdb_id)
-        is_archived = bool(existing["is_archived"]) if existing else False
         
         if type_ == "tv":
             refreshed = enrich_tv_show(title, int(year), sonarr_client)
-            refreshed["is_archived"] = is_archived
             if existing:
                 refreshed["date_str"] = existing.get("date_str")
                 refreshed["date_obj"] = existing.get("date_obj")
@@ -753,9 +883,15 @@ def cache_refresh_item():
                 
             refreshed["is_in_library"] = in_library
             add_cached_item("tv", refreshed)
+            cached_after = get_cached_item("tv", refreshed.get("title", title), int(refreshed.get("year", year)), refreshed.get("imdbId", imdb_id))
+            if cached_after:
+                refreshed["is_archived"] = bool(cached_after["is_archived"])
+                refreshed["has_new_metadata"] = bool(cached_after.get("has_new_metadata", 0))
+            else:
+                refreshed["is_archived"] = bool(refreshed.get("is_archived", False))
+                refreshed["has_new_metadata"] = bool(refreshed.get("has_new_metadata", False))
         elif type_ == "movie":
             refreshed = enrich_movie(title, int(year), radarr_client, imdb_id)
-            refreshed["is_archived"] = is_archived
             if existing:
                 refreshed["date_str"] = existing.get("date_str")
                 refreshed["date_obj"] = existing.get("date_obj")
@@ -805,6 +941,13 @@ def cache_refresh_item():
                 
             refreshed["is_in_library"] = in_library
             add_cached_item("movie", refreshed)
+            cached_after = get_cached_item("movie", refreshed.get("title", title), int(refreshed.get("year", year)), refreshed.get("imdbId", imdb_id))
+            if cached_after:
+                refreshed["is_archived"] = bool(cached_after["is_archived"])
+                refreshed["has_new_metadata"] = bool(cached_after.get("has_new_metadata", 0))
+            else:
+                refreshed["is_archived"] = bool(refreshed.get("is_archived", False))
+                refreshed["has_new_metadata"] = bool(refreshed.get("has_new_metadata", False))
         else:
             return jsonify({"status": "error", "message": "Invalid media type"}), 400
             
@@ -850,7 +993,6 @@ def add_media():
     raw_meta = req_data.get("raw_metadata")
     folder = req_data.get("folder")
     profile_id = req_data.get("profile_id")
-    lang_profile_id = req_data.get("lang_profile_id", 1)
     monitored = req_data.get("monitored", True)
     search_now = req_data.get("search_now", True)
     add_collection = req_data.get("add_collection", False)
@@ -872,10 +1014,21 @@ def add_media():
             else:
                 raw_meta["is_in_library"] = True
                 add_cached_item(type_, raw_meta)
+
+            # Persist MRU quality profile and root folder
+            if type_ == "tv":
+                set_setting("sonarr_mru_quality_profile", str(profile_id))
+                set_setting("sonarr_mru_profile_id", str(profile_id))
+                set_setting("sonarr_mru_root_folder", str(folder))
+            else:
+                set_setting("radarr_mru_quality_profile", str(profile_id))
+                set_setting("radarr_mru_profile_id", str(profile_id))
+                set_setting("radarr_mru_root_folder", str(folder))
+            config.refresh()
+
             return jsonify({"status": "success", "message": f"[Demo Sandbox] Successfully added { 'TV Show' if type_ == 'tv' else 'Movie' } '{title}' to sandbox library!"})
         except Exception as e:
             return jsonify({"status": "error", "message": str(e)}), 500
-            
     radarr_client, sonarr_client = get_clients()
     
     if type_ == "tv" and not sonarr_client:
@@ -890,8 +1043,7 @@ def add_media():
                 quality_profile_id=int(profile_id),
                 root_folder_path=folder,
                 monitored=monitored,
-                search_now=search_now,
-                language_profile_id=int(lang_profile_id) if lang_profile_id else None
+                search_now=search_now
             )
             # Update cache table immediately
             title = res.get("title") or raw_meta.get("title")
@@ -903,6 +1055,13 @@ def add_media():
             else:
                 raw_meta["is_in_library"] = True
                 add_cached_item("tv", raw_meta)
+
+            # Persist MRU quality profile and root folder
+            set_setting("sonarr_mru_quality_profile", str(profile_id))
+            set_setting("sonarr_mru_profile_id", str(profile_id))
+            set_setting("sonarr_mru_root_folder", str(folder))
+            config.refresh()
+
             return jsonify({"status": "success", "message": f"Successfully added TV Show '{res.get('title')}'!"})
         else:
             res = radarr_client.add_movie(
@@ -923,6 +1082,13 @@ def add_media():
             else:
                 raw_meta["is_in_library"] = True
                 add_cached_item("movie", raw_meta)
+
+            # Persist MRU quality profile and root folder
+            set_setting("radarr_mru_quality_profile", str(profile_id))
+            set_setting("radarr_mru_profile_id", str(profile_id))
+            set_setting("radarr_mru_root_folder", str(folder))
+            config.refresh()
+
             return jsonify({"status": "success", "message": f"Successfully added Movie '{res.get('title')}'!"})
     except ArrAPIError as e:
         return jsonify({"status": "error", "message": str(e)}), 500

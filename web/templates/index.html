@@ -12,6 +12,9 @@
     <link rel="stylesheet" href="/static/style.css">
     <!-- Favicon -->
     <link rel="icon" href="/static/favicon.png" type="image/png">
+    
+    <!-- API Auth -->
+    <meta name="x-api-key" content="{{ api_key }}">
 </head>
 <body>
     <div class="app-container">
@@ -245,13 +248,7 @@
                                 <!-- Populated dynamically -->
                             </select>
                         </div>
- 
-                        <div class="form-group hidden" id="group-lang-profile">
-                            <label for="select-lang-profile">Language Profile (Sonarr)</label>
-                            <select id="select-lang-profile">
-                                <!-- Populated dynamically -->
-                            </select>
-                        </div>
+
  
                         <div class="checkbox-group">
                             <label class="checkbox-container">
@@ -313,9 +310,15 @@
                             <input type="text" id="input-radarr-key" placeholder="API Key">
                         </div>
                         <div class="form-group">
-                            <label for="input-radarr-default-profile">Default Quality Profile</label>
-                            <select id="input-radarr-default-profile" style="background:rgba(0, 0, 0, 0.3); border:1px solid var(--border-color); border-radius:8px; padding:10px 12px; color:var(--text-primary); font-size:14px; width:100%; outline:none;">
-                                <option value="">None (Select in modal)</option>
+                            <label for="select-radarr-default-folder">Default Root Folder</label>
+                            <select id="select-radarr-default-folder">
+                                <!-- Populated dynamically -->
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="select-radarr-default-profile">Default Quality Profile</label>
+                            <select id="select-radarr-default-profile">
+                                <!-- Populated dynamically -->
                             </select>
                         </div>
                         
@@ -329,9 +332,15 @@
                             <input type="text" id="input-sonarr-key" placeholder="API Key">
                         </div>
                         <div class="form-group">
-                            <label for="input-sonarr-default-profile">Default Quality Profile</label>
-                            <select id="input-sonarr-default-profile" style="background:rgba(0, 0, 0, 0.3); border:1px solid var(--border-color); border-radius:8px; padding:10px 12px; color:var(--text-primary); font-size:14px; width:100%; outline:none;">
-                                <option value="">None (Select in modal)</option>
+                            <label for="select-sonarr-default-folder">Default Root Folder</label>
+                            <select id="select-sonarr-default-folder">
+                                <!-- Populated dynamically -->
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="select-sonarr-default-profile">Default Quality Profile</label>
+                            <select id="select-sonarr-default-profile">
+                                <!-- Populated dynamically -->
                             </select>
                         </div>
                     </div>

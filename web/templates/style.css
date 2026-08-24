@@ -614,6 +614,45 @@ select option {
     margin-left: auto;
 }
 
+.badge-new-metadata {
+    background: rgba(0, 245, 212, 0.12);
+    color: #00f5d4;
+    border: 1px solid rgba(0, 245, 212, 0.35);
+    box-shadow: 0 0 10px rgba(0, 245, 212, 0.2);
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    white-space: nowrap;
+    transition: var(--transition-smooth);
+}
+
+.badge-new-metadata::before {
+    content: '';
+    display: inline-block;
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    background-color: #00f5d4;
+    box-shadow: 0 0 6px #00f5d4;
+}
+
+.media-card:hover .badge-new-metadata {
+    border-color: rgba(0, 245, 212, 0.5);
+    box-shadow: 0 0 14px rgba(0, 245, 212, 0.35);
+}
+
+.badge-returning {
+    background: rgba(138, 43, 226, 0.1);
+    color: #bc8cf2;
+    border: 1px solid rgba(138, 43, 226, 0.2);
+}
+
+.badge-archived {
+    background: rgba(255, 42, 133, 0.1);
+    color: var(--accent-magenta);
+    border: 1px solid rgba(255, 42, 133, 0.2);
+}
+
 /* Rating Badges */
 .rating-badges {
     display: flex;
@@ -1787,6 +1826,18 @@ body.light-theme .search-badge.active {
 
 body.light-theme .btn-refresh-icon:hover {
     background: rgba(0, 0, 0, 0.05);
+}
+
+body.light-theme .badge-new-metadata {
+    background: rgba(0, 150, 125, 0.08);
+    color: #007d65;
+    border-color: rgba(0, 150, 125, 0.28);
+    box-shadow: 0 0 6px rgba(0, 150, 125, 0.12);
+}
+
+body.light-theme .badge-new-metadata::before {
+    background-color: #007d65;
+    box-shadow: 0 0 4px #007d65;
 }
 
 /* Theme Toggle Button Styling */

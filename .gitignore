@@ -33,3 +33,8 @@ htmlcov/
 build/
 dist/
 *.spec
+
+# Antigravity
+.agents/
+.DS_Store
+

@@ -6,6 +6,7 @@ from pathlib import Path
 from datetime import datetime, timedelta
 
 import sys
+from core.metadata import evaluate_item_state_transition
 
 # Store database in the project root folder (or executable directory if compiled)
 if getattr(sys, 'frozen', False):
@@ -15,15 +16,24 @@ else:
 
 def get_db_connection():
     """Establishes and returns a connection to the SQLite database with Row factory."""
-    conn = sqlite3.connect(DB_PATH, timeout=30)
+    conn = sqlite3.connect(DB_PATH, timeout=5)
     conn.isolation_level = None
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON;")
-    conn.execute("PRAGMA busy_timeout = 30000;")
+    conn.execute("PRAGMA busy_timeout = 5000;")
+    conn.execute("PRAGMA synchronous = NORMAL;")
     return conn
 
 def init_db():
     """Creates settings, cache, and custom_feeds tables, and migrates existing settings/columns."""
+    parent_dir = DB_PATH.parent
+    if not os.access(parent_dir, os.W_OK):
+        print(f"ERROR: Database parent directory {parent_dir} is not writable. UID: {os.getuid()}, GID: {os.getgid()}", file=sys.stderr)
+        sys.exit(1)
+    if DB_PATH.exists() and not os.access(DB_PATH, os.R_OK | os.W_OK):
+        print(f"ERROR: Database file {DB_PATH} is not writable. UID: {os.getuid()}, GID: {os.getgid()}", file=sys.stderr)
+        sys.exit(1)
+
     conn = get_db_connection()
     conn.execute("PRAGMA journal_mode = WAL;")
     cursor = conn.cursor()
@@ -74,6 +84,7 @@ def init_db():
             poster_url TEXT,
             is_returning INTEGER DEFAULT 0,
             is_archived INTEGER DEFAULT 0,
+            has_new_metadata INTEGER DEFAULT 0,
             added_at TEXT,
             rating_imdb TEXT,
             rating_metacritic TEXT,
@@ -108,6 +119,7 @@ def init_db():
         "poster_url": "TEXT",
         "is_returning": "INTEGER DEFAULT 0",
         "is_archived": "INTEGER DEFAULT 0",
+        "has_new_metadata": "INTEGER DEFAULT 0",
         "added_at": "TEXT",
         "rating_imdb": "TEXT",
         "rating_metacritic": "TEXT",
@@ -145,6 +157,8 @@ def init_db():
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_cache_date_obj ON cache(date_obj) WHERE date_obj IS NOT NULL AND date_obj != ''")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_cache_imdb_id ON cache(imdb_id) WHERE imdb_id IS NOT NULL AND imdb_id != ''")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_cache_source_feed_id ON cache(source_feed_id) WHERE source_feed_id IS NOT NULL")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_cache_type_date_obj ON cache(type, date_obj)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_cache_missing_poster ON cache(id) WHERE poster_url IS NULL OR poster_url = ''")
     
     # 4. Migrate from .env if settings table is empty
     cursor.execute("SELECT COUNT(*) FROM settings")
@@ -384,7 +398,7 @@ def get_cached_item(type_: str, title: str, year: int, imdb_id: str = None, conn
     is_tv = (type_ == "tv")
     norm_title = normalize_title(title, is_tv=is_tv)
     
-    cursor.execute("SELECT * FROM cache WHERE type = ? AND (normalized_title = ? OR normalized_title IS NULL)", (type_, norm_title))
+    cursor.execute("SELECT * FROM cache WHERE type = ? AND normalized_title = ?", (type_, norm_title))
     all_rows = [dict(row) for row in cursor.fetchall()]
     
     if local_conn:
@@ -434,6 +448,9 @@ def add_cached_item(type_: str, item: dict, conn = None):
         # Check if already exists in cache using our robust lookup inside transaction
         existing = get_cached_item(type_, item["title"], item["year"], imdb_id, conn=conn)
         
+        # Compute state transition for auto-archiving and smart unarchiving
+        is_archived, has_new_metadata = evaluate_item_state_transition(existing, item)
+        
         genres_json = json.dumps(item.get("genres", []))
         tvdb_id = item.get("tvdbId") or item.get("tvdb_id")
         tmdb_id = item.get("tmdbId") or item.get("tmdb_id")
@@ -458,7 +475,7 @@ def add_cached_item(type_: str, item: dict, conn = None):
                 UPDATE cache SET
                     date_str = ?, date_obj = ?, description = ?, href = ?, imdb_id = ?,
                     tvdb_id = ?, tmdb_id = ?, genres = ?, cast = ?, network = ?, trailer = ?,
-                    poster_url = ?, is_returning = ?, added_at = ?,
+                    poster_url = ?, is_returning = ?, is_archived = ?, has_new_metadata = ?, added_at = ?,
                     rating_imdb = ?, rating_metacritic = ?, rating_rt = ?, is_in_library = ?,
                     source_feed_id = ?, normalized_title = ?, director = ?, producer = ?
                 WHERE id = ?
@@ -476,6 +493,8 @@ def add_cached_item(type_: str, item: dict, conn = None):
                 item.get("trailer", ""),
                 item.get("poster_url", ""),
                 1 if item.get("is_returning") else 0,
+                is_archived,
+                has_new_metadata,
                 datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                 item.get("rating_imdb", ""),
                 item.get("rating_metacritic", ""),
@@ -491,10 +510,11 @@ def add_cached_item(type_: str, item: dict, conn = None):
             cursor.execute('''
                 INSERT INTO cache (
                     type, title, year, date_str, date_obj, description, href, imdb_id,
-                    tvdb_id, tmdb_id, genres, cast, network, trailer, poster_url, is_returning, is_archived, added_at,
+                    tvdb_id, tmdb_id, genres, cast, network, trailer, poster_url, is_returning,
+                    is_archived, has_new_metadata, added_at,
                     rating_imdb, rating_metacritic, rating_rt, is_in_library, source_feed_id, normalized_title,
                     director, producer
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ''', (
                 type_,
                 item["title"],
@@ -512,7 +532,8 @@ def add_cached_item(type_: str, item: dict, conn = None):
                 item.get("trailer", ""),
                 item.get("poster_url", ""),
                 1 if item.get("is_returning") else 0,
-                1 if item.get("is_archived") else 0,
+                is_archived,
+                has_new_metadata,
                 datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                 item.get("rating_imdb", ""),
                 item.get("rating_metacritic", ""),
@@ -533,7 +554,24 @@ def add_cached_item(type_: str, item: dict, conn = None):
     finally:
         if close_conn:
             conn.close()
- 
+
+def add_cached_items_batch(type_: str, items: list):
+    """Batches inserts to yield the WAL lock periodically for concurrent operations."""
+    chunk_size = 25
+    for i in range(0, len(items), chunk_size):
+        chunk = items[i:i + chunk_size]
+        conn = get_db_connection()
+        conn.execute("BEGIN IMMEDIATE")
+        try:
+            for item in chunk:
+                add_cached_item(type_, item, conn=conn)
+            conn.commit()
+        except Exception as e:
+            conn.rollback()
+            print(f"Error in batch insertion: {e}", file=sys.stderr)
+        finally:
+            conn.close()
+
 def archive_cached_item(type_: str, title: str, year: int, is_archived: bool = True, raw_item: dict = None):
     """Sets the is_archived flag on a cached discovery. Inserts a skeleton if not in cache."""
     conn = get_db_connection()
@@ -551,7 +589,10 @@ def archive_cached_item(type_: str, title: str, year: int, is_archived: bool = T
         normalized_title = normalize_title(title, is_tv=(type_ == "tv"))
         
         if existing:
-            cursor.execute("UPDATE cache SET is_archived = ? WHERE id = ?", (archived_val, existing["id"]))
+            if archived_val == 1:
+                cursor.execute("UPDATE cache SET is_archived = 1, has_new_metadata = 0 WHERE id = ?", (existing["id"],))
+            else:
+                cursor.execute("UPDATE cache SET is_archived = 0 WHERE id = ?", (existing["id"],))
         else:
             if raw_item:
                 genres_json = json.dumps(raw_item.get("genres", []))
@@ -565,13 +606,15 @@ def archive_cached_item(type_: str, title: str, year: int, is_archived: bool = T
                     else:
                         date_obj_str = str(raw_item["date_obj"])
                         
+                is_in_lib = 1 if raw_item.get("is_in_library") else 0
                 cursor.execute('''
                     INSERT INTO cache (
                         type, title, year, date_str, date_obj, description, href, imdb_id,
-                        tvdb_id, tmdb_id, genres, cast, network, trailer, poster_url, is_returning, is_archived, added_at,
+                        tvdb_id, tmdb_id, genres, cast, network, trailer, poster_url, is_returning,
+                        is_archived, has_new_metadata, added_at,
                         rating_imdb, rating_metacritic, rating_rt, is_in_library, normalized_title,
                         director, producer
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ''', (
                     type_, title, year,
                     raw_item.get("date_str", ""),
@@ -588,6 +631,7 @@ def archive_cached_item(type_: str, title: str, year: int, is_archived: bool = T
                     raw_item.get("poster_url", ""),
                     1 if raw_item.get("is_returning") else 0,
                     archived_val,
+                    0,
                     datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                     raw_item.get("rating_imdb", ""),
                     raw_item.get("rating_metacritic", ""),
@@ -599,9 +643,9 @@ def archive_cached_item(type_: str, title: str, year: int, is_archived: bool = T
                 ))
             else:
                 cursor.execute('''
-                    INSERT INTO cache (type, title, year, is_archived, added_at, normalized_title)
-                    VALUES (?, ?, ?, ?, ?, ?)
-                ''', (type_, title, year, archived_val, datetime.now().strftime("%Y-%m-%d %H:%M:%S"), normalized_title))
+                    INSERT INTO cache (type, title, year, is_archived, has_new_metadata, added_at, normalized_title)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                ''', (type_, title, year, archived_val, 0, datetime.now().strftime("%Y-%m-%d %H:%M:%S"), normalized_title))
                 
         conn.commit()
     except Exception:

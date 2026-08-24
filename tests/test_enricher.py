@@ -36,7 +36,7 @@ def test_get_wikipedia_cast_success():
         }
     }
     
-    with patch("requests.get") as mock_get:
+    with patch("core.enricher.enricher_session.get") as mock_get:
         # First request returns search query, second returns parsed text
         r1 = MagicMock()
         r1.status_code = 200
@@ -67,7 +67,7 @@ def test_get_wikipedia_cast_empty_starring():
             }
         }
     }
-    with patch("requests.get") as mock_get:
+    with patch("core.enricher.enricher_session.get") as mock_get:
         r1, r2 = MagicMock(), MagicMock()
         r1.status_code = 200
         r1.json.return_value = search_mock
@@ -93,7 +93,7 @@ def test_get_wikipedia_cast_no_infobox_td():
             }
         }
     }
-    with patch("requests.get") as mock_get:
+    with patch("core.enricher.enricher_session.get") as mock_get:
         r1, r2 = MagicMock(), MagicMock()
         r1.status_code = 200
         r1.json.return_value = search_mock
@@ -120,7 +120,7 @@ def test_get_wikipedia_cast_no_starring_label():
             }
         }
     }
-    with patch("requests.get") as mock_get:
+    with patch("core.enricher.enricher_session.get") as mock_get:
         r1, r2 = MagicMock(), MagicMock()
         r1.status_code = 200
         r1.json.return_value = search_mock
@@ -152,7 +152,7 @@ def test_get_wikipedia_cast_li_list():
             }
         }
     }
-    with patch("requests.get") as mock_get:
+    with patch("core.enricher.enricher_session.get") as mock_get:
         r1, r2 = MagicMock(), MagicMock()
         r1.status_code = 200
         r1.json.return_value = search_mock
@@ -179,7 +179,7 @@ def test_get_wikipedia_cast_plain_text():
             }
         }
     }
-    with patch("requests.get") as mock_get:
+    with patch("core.enricher.enricher_session.get") as mock_get:
         r1, r2 = MagicMock(), MagicMock()
         r1.status_code = 200
         r1.json.return_value = search_mock
@@ -192,14 +192,14 @@ def test_get_wikipedia_cast_plain_text():
 
 def test_get_wikipedia_cast_failures():
     # 1. Non-200 search status
-    with patch("requests.get") as mock_get:
+    with patch("core.enricher.enricher_session.get") as mock_get:
         r = MagicMock()
         r.status_code = 404
         mock_get.return_value = r
         assert get_wikipedia_cast("Rivals", 2026) is None
 
     # 2. Empty search results
-    with patch("requests.get") as mock_get:
+    with patch("core.enricher.enricher_session.get") as mock_get:
         r = MagicMock()
         r.status_code = 200
         r.json.return_value = {"query": {"search": []}}
@@ -207,7 +207,7 @@ def test_get_wikipedia_cast_failures():
         assert get_wikipedia_cast("Rivals", 2026) is None
 
     # 3. Non-200 parse status
-    with patch("requests.get") as mock_get:
+    with patch("core.enricher.enricher_session.get") as mock_get:
         r1 = MagicMock()
         r1.status_code = 200
         r1.json.return_value = {"query": {"search": [{"title": "Rivals"}]}}
@@ -217,7 +217,7 @@ def test_get_wikipedia_cast_failures():
         assert get_wikipedia_cast("Rivals", 2026) is None
 
     # 4. Exception raised during request
-    with patch("requests.get", side_effect=Exception("Network down")):
+    with patch("core.enricher.enricher_session.get", side_effect=Exception("Network down")):
         assert get_wikipedia_cast("Rivals", 2026) is None
 
 def test_enrich_tv_show_tvmaze_success():
@@ -237,7 +237,7 @@ def test_enrich_tv_show_tvmaze_success():
         }
     }
     
-    with patch("requests.get") as mock_get:
+    with patch("core.enricher.enricher_session.get") as mock_get:
         r = MagicMock()
         r.status_code = 200
         r.json.return_value = maze_mock
@@ -259,7 +259,7 @@ def test_enrich_tv_show_webchannel_and_failures():
         "image": {"original": "http://tvmaze/original.jpg"},
         "webChannel": {"name": "Netflix"}
     }
-    with patch("requests.get") as mock_get:
+    with patch("core.enricher.enricher_session.get") as mock_get:
         r = MagicMock()
         r.status_code = 200
         r.json.return_value = maze_mock
@@ -274,7 +274,7 @@ def test_enrich_tv_show_webchannel_and_failures():
     maze_mock_empty = {
         "summary": ""
     }
-    with patch("requests.get") as mock_get:
+    with patch("core.enricher.enricher_session.get") as mock_get:
         r = MagicMock()
         r.status_code = 200
         r.json.return_value = maze_mock_empty
@@ -285,7 +285,7 @@ def test_enrich_tv_show_webchannel_and_failures():
         assert data["poster_url"] == ""
 
     # Test request failure fallback
-    with patch("requests.get", side_effect=Exception("TVMaze offline")):
+    with patch("core.enricher.enricher_session.get", side_effect=Exception("TVMaze offline")):
         data = enrich_tv_show("Rivals", 2026)
         assert data["network"] == "Unknown Network"
         assert data["plot"] == "No plot summary available."
@@ -315,7 +315,7 @@ def test_enrich_tv_show_sonarr_sync():
     sonarr.lookup_series.return_value = lookup_mock
     
     # Mock requests.get (TVMaze returns empty/404)
-    with patch("requests.get") as mock_get:
+    with patch("core.enricher.enricher_session.get") as mock_get:
         r = MagicMock()
         r.status_code = 404
         mock_get.return_value = r
@@ -339,7 +339,7 @@ def test_enrich_tv_show_sonarr_sync():
         }
     ]
     sonarr.lookup_series.return_value = lookup_mock_relative_img
-    with patch("requests.get") as mock_get:
+    with patch("core.enricher.enricher_session.get") as mock_get:
         r = MagicMock()
         r.status_code = 404
         mock_get.return_value = r
@@ -357,7 +357,7 @@ def test_enrich_tv_show_sonarr_sync():
         }
     ]
     sonarr.lookup_series.return_value = lookup_mock_missing_img_url
-    with patch("requests.get") as mock_get:
+    with patch("core.enricher.enricher_session.get") as mock_get:
         r = MagicMock()
         r.status_code = 404
         mock_get.return_value = r
@@ -375,7 +375,7 @@ def test_enrich_tv_show_sonarr_sync():
         }
     ]
     sonarr.lookup_series.return_value = lookup_mock_absolute_img
-    with patch("requests.get") as mock_get:
+    with patch("core.enricher.enricher_session.get") as mock_get:
         r = MagicMock()
         r.status_code = 404
         mock_get.return_value = r
@@ -384,7 +384,7 @@ def test_enrich_tv_show_sonarr_sync():
 
     # 3b. Test Sonarr client returns no matches (evaluates if best_match is None)
     sonarr.lookup_series.return_value = []
-    with patch("requests.get") as mock_get:
+    with patch("core.enricher.enricher_session.get") as mock_get:
         r = MagicMock()
         r.status_code = 404
         mock_get.return_value = r
@@ -400,7 +400,7 @@ def test_enrich_tv_show_sonarr_sync():
         }
     ]
     sonarr.lookup_series.return_value = lookup_mock_first_fallback
-    with patch("requests.get") as mock_get:
+    with patch("core.enricher.enricher_session.get") as mock_get:
         r = MagicMock()
         r.status_code = 404
         mock_get.return_value = r
@@ -409,7 +409,7 @@ def test_enrich_tv_show_sonarr_sync():
 
     # 4. Test Sonarr lookup raising ArrAPIError
     sonarr.lookup_series.side_effect = ArrAPIError("Sonarr error")
-    with patch("requests.get") as mock_get:
+    with patch("core.enricher.enricher_session.get") as mock_get:
         r = MagicMock()
         r.status_code = 404
         mock_get.return_value = r
@@ -418,7 +418,7 @@ def test_enrich_tv_show_sonarr_sync():
 
 def test_enrich_tv_show_wikipedia_cast_fallback():
     # If cast is still missing, trigger Wikipedia search for cast
-    with patch("requests.get") as mock_get:
+    with patch("core.enricher.enricher_session.get") as mock_get:
         r_maze = MagicMock()
         r_maze.status_code = 404
         
@@ -555,7 +555,7 @@ def test_enrich_tv_show_skip_poster_when_already_populated():
     maze_mock = {
         "image": {"medium": "http://tvmaze/medium.jpg"},
     }
-    with patch("requests.get") as mock_get:
+    with patch("core.enricher.enricher_session.get") as mock_get:
         r = MagicMock()
         r.status_code = 200
         r.json.return_value = maze_mock

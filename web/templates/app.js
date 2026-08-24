@@ -6,6 +6,30 @@ let selectedItemForAdd = null;
 let selectedGenres = new Set();
 let selectedNetworks = new Set();
 
+// Setup API Key Interceptor for all fetch requests
+const originalFetch = window.fetch;
+window.fetch = async function() {
+    let [resource, config] = arguments;
+    
+    if (typeof resource === 'string' && resource.startsWith('/api/')) {
+        config = config || {};
+        
+        const apiKeyMeta = document.querySelector('meta[name="x-api-key"]');
+        if (apiKeyMeta && apiKeyMeta.content) {
+            if (!config.headers) {
+                config.headers = {};
+            }
+            if (config.headers instanceof Headers) {
+                config.headers.set("X-API-Key", apiKeyMeta.content);
+            } else {
+                config.headers["X-API-Key"] = apiKeyMeta.content;
+            }
+        }
+    }
+    
+    return originalFetch.call(this, resource, config);
+};
+
 // Notification log helper
 function addNotification(message, type = "info") {
     const list = document.getElementById("notifications-list");
@@ -69,8 +93,6 @@ let isMarkInLibraryMode = false;
 
 const selectFolder = document.getElementById("select-folder");
 const selectProfile = document.getElementById("select-profile");
-const selectLangProfile = document.getElementById("select-lang-profile");
-const groupLangProfile = document.getElementById("group-lang-profile");
 const checkMonitored = document.getElementById("check-monitored");
 const checkSearch = document.getElementById("check-search");
 
@@ -83,12 +105,14 @@ const btnSettingsSave = document.getElementById("btn-settings-save");
 
 const inputRadarrUrl = document.getElementById("input-radarr-url");
 const inputRadarrKey = document.getElementById("input-radarr-key");
+const selectRadarrDefaultFolder = document.getElementById("select-radarr-default-folder");
+const selectRadarrDefaultProfile = document.getElementById("select-radarr-default-profile");
 const inputSonarrUrl = document.getElementById("input-sonarr-url");
 const inputSonarrKey = document.getElementById("input-sonarr-key");
+const selectSonarrDefaultFolder = document.getElementById("select-sonarr-default-folder");
+const selectSonarrDefaultProfile = document.getElementById("select-sonarr-default-profile");
 const inputPastMonths = document.getElementById("input-past-months");
 const inputFutureMonths = document.getElementById("input-future-months");
-const inputRadarrDefaultProfile = document.getElementById("input-radarr-default-profile");
-const inputSonarrDefaultProfile = document.getElementById("input-sonarr-default-profile");
 const btnModalAddOnly = document.getElementById("btn-modal-add-only");
 const selectSort = document.getElementById("select-sort");
 
@@ -186,66 +210,6 @@ function initializeSettingsDefaults() {
     document.getElementById("check-show-returning").checked = appSettings.default_show_returning === "1";
     document.getElementById("check-show-library").checked = appSettings.default_show_library === "1";
     document.getElementById("check-show-archived").checked = appSettings.default_show_archived === "1";
-    
-    populateSettingsProfiles();
-}
-
-function populateSettingsProfiles() {
-    if (!inputRadarrDefaultProfile || !inputSonarrDefaultProfile) return;
-    
-    // Populate Radarr Profiles
-    inputRadarrDefaultProfile.innerHTML = '<option value="">None (Select in modal)</option>';
-    if (appConfig && appConfig.radarr && appConfig.radarr.profiles && appConfig.radarr.profiles.length > 0) {
-        appConfig.radarr.profiles.forEach(p => {
-            const opt = document.createElement("option");
-            opt.value = p.id;
-            opt.textContent = p.name;
-            inputRadarrDefaultProfile.appendChild(opt);
-        });
-    } else {
-        // Fallback demo mock profiles if unconfigured
-        const mockProfiles = [
-            { id: 1, name: "Any (Default)" },
-            { id: 2, name: "Ultra-HD 4K" },
-            { id: 3, name: "HD - 1080p/720p" }
-        ];
-        mockProfiles.forEach(p => {
-            const opt = document.createElement("option");
-            opt.value = p.id;
-            opt.textContent = p.name;
-            inputRadarrDefaultProfile.appendChild(opt);
-        });
-    }
-    if (appSettings && appSettings.radarr_default_profile_id) {
-        inputRadarrDefaultProfile.value = appSettings.radarr_default_profile_id;
-    }
-    
-    // Populate Sonarr Profiles
-    inputSonarrDefaultProfile.innerHTML = '<option value="">None (Select in modal)</option>';
-    if (appConfig && appConfig.sonarr && appConfig.sonarr.profiles && appConfig.sonarr.profiles.length > 0) {
-        appConfig.sonarr.profiles.forEach(p => {
-            const opt = document.createElement("option");
-            opt.value = p.id;
-            opt.textContent = p.name;
-            inputSonarrDefaultProfile.appendChild(opt);
-        });
-    } else {
-        // Fallback demo mock profiles if unconfigured
-        const mockProfiles = [
-            { id: 1, name: "Any (Default)" },
-            { id: 2, name: "Ultra-HD 4K" },
-            { id: 3, name: "HD - 1080p/720p" }
-        ];
-        mockProfiles.forEach(p => {
-            const opt = document.createElement("option");
-            opt.value = p.id;
-            opt.textContent = p.name;
-            inputSonarrDefaultProfile.appendChild(opt);
-        });
-    }
-    if (appSettings && appSettings.sonarr_default_profile_id) {
-        inputSonarrDefaultProfile.value = appSettings.sonarr_default_profile_id;
-    }
 }
 
 function updateStatusBadges() {
@@ -394,6 +358,94 @@ async function scanReleases(skipScrape = false) {
     }
 }
 
+// --- Hybrid Preset Resolution & MRU Engine ---
+
+/**
+ * Resolves the quality profile or root folder selection using a 3-tier hybrid strategy:
+ * Tier 1: Explicit Settings Default (appSettings[explicitSettingKey])
+ * Tier 2: Most-Recently-Used Fallback (localStorage[mruKey] or appSettings[mruKey])
+ * Tier 3: Safety Fallback (First available option)
+ */
+function resolveHybridPreset(optionsList, valueKey, explicitSettingValue, mruKey) {
+    if (!optionsList || !Array.isArray(optionsList) || optionsList.length === 0) {
+        return "";
+    }
+
+    const findOption = (val) => {
+        if (val === undefined || val === null) return null;
+        const valStr = String(val).trim();
+        if (valStr === "") return null;
+        return optionsList.find(opt => opt && String(opt[valueKey]).trim() === valStr) || null;
+    };
+
+    // Tier 1: Explicit Server Setting
+    const explicitMatch = findOption(explicitSettingValue);
+    if (explicitMatch) {
+        return String(explicitMatch[valueKey]);
+    }
+
+    // Tier 2: Most-Recently-Used (MRU) Fallback
+    let mruVal = null;
+    if (mruKey) {
+        try {
+            mruVal = localStorage.getItem(mruKey);
+        } catch (e) {
+            // ignore localStorage error
+        }
+    }
+    let mruMatch = findOption(mruVal);
+    if (mruMatch) {
+        return String(mruMatch[valueKey]);
+    }
+
+    if (mruKey && typeof appSettings !== "undefined" && appSettings) {
+        mruMatch = findOption(appSettings[mruKey]);
+        if (mruMatch) {
+            return String(mruMatch[valueKey]);
+        }
+        const backendKeyMap = {
+            "xarrtools_mru_radarr_folder": "radarr_mru_root_folder",
+            "xarrtools_mru_radarr_profile": "radarr_mru_quality_profile",
+            "xarrtools_mru_sonarr_folder": "sonarr_mru_root_folder",
+            "xarrtools_mru_sonarr_profile": "sonarr_mru_quality_profile"
+        };
+        const altKey = backendKeyMap[mruKey];
+        if (altKey) {
+            mruMatch = findOption(appSettings[altKey]);
+            if (mruMatch) {
+                return String(mruMatch[valueKey]);
+            }
+        }
+    }
+
+    // Tier 3: Safety Fallback (First Available Option)
+    if (optionsList[0] && optionsList[0][valueKey] !== undefined) {
+        return String(optionsList[0][valueKey]);
+    }
+
+    return "";
+}
+
+/**
+ * Immediately updates the localStorage MRU cache upon media addition.
+ */
+function updateMRUCache(type, folder, profileId) {
+    const prefix = type === "tv" ? "xarrtools_mru_sonarr" : "xarrtools_mru_radarr";
+    try {
+        if (folder !== undefined && folder !== null && String(folder).trim() !== "") {
+            localStorage.setItem(`${prefix}_folder`, String(folder).trim());
+        }
+        if (profileId !== undefined && profileId !== null && String(profileId).trim() !== "") {
+            localStorage.setItem(`${prefix}_profile`, String(profileId).trim());
+        }
+    } catch (e) {
+        console.warn("Failed to update localStorage MRU cache:", e);
+    }
+}
+
+window.resolveHybridPreset = resolveHybridPreset;
+window.updateMRUCache = updateMRUCache;
+
 // 3. Add item to *Arr
 async function addMediaItem(searchNow = null) {
     if (!selectedItemForAdd || !selectedItemForAdd.raw_metadata) return;
@@ -403,6 +455,11 @@ async function addMediaItem(searchNow = null) {
     const discoveryItem = selectedItemForAdd.item; // Capture reference before closing modal clears selectedItemForAdd
     const searchCard = selectedItemForAdd.card || null; // Capture search card ref if from global search
     
+    // Update MRU cache immediately upon item addition
+    const chosenFolder = selectFolder ? selectFolder.value : "";
+    const chosenProfile = selectProfile ? selectProfile.value : "";
+    updateMRUCache(type, chosenFolder, chosenProfile);
+
     // Intercept for Demo Mode simulation
     if (selectedItemForAdd.isDemo) {
         closeModal();
@@ -416,8 +473,8 @@ async function addMediaItem(searchNow = null) {
                 body: JSON.stringify({
                     type: type,
                     raw_metadata: rawMeta,
-                    folder: "demo",
-                    profile_id: 1,
+                    folder: chosenFolder || "demo",
+                    profile_id: chosenProfile || 1,
                     demo: true
                 })
             });
@@ -461,7 +518,6 @@ async function addMediaItem(searchNow = null) {
         raw_metadata: rawMeta,
         folder: selectFolder.value,
         profile_id: selectProfile.value,
-        lang_profile_id: type === "tv" ? selectLangProfile.value : null,
         monitored: checkMonitored.checked,
         search_now: (searchNow !== null) ? searchNow : checkSearch.checked,
         add_collection: (type === "movie" && checkTrackCollection && checkTrackCollection.checked)
@@ -534,6 +590,9 @@ async function toggleArchive(type, item) {
         const resData = await response.json();
         if (response.ok && resData.status === "success") {
             item.is_archived = isArchiving;
+            if (isArchiving) {
+                item.has_new_metadata = false;
+            }
             addNotification(`Successfully ${isArchiving ? 'archived' : 'unarchived'} '${item.title}'.`, "success");
             renderMediaLists();
         } else {
@@ -597,16 +656,18 @@ async function saveSettings() {
     const payload = {
         radarr_url: inputRadarrUrl.value.trim(),
         radarr_api_key: inputRadarrKey.value.trim(),
+        radarr_default_root_folder: selectRadarrDefaultFolder ? selectRadarrDefaultFolder.value : "",
+        radarr_default_quality_profile: selectRadarrDefaultProfile ? selectRadarrDefaultProfile.value : "",
         sonarr_url: inputSonarrUrl.value.trim(),
         sonarr_api_key: inputSonarrKey.value.trim(),
+        sonarr_default_root_folder: selectSonarrDefaultFolder ? selectSonarrDefaultFolder.value : "",
+        sonarr_default_quality_profile: selectSonarrDefaultProfile ? selectSonarrDefaultProfile.value : "",
         default_past_months: inputPastMonths.value,
         default_future_months: inputFutureMonths.value,
         default_show_returning: document.getElementById("input-show-returning").checked ? "1" : "0",
         default_show_library: document.getElementById("input-show-library").checked ? "1" : "0",
         default_show_archived: document.getElementById("input-show-archived").checked ? "1" : "0",
-        default_match_ignore_year: document.getElementById("input-match-ignore-year").checked ? "1" : "0",
-        radarr_default_profile_id: inputRadarrDefaultProfile ? inputRadarrDefaultProfile.value : "",
-        sonarr_default_profile_id: inputSonarrDefaultProfile ? inputSonarrDefaultProfile.value : ""
+        default_match_ignore_year: document.getElementById("input-match-ignore-year").checked ? "1" : "0"
     };
     
     closeSettingsModal();
@@ -885,8 +946,9 @@ function createMediaCard(item, type, index) {
             <div class="card-badges">
                 <span class="badge badge-network">${item.network}</span>
                 ${returningBadge}
+                ${item.has_new_metadata ? '<span class="badge badge-new-metadata">New metadata</span>' : ''}
                 ${isAdded ? '<span class="badge badge-in-library">In Library</span>' : ''}
-                ${item.is_archived ? '<span class="badge" style="background:rgba(255, 42, 133, 0.1); color:var(--accent-magenta); border:1px solid rgba(255, 42, 133, 0.2);">Archived</span>' : ''}
+                ${item.is_archived ? '<span class="badge badge-archived" style="background:rgba(255, 42, 133, 0.1); color:var(--accent-magenta); border:1px solid rgba(255, 42, 133, 0.2);">Archived</span>' : ''}
             </div>
             ${buildRatingBadgesHtml(item)}
             <div class="genres-list">${genres}</div>
@@ -1150,11 +1212,6 @@ function goToOptionsStep(metadataItem) {
                 { id: 1, name: "Any (Default)" },
                 { id: 2, name: "Ultra-HD 4K" },
                 { id: 3, name: "HD - 1080p/720p" }
-            ],
-            language_profiles: [
-                { id: 1, name: "English" },
-                { id: 2, name: "Spanish" },
-                { id: 3, name: "French" }
             ]
         };
     } else {
@@ -1166,43 +1223,49 @@ function goToOptionsStep(metadataItem) {
     // Clear selects
     selectFolder.innerHTML = "";
     selectProfile.innerHTML = "";
-    selectLangProfile.innerHTML = "";
 
     // Populate Folder Paths
-    targetConfig.folders.forEach(f => {
-        const opt = document.createElement("option");
-        opt.value = f.path;
-        opt.textContent = f.path;
-        selectFolder.appendChild(opt);
-    });
-
-    // Populate Quality Profiles
-    targetConfig.profiles.forEach(p => {
-        const opt = document.createElement("option");
-        opt.value = p.id;
-        opt.textContent = p.name;
-        selectProfile.appendChild(opt);
-    });
-
-    // Pre-select default profile if set
-    if (appSettings) {
-        const defaultProfileId = type === "tv" ? appSettings.sonarr_default_profile_id : appSettings.radarr_default_profile_id;
-        if (defaultProfileId) {
-            selectProfile.value = defaultProfileId;
-        }
+    if (targetConfig && targetConfig.folders) {
+        targetConfig.folders.forEach(f => {
+            const opt = document.createElement("option");
+            opt.value = f.path;
+            opt.textContent = f.path;
+            selectFolder.appendChild(opt);
+        });
     }
 
-    // Populate Languages (Sonarr TV only)
-    if (type === "tv" && targetConfig.language_profiles && targetConfig.language_profiles.length > 0) {
-        groupLangProfile.classList.remove("hidden");
-        targetConfig.language_profiles.forEach(l => {
+    if (targetConfig && targetConfig.profiles) {
+        targetConfig.profiles.forEach(p => {
             const opt = document.createElement("option");
-            opt.value = l.id;
-            opt.textContent = l.name;
-            selectLangProfile.appendChild(opt);
+            opt.value = p.id;
+            opt.textContent = p.name;
+            selectProfile.appendChild(opt);
         });
-    } else {
-        groupLangProfile.classList.add("hidden");
+    }
+
+    // Pre-select Quality Profile and Root Folder using 3-tier Hybrid Preset Algorithm
+    const prefix = type === "tv" ? "sonarr" : "radarr";
+    const explicitFolder = appSettings ? appSettings[`${prefix}_default_root_folder`] : null;
+    const explicitProfile = appSettings ? appSettings[`${prefix}_default_quality_profile`] : null;
+
+    const selectedFolder = resolveHybridPreset(
+        targetConfig ? targetConfig.folders : [],
+        "path",
+        explicitFolder,
+        `xarrtools_mru_${prefix}_folder`
+    );
+    if (selectedFolder) {
+        selectFolder.value = selectedFolder;
+    }
+
+    const selectedProfile = resolveHybridPreset(
+        targetConfig ? targetConfig.profiles : [],
+        "id",
+        explicitProfile,
+        `xarrtools_mru_${prefix}_profile`
+    );
+    if (selectedProfile) {
+        selectProfile.value = selectedProfile;
     }
 
     // Handle Track Collection Box Set options (Radarr movie collections)
@@ -1252,6 +1315,37 @@ function closeModal() {
     selectedItemForAdd = null;
 }
 
+// Helper to populate settings select elements
+function populateSettingsSelect(selectEl, items, valueProp, textProp, currentValue) {
+    if (!selectEl) return;
+    selectEl.innerHTML = "";
+    const defaultOpt = document.createElement("option");
+    defaultOpt.value = "";
+    defaultOpt.textContent = "None (Use Most-Recently-Used)";
+    selectEl.appendChild(defaultOpt);
+
+    let matchFound = false;
+    if (items && Array.isArray(items)) {
+        items.forEach(item => {
+            const opt = document.createElement("option");
+            opt.value = item[valueProp];
+            opt.textContent = item[textProp];
+            selectEl.appendChild(opt);
+            if (currentValue !== undefined && currentValue !== null && String(item[valueProp]).trim() === String(currentValue).trim()) {
+                matchFound = true;
+            }
+        });
+    }
+
+    if (matchFound && currentValue !== undefined && currentValue !== null && String(currentValue).trim() !== "") {
+        selectEl.value = String(currentValue);
+    } else {
+        selectEl.value = "";
+    }
+}
+
+window.populateSettingsSelect = populateSettingsSelect;
+
 // Settings Modal controls
 function openSettingsModal() {
     if (appSettings) {
@@ -1268,6 +1362,36 @@ function openSettingsModal() {
         if (inputRadarrDefaultProfile) inputRadarrDefaultProfile.value = appSettings.radarr_default_profile_id || "";
         if (inputSonarrDefaultProfile) inputSonarrDefaultProfile.value = appSettings.sonarr_default_profile_id || "";
     }
+
+    // Populate Radarr & Sonarr default folder and quality profile dropdowns
+    populateSettingsSelect(
+        selectRadarrDefaultFolder,
+        appConfig?.radarr?.folders,
+        "path",
+        "path",
+        appSettings ? appSettings.radarr_default_root_folder : ""
+    );
+    populateSettingsSelect(
+        selectRadarrDefaultProfile,
+        appConfig?.radarr?.profiles,
+        "id",
+        "name",
+        appSettings ? appSettings.radarr_default_quality_profile : ""
+    );
+    populateSettingsSelect(
+        selectSonarrDefaultFolder,
+        appConfig?.sonarr?.folders,
+        "path",
+        "path",
+        appSettings ? appSettings.sonarr_default_root_folder : ""
+    );
+    populateSettingsSelect(
+        selectSonarrDefaultProfile,
+        appConfig?.sonarr?.profiles,
+        "id",
+        "name",
+        appSettings ? appSettings.sonarr_default_quality_profile : ""
+    );
     
     // Set theme selector value inside View Options tab to current theme
     const selectTheme = document.getElementById("select-theme-mode");

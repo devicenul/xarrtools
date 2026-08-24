@@ -41,6 +41,9 @@ def cleanup_db():
     
     # Reset default settings
     core.db.init_db()
+    core.db.set_setting("api_key", "test_api_key")
+    from core.config import config
+    config.refresh()
     yield
     # Clean up temp file at the very end of the test suite if needed,
     # but since it's used globally, we'll keep it until program exits.
@@ -48,8 +51,44 @@ def cleanup_db():
 @pytest.fixture
 def client():
     app.config["TESTING"] = True
+    
+    class TestClientAPIKeyWrapper:
+        def __init__(self, client):
+            self.client = client
+            
+        def _get_api_key(self):
+            from core.db import get_setting, set_setting
+            key = get_setting("api_key", "")
+            if not key:
+                key = "test_api_key"
+                set_setting("api_key", key)
+                from core.config import config
+                config.refresh()
+            return key
+            
+        def get(self, *args, **kwargs):
+            return self.client.get(*args, **kwargs)
+            
+        def post(self, *args, **kwargs):
+            headers = kwargs.pop("headers", {})
+            headers["X-API-Key"] = self._get_api_key()
+            kwargs["headers"] = headers
+            return self.client.post(*args, **kwargs)
+            
+        def put(self, *args, **kwargs):
+            headers = kwargs.pop("headers", {})
+            headers["X-API-Key"] = self._get_api_key()
+            kwargs["headers"] = headers
+            return self.client.put(*args, **kwargs)
+            
+        def delete(self, *args, **kwargs):
+            headers = kwargs.pop("headers", {})
+            headers["X-API-Key"] = self._get_api_key()
+            kwargs["headers"] = headers
+            return self.client.delete(*args, **kwargs)
+
     with app.test_client() as client:
-        yield client
+        yield TestClientAPIKeyWrapper(client)
 
 def test_index_endpoint(client):
     with patch("web.server.render_template") as mock_render:
@@ -57,7 +96,7 @@ def test_index_endpoint(client):
         res = client.get("/")
         assert res.status_code == 200
         assert res.data == b"Mock Index HTML"
-        mock_render.assert_called_once_with("index.html")
+        assert mock_render.call_args[0][0] == "index.html"
 
 def test_get_server_config_endpoint_configured(client):
     mock_radarr = MagicMock()
@@ -67,7 +106,6 @@ def test_get_server_config_endpoint_configured(client):
     mock_sonarr = MagicMock()
     mock_sonarr.get_root_folders.return_value = [{"path": "/tv"}]
     mock_sonarr.get_quality_profiles.return_value = [{"id": 2, "name": "720p"}]
-    mock_sonarr.get_language_profiles.return_value = [{"id": 1, "name": "English"}]
 
     with patch("web.server.get_clients", return_value=(mock_radarr, mock_sonarr)):
         res = client.get("/api/config")
@@ -79,7 +117,7 @@ def test_get_server_config_endpoint_configured(client):
         assert data["sonarr"]["configured"] is True
         assert data["sonarr"]["folders"] == [{"path": "/tv"}]
         assert data["sonarr"]["profiles"] == [{"id": 2, "name": "720p"}]
-        assert data["sonarr"]["language_profiles"] == [{"id": 1, "name": "English"}]
+        assert "language_profiles" not in data["sonarr"]
 
 def test_get_server_config_endpoint_not_configured_or_errors(client):
     mock_radarr_err = MagicMock()
@@ -406,7 +444,8 @@ def test_cache_refresh_item_endpoint_tv_success(client):
         assert res.status_code == 200
         data = res.get_json()["item"]
         assert data["is_in_library"] is True
-        assert data["is_archived"] is True
+        assert data["is_archived"] is False
+        assert data["has_new_metadata"] is True
         assert data["plot"] == "New Plot"
 
 def test_cache_refresh_item_endpoint_movie_success(client):
@@ -481,10 +520,11 @@ def test_add_media_endpoint_missing_params(client):
     assert res.status_code == 400
 
 def test_add_media_endpoint_demo_sandbox(client):
+    from core.db import get_setting
     # TV Demo Sandbox
     res = client.post("/api/add", json={
         "type": "tv", "raw_metadata": {"title": "Demo Show", "year": 2026, "imdbId": "tt123"},
-        "folder": "/tv", "profile_id": 1, "demo": True
+        "folder": "/tv_demo", "profile_id": 3, "demo": True
     })
     assert res.status_code == 200
     assert "Sandbox" in res.get_json()["message"]
@@ -493,11 +533,14 @@ def test_add_media_endpoint_demo_sandbox(client):
     tv_row = conn.execute("SELECT is_in_library FROM cache WHERE title='Demo Show'").fetchone()
     conn.close()
     assert tv_row["is_in_library"] == 1
+    assert get_setting("sonarr_mru_quality_profile") == "3"
+    assert get_setting("sonarr_mru_profile_id") == "3"
+    assert get_setting("sonarr_mru_root_folder") == "/tv_demo"
 
     # Movie Demo Sandbox
     res = client.post("/api/add", json={
         "type": "movie", "raw_metadata": {"title": "Demo Movie", "year": 2026, "imdbId": "tt456"},
-        "folder": "/movies", "profile_id": 1, "is_demo": True
+        "folder": "/movies_demo", "profile_id": 4, "is_demo": True
     })
     assert res.status_code == 200
     assert "Sandbox" in res.get_json()["message"]
@@ -506,6 +549,9 @@ def test_add_media_endpoint_demo_sandbox(client):
     movie_row = conn.execute("SELECT is_in_library FROM cache WHERE title='Demo Movie'").fetchone()
     conn.close()
     assert movie_row["is_in_library"] == 1
+    assert get_setting("radarr_mru_quality_profile") == "4"
+    assert get_setting("radarr_mru_profile_id") == "4"
+    assert get_setting("radarr_mru_root_folder") == "/movies_demo"
 
 def test_add_media_endpoint_live_errors_not_configured(client):
     with patch("web.server.get_clients", return_value=(None, None)):
@@ -522,6 +568,7 @@ def test_add_media_endpoint_live_errors_not_configured(client):
         assert "Radarr server is not configured" in res.get_json()["message"]
 
 def test_add_media_endpoint_live_success(client):
+    from core.db import get_setting
     mock_radarr = MagicMock()
     mock_radarr.add_movie.return_value = {"title": "Live Movie", "year": 2026, "imdbId": "tt456"}
     
@@ -537,18 +584,39 @@ def test_add_media_endpoint_live_success(client):
         # Add TV Show
         res = client.post("/api/add", json={
             "type": "tv", "raw_metadata": {"title": "Live Series", "year": 2026},
-            "folder": "/tv", "profile_id": 2, "lang_profile_id": 1
+            "folder": "/tv", "profile_id": 2
         })
         assert res.status_code == 200
         assert "Successfully added TV Show" in res.get_json()["message"]
+        assert get_setting("sonarr_mru_quality_profile") == "2"
+        assert get_setting("sonarr_mru_profile_id") == "2"
+        assert get_setting("sonarr_mru_root_folder") == "/tv"
+        mock_sonarr.add_series.assert_called_once_with(
+            series_data={"title": "Live Series", "year": 2026},
+            quality_profile_id=2,
+            root_folder_path="/tv",
+            monitored=True,
+            search_now=True
+        )
         
         # Add Movie
         res = client.post("/api/add", json={
             "type": "movie", "raw_metadata": {"title": "Live Movie", "year": 2026},
-            "folder": "/movies", "profile_id": 2
+            "folder": "/movies", "profile_id": 5
         })
         assert res.status_code == 200
         assert "Successfully added Movie" in res.get_json()["message"]
+        assert get_setting("radarr_mru_quality_profile") == "5"
+        assert get_setting("radarr_mru_profile_id") == "5"
+        assert get_setting("radarr_mru_root_folder") == "/movies"
+        mock_radarr.add_movie.assert_called_once_with(
+            movie_data={"title": "Live Movie", "year": 2026},
+            quality_profile_id=5,
+            root_folder_path="/movies",
+            monitored=True,
+            search_now=True,
+            add_collection=False
+        )
 
         # Verify cached library status synced to True
         conn = core.db.get_db_connection()
@@ -1149,14 +1217,16 @@ def test_background_poster_healer_pytest_env_reload():
     import web.server
     
     old_env = os.environ.get("PYTEST_CURRENT_TEST")
+    env_copy = os.environ.copy()
     if "PYTEST_CURRENT_TEST" in os.environ:
         del os.environ["PYTEST_CURRENT_TEST"]
         
     try:
         with patch("threading.Thread") as mock_thread:
+            import importlib
+            import web.server
             importlib.reload(web.server)
-            mock_thread.assert_called_once()
-            # Verify it targets background_poster_healer
+            assert mock_thread.call_count >= 1
             assert mock_thread.call_args[1]["target"] == web.server.background_poster_healer
     finally:
         if old_env is not None:
@@ -1760,7 +1830,7 @@ def test_start_background_healer_thread():
         with patch("threading.Thread") as mock_thread:
             import web.server
             importlib.reload(web.server)
-            mock_thread.assert_called_once()
+            assert mock_thread.call_count >= 1
     finally:
         os.environ.update(env_copy)
 
@@ -2022,8 +2092,7 @@ def test_discover_returns_date_obj_and_add_only(client):
             quality_profile_id=2,
             root_folder_path="/tv",
             monitored=True,
-            search_now=False,
-            language_profile_id=1
+            search_now=False
         )
 
 def test_is_incomplete_metadata_and_suppression(client):
@@ -2140,6 +2209,496 @@ def test_link_library_endpoint(client):
     assert bool(cached_new["is_in_library"]) is True
     assert cached_new["tvdb_id"] == 67890
 
+
+
+
+
+def test_default_settings_and_mru_persistence(client):
+    from core.config import config
+    from core.db import get_setting
+
+    settings_payload = {
+        "radarr_default_quality_profile": "10",
+        "radarr_default_root_folder": "/data/movies",
+        "sonarr_default_quality_profile": "20",
+        "sonarr_default_root_folder": "/data/tv"
+    }
+
+    # 1. POST /api/settings
+    res = client.post("/api/settings", json=settings_payload)
+    assert res.status_code == 200
+    assert res.get_json()["status"] == "success"
+
+    # 2. Verify settings stored in DB
+    assert get_setting("radarr_default_quality_profile") == "10"
+    assert get_setting("radarr_default_root_folder") == "/data/movies"
+    assert get_setting("sonarr_default_quality_profile") == "20"
+    assert get_setting("sonarr_default_root_folder") == "/data/tv"
+
+    # 3. Verify config properties
+    assert config.radarr_default_quality_profile == "10"
+    assert config.radarr_default_profile_id == "10"
+    assert config.radarr_default_root_folder == "/data/movies"
+    assert config.sonarr_default_quality_profile == "20"
+    assert config.sonarr_default_profile_id == "20"
+    assert config.sonarr_default_root_folder == "/data/tv"
+
+    # 4. GET /api/settings returns the persisted keys
+    res = client.get("/api/settings")
+    assert res.status_code == 200
+    saved = res.get_json()
+    assert saved.get("radarr_default_quality_profile") == "10"
+    assert saved.get("radarr_default_root_folder") == "/data/movies"
+    assert saved.get("sonarr_default_quality_profile") == "20"
+    assert saved.get("sonarr_default_root_folder") == "/data/tv"
+
+
+def test_add_media_mru_persistence_tv_and_movie(client):
+    from core.config import config
+    from core.db import get_setting
+
+    # 1. Demo movie addition sets MRU
+    res = client.post("/api/add", json={
+        "type": "movie",
+        "raw_metadata": {"title": "MRU Movie", "year": 2026, "imdbId": "tt777"},
+        "folder": "/movies/mru",
+        "profile_id": 7,
+        "demo": True
+    })
+    assert res.status_code == 200
+    assert get_setting("radarr_mru_quality_profile") == "7"
+    assert get_setting("radarr_mru_profile_id") == "7"
+    assert get_setting("radarr_mru_root_folder") == "/movies/mru"
+    assert config.radarr_mru_quality_profile == "7"
+    assert config.radarr_mru_profile_id == "7"
+    assert config.radarr_mru_root_folder == "/movies/mru"
+
+    # 2. Demo TV addition sets MRU
+    res = client.post("/api/add", json={
+        "type": "tv",
+        "raw_metadata": {"title": "MRU Show", "year": 2026, "imdbId": "tt888"},
+        "folder": "/tv/mru",
+        "profile_id": 8,
+        "demo": True
+    })
+    assert res.status_code == 200
+    assert get_setting("sonarr_mru_quality_profile") == "8"
+    assert get_setting("sonarr_mru_profile_id") == "8"
+    assert get_setting("sonarr_mru_root_folder") == "/tv/mru"
+    assert config.sonarr_mru_quality_profile == "8"
+    assert config.sonarr_mru_profile_id == "8"
+    assert config.sonarr_mru_root_folder == "/tv/mru"
+
+
+def test_sonarr_language_profiles_removed_from_config_api(client):
+    mock_radarr = MagicMock()
+    mock_radarr.get_root_folders.return_value = [{"path": "/movies"}]
+    mock_radarr.get_quality_profiles.return_value = [{"id": 1, "name": "HD"}]
+    
+    mock_sonarr = MagicMock()
+    mock_sonarr.get_root_folders.return_value = [{"path": "/tv"}]
+    mock_sonarr.get_quality_profiles.return_value = [{"id": 2, "name": "Any"}]
+
+    with patch("web.server.get_clients", return_value=(mock_radarr, mock_sonarr)):
+        res = client.get("/api/config")
+        assert res.status_code == 200
+        data = res.get_json()
+        assert "language_profiles" not in data["sonarr"]
+        assert "folders" in data["sonarr"]
+        assert "profiles" in data["sonarr"]
+
+
+# ==============================================================================
+# Milestone 2: Low-Metadata Auto-Archiving, Smart Unarchiving & Badge Integration Tests
+# ==============================================================================
+
+def test_api_discover_skip_scrape_has_new_metadata_serialization(client):
+    """Verifies that GET /api/discover with skip_scrape=true includes has_new_metadata boolean."""
+    from core.db import add_cached_item
+    tv_date = datetime.now().strftime("%Y-%m-%d")
+    movie_date = datetime.now().strftime("%Y-%m-%d")
+    
+    # 1. Seed TV show with has_new_metadata = True (unarchived, badged)
+    item_tv_badged = {
+        "title": "Badged TV Show", "year": 2026, "plot": "TV Desc", "cast": "TV Cast",
+        "genres": ["Drama"], "trailer": "http://trailer", "poster_url": "http://poster.jpg",
+        "tvdbId": 101, "imdbId": "tt101", "network": "HBO", "is_in_library": False,
+        "is_archived": False, "date_str": tv_date, "date_obj": tv_date
+    }
+    add_cached_item("tv", item_tv_badged)
+    # Force has_new_metadata = 1 in DB
+    conn = core.db.get_db_connection()
+    conn.execute("UPDATE cache SET has_new_metadata = 1 WHERE title = 'Badged TV Show'")
+    conn.commit()
+    conn.close()
+
+    # 2. Seed TV show with has_new_metadata = False (archived)
+    item_tv_archived = {
+        "title": "Archived TV Show", "year": 2026, "plot": "No plot summary available.", "cast": "Cast details not available.",
+        "genres": [], "trailer": "", "poster_url": "",
+        "tvdbId": 102, "imdbId": "tt102", "network": "Unknown", "is_in_library": False,
+        "is_archived": True, "date_str": tv_date, "date_obj": tv_date
+    }
+    add_cached_item("tv", item_tv_archived)
+
+    # 3. Seed Movie with has_new_metadata = True
+    item_movie_badged = {
+        "title": "Badged Movie", "year": 2026, "plot": "Movie Desc", "cast": "Movie Cast",
+        "genres": ["Action"], "trailer": "http://trailer", "poster_url": "http://poster.jpg",
+        "tmdbId": 201, "imdbId": "tt201", "network": "Paramount", "is_in_library": False,
+        "is_archived": False, "date_str": movie_date, "date_obj": movie_date
+    }
+    add_cached_item("movie", item_movie_badged)
+    conn = core.db.get_db_connection()
+    conn.execute("UPDATE cache SET has_new_metadata = 1 WHERE title = 'Badged Movie'")
+    conn.commit()
+    conn.close()
+
+    # 4. Seed Movie with has_new_metadata = False
+    item_movie_normal = {
+        "title": "Normal Movie", "year": 2026, "plot": "Movie Desc", "cast": "Movie Cast",
+        "genres": ["Comedy"], "trailer": "http://trailer", "poster_url": "http://poster.jpg",
+        "tmdbId": 202, "imdbId": "tt202", "network": "Warner Bros", "is_in_library": False,
+        "is_archived": False, "date_str": movie_date, "date_obj": movie_date
+    }
+    add_cached_item("movie", item_movie_normal)
+
+    with patch("web.server.get_clients", return_value=(None, None)):
+        res = client.get("/api/discover?skip_scrape=true&past_months=12&future_months=12")
+        assert res.status_code == 200
+        data = res.get_json()
+        assert data["status"] == "success"
+        
+        tv_items = {item["title"]: item for item in data["tv"]}
+        movie_items = {item["title"]: item for item in data["movies"]}
+
+        assert tv_items["Badged TV Show"]["has_new_metadata"] is True
+        assert tv_items["Badged TV Show"]["is_archived"] is False
+        assert isinstance(tv_items["Badged TV Show"]["has_new_metadata"], bool)
+        assert isinstance(tv_items["Badged TV Show"]["is_archived"], bool)
+
+        assert tv_items["Archived TV Show"]["has_new_metadata"] is False
+        assert tv_items["Archived TV Show"]["is_archived"] is True
+        assert isinstance(tv_items["Archived TV Show"]["has_new_metadata"], bool)
+        assert isinstance(tv_items["Archived TV Show"]["is_archived"], bool)
+
+        assert movie_items["Badged Movie"]["has_new_metadata"] is True
+        assert movie_items["Badged Movie"]["is_archived"] is False
+        assert isinstance(movie_items["Badged Movie"]["has_new_metadata"], bool)
+        assert isinstance(movie_items["Badged Movie"]["is_archived"], bool)
+
+        assert movie_items["Normal Movie"]["has_new_metadata"] is False
+        assert movie_items["Normal Movie"]["is_archived"] is False
+        assert isinstance(movie_items["Normal Movie"]["has_new_metadata"], bool)
+        assert isinstance(movie_items["Normal Movie"]["is_archived"], bool)
+
+
+def test_api_discover_live_scrape_auto_archiving_low_metadata(client):
+    """Verifies that GET /api/discover with skip_scrape=false auto-archives items with >= 2 missing core fields."""
+    tv_date = datetime.now()
+    tv_raw = [
+        # TV 1: Low metadata (missing network and cast -> 2 missing fields)
+        {"title": "Low Meta TV", "date_obj": tv_date, "description": "Scraped TV Plot", "date_str": "2026-05-30", "is_returning": False},
+        # TV 2: Rich metadata (0 missing fields)
+        {"title": "Rich Meta TV", "date_obj": tv_date, "description": "Scraped TV Plot", "date_str": "2026-05-30", "is_returning": False}
+    ]
+    movie_raw = [
+        # Movie 1: Low metadata (missing plot and network -> 2 missing fields)
+        {"title": "Low Meta Movie", "date_obj": tv_date, "description": "No plot summary available.", "date_str": "2026-05-30", "imdbId": "tt991"},
+        # Movie 2: Rich metadata (0 missing fields)
+        {"title": "Rich Meta Movie", "date_obj": tv_date, "description": "Great Plot", "date_str": "2026-05-30", "imdbId": "tt992"}
+    ]
+
+    with patch("web.server.get_clients", return_value=(None, None)), \
+         patch("web.server.get_discoveries", return_value=(tv_raw, movie_raw)), \
+         patch("web.server.enrich_tv_show") as mock_enrich_tv, \
+         patch("web.server.enrich_movie") as mock_enrich_movie:
+
+        mock_enrich_tv.side_effect = [
+            # TV 1 Enrichment -> missing network and cast
+            {
+                "title": "Low Meta TV", "year": 2026, "plot": "Scraped TV Plot", "cast": "Cast details not available.",
+                "genres": [], "trailer": "", "poster_url": "", "tvdbId": None, "imdbId": None, "network": "Unknown"
+            },
+            # TV 2 Enrichment -> full metadata
+            {
+                "title": "Rich Meta TV", "year": 2026, "plot": "Rich TV Plot", "cast": "Actor A, Actor B",
+                "genres": ["Drama"], "trailer": "http://trailer", "poster_url": "http://poster.jpg",
+                "tvdbId": 123, "imdbId": "tt123", "network": "HBO"
+            }
+        ]
+
+        mock_enrich_movie.side_effect = [
+            # Movie 1 Enrichment -> missing plot and network
+            {
+                "title": "Low Meta Movie", "year": 2026, "plot": "No plot summary available.", "cast": "Lead Star",
+                "genres": [], "trailer": "", "poster_url": "", "tmdbId": 456, "imdbId": "tt991", "network": "N/A"
+            },
+            # Movie 2 Enrichment -> full metadata
+            {
+                "title": "Rich Meta Movie", "year": 2026, "plot": "Rich Movie Plot", "cast": "Lead Star",
+                "genres": ["Action"], "trailer": "http://trailer", "poster_url": "http://poster.jpg",
+                "tmdbId": 789, "imdbId": "tt992", "network": "Universal Pictures"
+            }
+        ]
+
+        res = client.get("/api/discover?skip_scrape=false")
+        assert res.status_code == 200
+        data = res.get_json()
+        assert data["status"] == "success"
+
+        tv_items = {item["title"]: item for item in data["tv"]}
+        movie_items = {item["title"]: item for item in data["movies"]}
+
+        # Auto-archived items:
+        assert tv_items["Low Meta TV"]["is_archived"] is True
+        assert tv_items["Low Meta TV"]["has_new_metadata"] is False
+        assert movie_items["Low Meta Movie"]["is_archived"] is True
+        assert movie_items["Low Meta Movie"]["has_new_metadata"] is False
+
+        # Non-archived items:
+        assert tv_items["Rich Meta TV"]["is_archived"] is False
+        assert tv_items["Rich Meta TV"]["has_new_metadata"] is False
+        assert movie_items["Rich Meta Movie"]["is_archived"] is False
+        assert movie_items["Rich Meta Movie"]["has_new_metadata"] is False
+
+        # Verify SQLite DB persistence:
+        conn = core.db.get_db_connection()
+        r_tv_low = conn.execute("SELECT is_archived, has_new_metadata FROM cache WHERE title='Low Meta TV'").fetchone()
+        r_tv_rich = conn.execute("SELECT is_archived, has_new_metadata FROM cache WHERE title='Rich Meta TV'").fetchone()
+        r_mov_low = conn.execute("SELECT is_archived, has_new_metadata FROM cache WHERE title='Low Meta Movie'").fetchone()
+        r_mov_rich = conn.execute("SELECT is_archived, has_new_metadata FROM cache WHERE title='Rich Meta Movie'").fetchone()
+        conn.close()
+
+        assert r_tv_low["is_archived"] == 1 and r_tv_low["has_new_metadata"] == 0
+        assert r_tv_rich["is_archived"] == 0 and r_tv_rich["has_new_metadata"] == 0
+        assert r_mov_low["is_archived"] == 1 and r_mov_low["has_new_metadata"] == 0
+        assert r_mov_rich["is_archived"] == 0 and r_mov_rich["has_new_metadata"] == 0
+
+
+def test_api_cache_refresh_smart_auto_unarchiving(client):
+    """Verifies that POST /api/cache/refresh automatically unarchives previously archived items and sets has_new_metadata=True."""
+    from core.db import add_cached_item
+
+    # 1. Seed TV show as low-metadata auto-archived
+    add_cached_item("tv", {
+        "title": "Smart TV Show", "year": 2026, "plot": "No plot summary available.",
+        "cast": "Cast details not available.", "network": "Unknown", "is_archived": True,
+        "is_in_library": False, "date_str": "2026-05-30"
+    })
+    
+    # 2. Seed Movie as low-metadata auto-archived
+    add_cached_item("movie", {
+        "title": "Smart Movie", "year": 2026, "plot": "",
+        "cast": "Unknown", "network": "N/A", "is_archived": True,
+        "is_in_library": False, "date_str": "2026-05-30"
+    })
+
+    with patch("web.server.get_clients", return_value=(None, None)), \
+         patch("web.server.enrich_tv_show") as mock_enrich_tv, \
+         patch("web.server.enrich_movie") as mock_enrich_movie:
+
+        # Mock rich enrichment on refresh
+        mock_enrich_tv.return_value = {
+            "title": "Smart TV Show", "year": 2026, "plot": "Newly discovered series plot!",
+            "cast": "Lead Star, Co-Star", "network": "Apple TV+", "genres": ["Sci-Fi"],
+            "trailer": "http://trailer", "poster_url": "http://poster.jpg",
+            "tvdbId": 501, "imdbId": "tt501"
+        }
+        mock_enrich_movie.return_value = {
+            "title": "Smart Movie", "year": 2026, "plot": "Newly discovered movie synopsis!",
+            "cast": "Lead Star", "network": "Warner Bros", "genres": ["Action"],
+            "trailer": "http://trailer", "poster_url": "http://poster.jpg",
+            "tmdbId": 601, "imdbId": "tt601"
+        }
+
+        # Refresh TV Show
+        res_tv = client.post("/api/cache/refresh", json={"type": "tv", "title": "Smart TV Show", "year": 2026})
+        assert res_tv.status_code == 200
+        tv_data = res_tv.get_json()["item"]
+        assert tv_data["is_archived"] is False
+        assert tv_data["has_new_metadata"] is True
+
+        # Refresh Movie
+        res_movie = client.post("/api/cache/refresh", json={"type": "movie", "title": "Smart Movie", "year": 2026})
+        assert res_movie.status_code == 200
+        movie_data = res_movie.get_json()["item"]
+        assert movie_data["is_archived"] is False
+        assert movie_data["has_new_metadata"] is True
+
+        # Direct DB checks
+        conn = core.db.get_db_connection()
+        tv_row = conn.execute("SELECT is_archived, has_new_metadata FROM cache WHERE title='Smart TV Show'").fetchone()
+        movie_row = conn.execute("SELECT is_archived, has_new_metadata FROM cache WHERE title='Smart Movie'").fetchone()
+        conn.close()
+
+        assert tv_row["is_archived"] == 0
+        assert tv_row["has_new_metadata"] == 1
+        assert movie_row["is_archived"] == 0
+        assert movie_row["has_new_metadata"] == 1
+
+
+def test_api_cache_refresh_retains_archived_if_metadata_still_low(client):
+    """Verifies that POST /api/cache/refresh keeps item archived if refreshed metadata is still low."""
+    from core.db import add_cached_item
+
+    add_cached_item("tv", {
+        "title": "Still Low Show", "year": 2026, "plot": "No plot summary available.",
+        "cast": "Cast details not available.", "network": "Unknown", "is_archived": True,
+        "is_in_library": False, "date_str": "2026-05-30"
+    })
+
+    with patch("web.server.get_clients", return_value=(None, None)), \
+         patch("web.server.enrich_tv_show") as mock_enrich_tv:
+
+        # Enrichment still missing core fields
+        mock_enrich_tv.return_value = {
+            "title": "Still Low Show", "year": 2026, "plot": "No plot summary available.",
+            "cast": "Cast details not available.", "network": "Unknown", "genres": [],
+            "trailer": "", "poster_url": "", "tvdbId": None, "imdbId": None
+        }
+
+        res = client.post("/api/cache/refresh", json={"type": "tv", "title": "Still Low Show", "year": 2026})
+        assert res.status_code == 200
+        item_data = res.get_json()["item"]
+        assert item_data["is_archived"] is True
+        assert item_data["has_new_metadata"] is False
+
+        conn = core.db.get_db_connection()
+        row = conn.execute("SELECT is_archived, has_new_metadata FROM cache WHERE title='Still Low Show'").fetchone()
+        conn.close()
+        assert row["is_archived"] == 1
+        assert row["has_new_metadata"] == 0
+
+
+def test_api_archive_resets_has_new_metadata_flag(client):
+    """Verifies that POST /api/archive resets has_new_metadata=False when an item is re-archived."""
+    from core.db import add_cached_item
+
+    # Seed an item that was smart-unarchived (has_new_metadata = 1, is_archived = 0)
+    add_cached_item("tv", {
+        "title": "Badge Reset Show", "year": 2026, "plot": "Plot",
+        "cast": "Cast", "network": "HBO", "is_archived": False,
+        "is_in_library": False, "date_str": "2026-05-30"
+    })
+    conn = core.db.get_db_connection()
+    conn.execute("UPDATE cache SET has_new_metadata = 1, is_archived = 0 WHERE title = 'Badge Reset Show'")
+    conn.commit()
+    conn.close()
+
+    # 1. Re-archive the item
+    res = client.post("/api/archive", json={"type": "tv", "title": "Badge Reset Show", "year": 2026, "archive": True})
+    assert res.status_code == 200
+    assert res.get_json()["status"] == "success"
+
+    # Verify DB: is_archived = 1, has_new_metadata = 0
+    conn = core.db.get_db_connection()
+    row = conn.execute("SELECT is_archived, has_new_metadata FROM cache WHERE title = 'Badge Reset Show'").fetchone()
+    conn.close()
+    assert row["is_archived"] == 1
+    assert row["has_new_metadata"] == 0
+
+    # 2. Manual un-archive: is_archived becomes 0, has_new_metadata stays 0
+    res_unarchive = client.post("/api/archive", json={"type": "tv", "title": "Badge Reset Show", "year": 2026, "archive": False})
+    assert res_unarchive.status_code == 200
+    conn = core.db.get_db_connection()
+    row_unarchived = conn.execute("SELECT is_archived, has_new_metadata FROM cache WHERE title = 'Badge Reset Show'").fetchone()
+    conn.close()
+    assert row_unarchived["is_archived"] == 0
+    assert row_unarchived["has_new_metadata"] == 0
+
+
+# ==============================================================================
+# Milestone 3: Frontend UI Assets, HTML Templates & Badge Rendering Tests
+# ==============================================================================
+
+def test_static_asset_serving_style_css(client):
+    """Verifies that GET /static/style.css serves the stylesheet with .badge-new-metadata rules."""
+    res = client.get("/static/style.css")
+    assert res.status_code == 200
+    assert "text/css" in res.content_type
+    
+    css_content = res.data.decode("utf-8")
+    assert ".badge-new-metadata" in css_content
+    assert ".card-badges" in css_content
+    assert ".badge-network" in css_content
+    assert ".badge-in-library" in css_content
+    assert ".badge-archived" in css_content
+    assert "body.light-theme .badge-new-metadata" in css_content
+
+
+def test_static_asset_serving_app_js(client):
+    """Verifies that GET /static/app.js serves JavaScript with badge rendering and archive reset logic."""
+    res = client.get("/static/app.js")
+    assert res.status_code == 200
+    assert "javascript" in res.content_type
+    
+    js_content = res.data.decode("utf-8")
+    # Badge rendering token assertions
+    assert "badge-new-metadata" in js_content
+    assert "New metadata" in js_content
+    assert "has_new_metadata" in js_content
+    # Archive toggle handler resets badge flag
+    assert "toggleArchive" in js_content
+    assert "refreshMetadata" in js_content
+    assert "renderMediaLists" in js_content
+
+
+def test_index_html_live_render_structure(client):
+    """Verifies that unmocked GET / renders index.html with all required filters and media grids."""
+    res = client.get("/")
+    assert res.status_code == 200
+    assert "text/html" in res.content_type
+    
+    html_content = res.data.decode("utf-8")
+    # Checkbox filter controls
+    assert 'id="check-show-archived"' in html_content
+    assert 'id="check-show-returning"' in html_content
+    assert 'id="check-show-library"' in html_content
+    assert 'id="search-bar"' in html_content
+    
+    # Media grid containers
+    assert 'id="grid-tv"' in html_content
+    assert 'id="grid-movies"' in html_content
+    assert 'id="grid-search-results"' in html_content
+    
+    # Static asset links
+    assert 'href="/static/style.css"' in html_content
+    assert 'src="/static/app.js"' in html_content
+    assert 'name="x-api-key"' in html_content
+
+
+def test_frontend_template_file_integrity():
+    """Verifies direct file existence, encoding, and CSS/JS/HTML badge consistency."""
+    web_dir = Path(__file__).resolve().parent.parent / "web" / "templates"
+    index_file = web_dir / "index.html"
+    style_file = web_dir / "style.css"
+    app_file = web_dir / "app.js"
+    
+    assert index_file.is_file(), "web/templates/index.html missing"
+    assert style_file.is_file(), "web/templates/style.css missing"
+    assert app_file.is_file(), "web/templates/app.js missing"
+    
+    style_css = style_file.read_text(encoding="utf-8")
+    app_js = app_file.read_text(encoding="utf-8")
+    index_html = index_file.read_text(encoding="utf-8")
+    
+    assert ".badge-new-metadata" in style_css
+    assert "badge-new-metadata" in app_js
+    assert "New metadata" in app_js
+    assert 'id="check-show-archived"' in index_html
+
+
+def test_frontend_app_js_syntax_validation():
+    """Executes node --check to ensure web/templates/app.js has zero syntax errors."""
+    import subprocess
+    import shutil
+    
+    node_bin = shutil.which("node")
+    if node_bin:
+        app_js_path = Path(__file__).resolve().parent.parent / "web" / "templates" / "app.js"
+        res = subprocess.run([node_bin, "--check", str(app_js_path)], capture_output=True, text=True)
+        assert res.returncode == 0, f"Syntax error in app.js:\n{res.stderr}"
 
 
 

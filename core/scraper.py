@@ -100,6 +100,9 @@ def safe_fetch_feed(url: str, headers: dict = None, timeout: int = 15, max_redir
         if not host:
             raise ValueError("Malformed URL")
 
+        if parsed.scheme not in ('http', 'https'):
+            raise ValueError("Forbidden scheme. Only http/https are allowed.")
+
         # Resolve and validate IP address
         try:
             addr_info = socket.getaddrinfo(host, parsed.port or (443 if parsed.scheme == 'https' else 80))
@@ -108,7 +111,11 @@ def safe_fetch_feed(url: str, headers: dict = None, timeout: int = 15, max_redir
             raise ValueError(f"DNS Resolution failed for {host}: {e}")
 
         ip_obj = ipaddress.ip_address(target_ip)
-        if ip_obj.is_loopback or ip_obj.is_private or ip_obj.is_link_local:
+        if hasattr(ip_obj, 'ipv4_mapped') and ip_obj.ipv4_mapped:
+            ip_obj = ip_obj.ipv4_mapped
+            target_ip = str(ip_obj)
+
+        if ip_obj.is_loopback or ip_obj.is_private or ip_obj.is_link_local or target_ip.startswith("0.") or (ip_obj.version == 6 and ip_obj.is_private):
             raise ValueError(f"Access to private/local network ranges is forbidden: {target_ip}")
 
         # Mount connection adapter pinned to pre-validated IP
@@ -285,6 +292,9 @@ def standardize_item(raw_item: dict, default_type: str, base_url: str) -> dict:
     if date_obj == datetime(1900, 1, 1):
         date_obj = datetime.now()
         
+    network = raw_item.get("network") or raw_item.get("studio") or "Unknown"
+    cast = raw_item.get("cast") or raw_item.get("actors") or "Cast details not available."
+        
     return {
         "title": title,
         "year": safe_int(raw_item.get("year")),
@@ -295,7 +305,9 @@ def standardize_item(raw_item: dict, default_type: str, base_url: str) -> dict:
         "imdb_id": raw_item.get("imdb_id", ""),
         "tvdb_id": safe_int(raw_item.get("tvdb_id")),
         "tmdb_id": safe_int(raw_item.get("tmdb_id")),
-        "description": raw_item.get("description", "No plot summary available.")
+        "description": raw_item.get("description", "No plot summary available."),
+        "network": network,
+        "cast": cast
     }
 
 def parse_custom_feed(feed_config: dict, raw_payload: str) -> list:

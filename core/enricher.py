@@ -6,6 +6,45 @@ from typing import Dict, Any, Optional
 
 from core.client import RadarrClient, SonarrClient, ArrAPIError
 from core.config import config
+from core.metadata import is_cast_missing
+
+import time
+import threading
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
+
+# Global session with connection pooling and retry strategy
+enricher_session = requests.Session()
+retry_strategy = Retry(
+    total=4,
+    status_forcelist=[429, 500, 502, 503, 504],
+    backoff_factor=1.0,
+    allowed_methods=["HEAD", "GET", "OPTIONS"]
+)
+adapter = HTTPAdapter(pool_connections=10, pool_maxsize=10, max_retries=retry_strategy)
+enricher_session.mount("https://", adapter)
+enricher_session.mount("http://", adapter)
+
+class RateLimiter:
+    def __init__(self, calls: int, period: float):
+        self.calls = calls
+        self.period = period
+        self.timestamps = []
+        self.lock = threading.Lock()
+
+    def wait(self):
+        with self.lock:
+            now = time.time()
+            self.timestamps = [t for t in self.timestamps if now - t < self.period]
+            if len(self.timestamps) >= self.calls:
+                sleep_time = self.period - (now - self.timestamps[0])
+                if sleep_time > 0:
+                    time.sleep(sleep_time)
+                now = time.time()
+            self.timestamps.append(now)
+
+wiki_limiter = RateLimiter(10, 1.0)
+tvmaze_limiter = RateLimiter(2, 1.0)
 
 def clean_html(text: str) -> str:
     """Removes HTML tags from a text string."""
@@ -32,7 +71,8 @@ def get_wikipedia_cast(title: str, year: int, is_tv: bool = False) -> Optional[s
     }
     
     try:
-        res = requests.get(search_url, params=search_params, headers=headers, timeout=10)
+        wiki_limiter.wait()
+        res = enricher_session.get(search_url, params=search_params, headers=headers, timeout=10)
         if res.status_code != 200:
             return None
         search_data = res.json()
@@ -48,7 +88,8 @@ def get_wikipedia_cast(title: str, year: int, is_tv: bool = False) -> Optional[s
             "prop": "text",
             "format": "json"
         }
-        res2 = requests.get(search_url, params=parse_params, headers=headers, timeout=10)
+        wiki_limiter.wait()
+        res2 = enricher_session.get(search_url, params=parse_params, headers=headers, timeout=10)
         if res2.status_code != 200:
             return None
             
@@ -100,7 +141,8 @@ def enrich_tv_show(title: str, year: int, sonarr_client: Optional[SonarrClient] 
     # 1. Query TVMaze
     tvmaze_url = "https://api.tvmaze.com/singlesearch/shows"
     try:
-        res = requests.get(tvmaze_url, params={"q": title, "embed": "cast"}, timeout=10)
+        tvmaze_limiter.wait()
+        res = enricher_session.get(tvmaze_url, params={"q": title, "embed": "cast"}, timeout=10)
         if res.status_code == 200:
             maze_data = res.json()
             data["genres"] = maze_data.get("genres", [])
@@ -161,6 +203,8 @@ def enrich_tv_show(title: str, year: int, sonarr_client: Optional[SonarrClient] 
                     data["genres"] = best_match.get("genres")
                 if (not data["plot"] or len(data["plot"]) < 50) and best_match.get("overview"):
                     data["plot"] = best_match.get("overview")
+                if (not data.get("network") or data["network"] in ("Unknown Network", "Unknown")) and best_match.get("network"):
+                    data["network"] = best_match.get("network")
                 
                 # Extract Sonarr ratings
                 sonarr_ratings = best_match.get("ratings", {})
@@ -187,7 +231,7 @@ def enrich_tv_show(title: str, year: int, sonarr_client: Optional[SonarrClient] 
             pass
 
     # 3. Fallback: Parse Wikipedia for cast if still missing
-    if data["cast"] == "Cast details not available.":
+    if is_cast_missing(data.get("cast")):
         wiki_cast = get_wikipedia_cast(title, year, is_tv=True)
         if wiki_cast:
             data["cast"] = wiki_cast
@@ -307,7 +351,8 @@ def enrich_movie(title: str, year: int, radarr_client: Optional[RadarrClient] = 
                 if best_match.get("imdbId"):
                     data["imdbId"] = best_match.get("imdbId")
                 data["genres"] = best_match.get("genres", [])
-                data["plot"] = best_match.get("overview", "")
+                if best_match.get("overview"):
+                    data["plot"] = best_match["overview"]
                 data["network"] = best_match.get("studio") or "Unknown Studio"
                 
                 if best_match.get("id"):

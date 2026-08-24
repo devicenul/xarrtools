@@ -15,14 +15,41 @@ def cleanup_db():
     conn.commit()
     conn.close()
     core.db.init_db()
+    core.db.set_setting("api_key", "test_api_key")
+    from core.config import config
+    config.refresh()
     yield
 
 
 @pytest.fixture
 def client():
     app.config["TESTING"] = True
-    with app.test_client() as client:
-        yield client
+    
+    class TestClientAPIKeyWrapper:
+        def __init__(self, client):
+            self.client = client
+            
+        def _get_api_key(self):
+            from core.db import get_setting, set_setting
+            key = get_setting("api_key", "")
+            if not key:
+                key = "test_api_key"
+                set_setting("api_key", key)
+                from core.config import config
+                config.refresh()
+            return key
+            
+        def get(self, *args, **kwargs):
+            return self.client.get(*args, **kwargs)
+            
+        def post(self, *args, **kwargs):
+            headers = kwargs.pop("headers", {})
+            headers["X-API-Key"] = self._get_api_key()
+            kwargs["headers"] = headers
+            return self.client.post(*args, **kwargs)
+
+    with app.test_client() as c:
+        yield TestClientAPIKeyWrapper(c)
 
 
 def test_core_export_and_import():

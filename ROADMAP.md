@@ -6,39 +6,57 @@ This document tracks planned future functionality, architectural changes, and us
 
 ## Planned Enhancements
 
-### 1. Dockerization for NAS/Server Hosting (Roadmap Item 2)
+### 1. Frontend Modularization & Reactive State Architecture
+- **Goal**: Refactor the monolithic `web/templates/app.js` into modular ES6 modules or a lightweight reactive state management framework to improve maintainability, developer ergonomics, and UI responsiveness.
+- **Implementation Strategy**:
+  - Break `app.js` into focused ES6 modules (`api.js`, `state.js`, `dom.js`, `modals.js`, `filters.js`, `settings.js`).
+  - Introduce standardized event buses / reactive state stores for filter changes, modal workflows, and notification feeds.
+  - Implement progressive hydration and virtualized grid rendering for large release libraries (>500 items).
+- **Code files involved**: [web/templates/app.js](file:///Users/rrjefferson/Workspaces/Projects/xarrtools/web/templates/app.js), [web/templates/index.html](file:///Users/rrjefferson/Workspaces/Projects/xarrtools/web/templates/index.html), [web/server.py](file:///Users/rrjefferson/Workspaces/Projects/xarrtools/web/server.py).
+
+### 2. Dockerization for NAS/Server Hosting
 - **Goal**: Allow running the application inside a lightweight container on NAS systems (Synology, Unraid, QNAP) or homelab servers.
 - **Implementation Strategy**:
   - Create a `Dockerfile` based on `python:3.11-alpine` to keep the footprint small (<100MB).
   - Define `/config` as a persistent volume mapping area to hold `xarrtools.db` and optional `.env` file overrides.
   - Expose port `5000` to link the internal Flask process to host requests.
   - Create a `docker-compose.yml` template to easily stand up the tool alongside Radarr and Sonarr containers.
-- **Code files involved**: [Dockerfile](file:///d:/Workspaces/Projects/xarrtools/Dockerfile), [docker-compose.yml](file:///d:/Workspaces/Projects/xarrtools/docker-compose.yml), [core/db.py](file:///d:/Workspaces/Projects/xarrtools/core/db.py) (relocate database if running in Docker to `/config/xarrtools.db`).
+- **Code files involved**: [Dockerfile](file:///Users/rrjefferson/Workspaces/Projects/xarrtools/Dockerfile), [docker-compose.yml](file:///Users/rrjefferson/Workspaces/Projects/xarrtools/docker-compose.yml), [core/db.py](file:///Users/rrjefferson/Workspaces/Projects/xarrtools/core/db.py).
 
-### 2. Background Scheduled Refreshes (Roadmap Item 3)
+### 3. Background Scheduled Refreshes
 - **Goal**: Automatically scan Metacritic and DVD releases on a daily schedule, ensuring cache records stay updated without manual user trigger clicks.
 - **Implementation Strategy**:
   - Integrate a background daemon thread or Python task library (like `APScheduler`) inside `server.py` starting on Flask boot.
-  - Configure scan timings (e.g., run every 24 hours).
+  - Configure scan timings (e.g., run every 24 hours or customizable in Settings).
   - Scrape calendars, enrich results, and store entries in the SQLite database cache.
-  - Log scan statistics and broadcast a notification update payload to the UI sidebar (using simple long-polling or WebSockets).
-- **Code files involved**: [web/server.py](file:///d:/Workspaces/Projects/xarrtools/web/server.py), [web/templates/app.js](file:///d:/Workspaces/Projects/xarrtools/web/templates/app.js)
+  - Log scan statistics and broadcast a notification update payload to the UI sidebar.
+- **Code files involved**: [web/server.py](file:///Users/rrjefferson/Workspaces/Projects/xarrtools/web/server.py), [web/templates/app.js](file:///Users/rrjefferson/Workspaces/Projects/xarrtools/web/templates/app.js).
 
-### 3. Code and Agentic Review (Roadmap Item 4)
-- **Goal**: Complete a thorough security and performance review of database locks, scraper concurrency, and exception mapping layers.
-
-### 4. GitHub Builds and Releases Setup (Roadmap Item 5)
+### 4. GitHub Builds and Releases Setup
 - **Goal**: Automate PyInstaller compilation and packaging workflows on GitHub tag triggers, distributing binary builds directly via GitHub Releases.
+- **Implementation Strategy**:
+  - Create GitHub Actions workflows for multi-platform matrices (Ubuntu, macOS, Windows).
+  - Run `pytest` test suites across platforms before building executables.
+  - Generate release artifacts (`.dmg`, `Setup.exe`, standalone binaries) and attach them to GitHub Releases.
+- **Code files involved**: `.github/workflows/build.yml`.
 
-### 5. Sufficient Logging (Roadmap Item 7)
+### 5. Structured Logging Architecture
 - **Goal**: Implement systematic, configurable, structured logging across all core scraper classes, API wrappers, database operations, and server endpoints to facilitate easier troubleshooting and telemetry.
 - **Implementation Strategy**:
   - Re-architect simple print statements and sporadic `app.logger.error` instances into a unified Python standard `logging` setup.
   - Support log level configuration (e.g., DEBUG, INFO, WARNING, ERROR) via Settings.
   - Set up rotating log file handler (`xarrtools.log`) alongside console logging.
-- **Code files involved**: [core/config.py](file:///d:/Workspaces/Projects/xarrtools/core/config.py), [web/server.py](file:///d:/Workspaces/Projects/xarrtools/web/server.py), [cli/cli.py](file:///d:/Workspaces/Projects/xarrtools/cli/cli.py).
+- **Code files involved**: [core/config.py](file:///Users/rrjefferson/Workspaces/Projects/xarrtools/core/config.py), [web/server.py](file:///Users/rrjefferson/Workspaces/Projects/xarrtools/web/server.py), [cli/cli.py](file:///Users/rrjefferson/Workspaces/Projects/xarrtools/cli/cli.py).
 
-### 6. Free Packaging and Distribution Pipeline (Roadmap Item 9)
+### 6. Standardized Code Documentation & Type Annotations
+- **Goal**: Standardize and enrich inline code documentation, block comments, and docstrings across all modules to improve code legibility and maintainability.
+- **Implementation Strategy**:
+  - Perform a thorough audit of the code modules, ensuring all classes, utility functions, routes, and regex matching/parsing blocks have descriptive PEP 257 compliant docstrings.
+  - Add comprehensive Python type hinting (`typing` annotations) across all core and CLI modules.
+  - Add context comments explaining non-trivial business logic, database queries, and test isolation design details.
+- **Code files involved**: all Python files under `core/`, `web/`, and `cli/`.
+
+### 7. Free Packaging and Distribution Pipeline
 - **Goal**: Create cross-platform installation packages and setup distribution channels completely free of charge, avoiding developer registration fees.
 - **Implementation Strategy**:
   - **macOS (Homebrew Tap & DMG)**: Distribute the compiled `.app` bundle inside an unsigned drag-and-drop `.dmg` using `create-dmg` or `dmgbuild`. Create a custom Homebrew Tap repository (`homebrew-xarrtools`) with a Ruby formula to distribute the pre-compiled binary seamlessly via `brew install xarrtools`. Provide clear instructions for Gatekeeper bypass (`xattr -d com.apple.quarantine`).
@@ -47,34 +65,52 @@ This document tracks planned future functionality, architectural changes, and us
   - **Python Package (PyPI)**: Distribute the app as a standard package on PyPI, enabling installation via `pipx install xarrtools` to bypass OS code-signing limitations completely.
 - **Code files involved**: [build.sh](file:///Users/rrjefferson/Workspaces/Projects/xarrtools/build.sh), [build.bat](file:///Users/rrjefferson/Workspaces/Projects/xarrtools/build.bat).
 
+---
+
 ## Completed Features
 
-### ✓ Protocol Fallback for Server Configurations & Custom Feeds (Roadmap Item 14 / #7)
-Automatically detects and falls back between HTTPS and HTTP protocols for scheme-less addresses configured in Sonarr/Radarr settings or custom feed URLs. Probes via HTTPS first, falling back to HTTP upon connection issues, and persisting the resolved scheme back to the database.
+### ✓ Backup & Restore Settings and Cache (Web UI, Standalone App, and CLI)
+- Export and import configuration settings and discovery cache databases with full schema validation and checksum integrity.
 
-### ✓ Sufficient Comments and Code Documentation (Roadmap Item 8)
-Standardized inline comments, code block descriptions, and PEP-257 compliant docstrings across all modules (`core`, `web`, `cli`, and `gui`) to improve code legibility and onboarding.
+### ✓ Low-Metadata Auto-Archiving & Smart Unarchiving with Badging
+- Automatically inspects the 4 core metadata fields (**Title**, **Studio/Network**, **Cast**, and **Plot**).
+- Releases with $\ge 2$ missing/unavailable core fields are automatically marked as archived (`is_archived = 1`) to keep the discovery feed clean of low-quality entries.
+- When an archived release gains newly discovered metadata on subsequent scans, background healing, or manual refresh, it is automatically unarchived (`is_archived = 0`) and tagged with `has_new_metadata = 1`.
+- The Web UI displays an eye-catching `✨ New metadata` badge on the release card.
+- Re-archiving an item immediately resets `has_new_metadata` back to `0`.
 
-### ✓ Standalone Desktop App UI (Roadmap Item 6)
-Integrates a standalone captive web-view frame using `pywebview` to run the Flask backend and load the UI within native OS application frames.
+### ✓ Hybrid Quality Profile & Root Folder Presets (with Sonarr Language Profile Removal)
+- Added a 3-tier preset hierarchy for both Radarr and Sonarr in the Add Media dialog (Web UI and CLI):
+  1. **Primary**: Explicit defaults configured in Server Settings (`#panel-connections`).
+  2. **Fallback**: Most-Recently-Used (MRU) profile and root folder selection from the last added item of that media type.
+  3. **Safety Fallback**: Graceful fallback to index 0 if IDs/paths become invalid on the server.
+- Added dropdown selectors for Radarr and Sonarr default quality profiles and root folders in the Server Settings modal.
+- Completely removed deprecated Sonarr Language Profiles across the client wrapper, server API endpoints, Web UI modal, CLI workflows, and test suites.
 
-### ✓ Embed App Icons in Compiled Binaries & Runtime (Roadmap Item 16)
-Embeds application icon assets (`.ico` for Windows, `.icns` for macOS, and `.png` for Linux) inside PyInstaller executable builds and resolves them dynamically at runtime to show app icons on window headers and taskbars.
+### ✓ Core Backend Architecture & Security Overhaul
+- **Security Hardening**: Fortified the poster image proxy against SSRF and Path Traversal with strict destination IP range validation (blocking IPv4/IPv6 private ranges, loopback, link-local, and AWS metadata 169.254.169.254), timeout enforcement, stream piping, and `nosniff` headers. Added strict database startup permission checks and enforced `X-API-Key` authentication on all data-modifying API routes.
+- **Performance & Concurrency**: Refactored `core/config.py` to use an in-memory cached state with a `refresh()` method to eliminate N+1 DB query spikes. Tuned SQLite WAL mode with `busy_timeout = 5000` and composite indexing, and added chunked batch insertion (`add_cached_items_batch`).
+- **Connection Pooling & Rate Limiting**: Added persistent `requests.Session` connection pooling with urllib3 `Retry` backoff and token-bucket `RateLimiter` classes (10/s Wikipedia, 2/s TVMaze) in `core/enricher.py`.
+- **Background Library Caching**: Added a background thread to cache Sonarr/Radarr libraries locally, preventing redundant full-library REST calls on discovery scans.
 
-### ✓ Director and Producer Movie Metadata (Roadmap Item 15)
-Retrieves movie directors and producers via Wikipedia and displays them inline on movie cards (e.g., `Director: Ridley Scott | Producer: Douglas Wick`).
+### ✓ Standalone Desktop App UI (Captive Browser Window)
+- Implemented `gui/gui.py` using `PyQt5.QtWebEngineWidgets` (with automatic fallback to the standard browser if PyQt5 is unavailable).
+- Runs the Flask web server in a daemon background thread and renders the UI inside a native desktop application frame.
 
-### ✓ Sorting Options for Scanned Media lists (Roadmap Item 13)
-Enables sorting TV shows and movies dynamically by release/premiere date, title, or studio, defaulting to chronological ascending.
+### ✓ Protocol Fallback for Server Configurations & Custom Feeds
+- Automatically detects and falls back between HTTPS and HTTP protocols for scheme-less addresses configured in Sonarr/Radarr settings or custom feed URLs.
 
-### ✓ "Add Only" Option in Media Addition Modals (Roadmap Item 12)
-Provides an "Add Only" option when adding a show/movie to download clients without triggering an immediate indexer search scan.
+### ✓ Director and Producer Movie Metadata
+- Retrieves movie directors and producers via Wikipedia and displays them inline on movie cards.
 
-### ✓ Server-Specific Default Quality Profiles (Roadmap Item 11)
-Allows setting individual default quality profiles for Radarr and Sonarr settings, pre-selecting them during media additions.
+### ✓ Sorting Options for Scanned Media Lists
+- Enables sorting TV shows and movies dynamically by release/premiere date, title, or studio, defaulting to chronological ascending.
 
-### ✓ Filtering Incomplete Metadata Releases (Roadmap Item 10)
-Expunges and suppresses indexer discoveries and search lookup results that miss crucial title, cast, and plot information.
+### ✓ "Add Only" Option in Media Addition Modals
+- Provides an "Add Only" option when adding a show/movie to download clients without triggering an immediate indexer search scan.
+
+### ✓ Embed App Icons in Compiled Binaries & Runtime
+- Embeds application icon assets (`.ico` for Windows, `.icns` for macOS, and `.png` for Linux) inside PyInstaller executable builds.
 
 ### ✓ User-Defined Custom Feeds (RSS, JSON, HTML)
 Supports custom media discovery calendars/feeds beyond the built-in Metacritic and DVD release schedules. Users can define custom RSS/XML feeds, JSON API sources, or raw HTML tables with custom CSS selectors/JSONPath mapping configurations directly in the Settings GUI. Includes automated validation controls, SSRF protections, a dry-run diagnostic preview panel, and a "Restore Defaults" button to reload seeded presets.

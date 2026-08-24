@@ -196,39 +196,10 @@ def test_sonarr_client_methods():
         assert res == []
         mock_req.assert_called_once_with("GET", "rootfolder")
         
-    # 5. get_language_profiles (success)
-    with patch.object(sonarr, "_request", return_value=[{"name": "English"}]) as mock_req:
-        res = sonarr.get_language_profiles()
-        assert res == [{"name": "English"}]
-        mock_req.assert_called_once_with("GET", "languageprofile")
-        
-    # 6. get_language_profiles (exception fallback)
-    with patch.object(sonarr, "_request", side_effect=ArrAPIError("Not supported")):
-        res = sonarr.get_language_profiles()
-        assert res == []
-        
-    # 7. add_series
+    # 5. add_series
     with patch.object(sonarr, "_request", return_value={}) as mock_req:
         series_data = {"title": "Antigravity Show", "tvdbId": 456}
-        sonarr.add_series(series_data, 1, "/tv", monitored=True, search_now=True, language_profile_id=1)
-        mock_req.assert_called_once_with(
-            "POST", "series", json_data={
-                "title": "Antigravity Show",
-                "tvdbId": 456,
-                "qualityProfileId": 1,
-                "rootFolderPath": "/tv",
-                "monitored": True,
-                "addOptions": {
-                    "searchForMissingEpisodes": True
-                },
-                "languageProfileId": 1
-            }
-        )
-
-    # 8. add_series (no language profile ID)
-    with patch.object(sonarr, "_request", return_value={}) as mock_req:
-        series_data = {"title": "Antigravity Show", "tvdbId": 456}
-        sonarr.add_series(series_data, 1, "/tv", monitored=True, search_now=True, language_profile_id=None)
+        sonarr.add_series(series_data, 1, "/tv", monitored=True, search_now=True)
         mock_req.assert_called_once_with(
             "POST", "series", json_data={
                 "title": "Antigravity Show",
