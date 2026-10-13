@@ -120,6 +120,8 @@ def get_wikipedia_cast(title: str, year: int, is_tv: bool = False) -> Optional[s
 
 def enrich_tv_show(title: str, year: int, sonarr_client: Optional[SonarrClient] = None) -> Dict[str, Any]:
     """Retrieves plot, cast, genres, trailer and TVDB ID for a TV show using TVMaze and Sonarr API."""
+    title = re.sub(r'\((\d{4})$', r'(\1)', title.strip()) if title else title
+    base_title = re.sub(r'\s*[\(\[]\d{4}[\)\]]?$', '', title).strip() if title else ""
     data = {
         "title": title,
         "year": year,
@@ -182,10 +184,15 @@ def enrich_tv_show(title: str, year: int, sonarr_client: Optional[SonarrClient] 
     if sonarr_client:
         try:
             lookup_results = sonarr_client.lookup_series(title)
+            if not lookup_results and base_title and base_title != title:
+                lookup_results = sonarr_client.lookup_series(base_title)
             # Find the best year match
             best_match = None
+            valid_titles = {title.lower()}
+            if base_title:
+                valid_titles.add(base_title.lower())
             for item in lookup_results:
-                if str(item.get("year")) == str(year) or item.get("title", "").lower() == title.lower():
+                if str(item.get("year")) == str(year) or item.get("title", "").lower() in valid_titles:
                     best_match = item
                     break
             if not best_match and lookup_results:

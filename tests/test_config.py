@@ -72,3 +72,22 @@ def test_config_frozen_path():
         else:
             sys.frozen = old_frozen
         importlib.reload(core.config)
+
+
+def test_config_placeholder_api_keys():
+    config = Config()
+    with patch("core.db.get_setting") as mock_get:
+        mock_get.side_effect = lambda key, default: {
+            "radarr_url": "http://localhost:7878",
+            "radarr_api_key": "your_radarr_api_key_here",
+            "sonarr_url": "http://localhost:8989",
+            "sonarr_api_key": "your_sonarr_api_key_here",
+        }.get(key, default)
+
+        assert config.radarr_api_key == ""
+        assert config.sonarr_api_key == ""
+        assert config.validate_radarr() is False
+        assert config.validate_sonarr() is False
+        assert "RADARR_API_KEY" in config.get_missing_radarr_vars()
+        assert "SONARR_API_KEY" in config.get_missing_sonarr_vars()
+

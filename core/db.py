@@ -144,6 +144,12 @@ def init_db():
     ''')
 
         
+    # Repair legacy cached titles with truncated trailing year parentheses (e.g. "Carrie (2026" -> "Carrie (2026)")
+    cursor.execute("SELECT id, title FROM cache WHERE title LIKE '%(____'")
+    for row in cursor.fetchall():
+        if row["title"] and re.search(r'\(\d{4}$', row["title"]):
+            cursor.execute("UPDATE cache SET title = ? WHERE id = ?", (row["title"] + ")", row["id"]))
+
     # Populate normalized_title for legacy cached entries
     cursor.execute("SELECT id, title, type FROM cache WHERE normalized_title IS NULL")
     rows = cursor.fetchall()
@@ -198,6 +204,14 @@ def init_db():
         cursor.execute("SELECT COUNT(*) FROM settings WHERE key = ?", (key,))
         if cursor.fetchone()[0] == 0:
             cursor.execute("INSERT INTO settings (key, value) VALUES (?, ?)", (key, val))
+
+    # Clear template placeholder API keys if previously migrated from .env.example
+    cursor.execute("""
+        UPDATE settings
+        SET value = ''
+        WHERE (key = 'radarr_api_key' AND value = 'your_radarr_api_key_here')
+           OR (key = 'sonarr_api_key' AND value = 'your_sonarr_api_key_here')
+    """)
             
     # 6. Ensure default feeds are seeded if the table is empty
     cursor.execute("SELECT COUNT(*) FROM custom_feeds")
@@ -324,6 +338,8 @@ def get_all_settings() -> dict:
 def clean_tv_title(title: str) -> str:
     """Strips season descriptors, years, or format suffixes from TV show titles."""
     title = title.strip()
+    # Repair truncated trailing year parentheses like "Carrie (2026" -> "Carrie (2026)"
+    title = re.sub(r'\((\d{4})$', r'(\1)', title)
     # 1. Remove "Season X" patterns: e.g. ": Season 1", " - Season 2", " (Season 3)"
     # Also handles words like "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine", "Ten"
     # Case-insensitive
@@ -337,8 +353,10 @@ def clean_tv_title(title: str) -> str:
     pattern_series_num = r'\s*[:\-\(]?\s*series\s*(\d+|one|two|three|four|five|six|seven|eight|nine|ten)\s*\)?'
     title = re.sub(pattern_series_num, '', title, flags=re.IGNORECASE)
     
-    # 3. Clean any trailing punctuation or whitespace
-    title = re.sub(r'[\s:\-\(\),]+$', '', title).strip()
+    # 3. Clean any trailing punctuation or unmatched parentheses/whitespace
+    title = re.sub(r'[\s:\-\(,]+$', '', title).strip()
+    if title.endswith(')') and '(' not in title:
+        title = title.rstrip(')').strip()
     return title
 
 def clean_movie_title(title: str) -> str:
@@ -359,8 +377,12 @@ def clean_movie_title(title: str) -> str:
     # 3. Remove year suffixes like (2024) or [2024] at the end
     title = re.sub(r'\s*[\[\(\s]\d{4}[\]\)]?$', '', title)
             
-    # 4. Clean any trailing punctuation or whitespace
-    title = re.sub(r'[\s:\-\(\),\[\]]+$', '', title).strip()
+    # 4. Clean any trailing punctuation or unmatched opening brackets/whitespace
+    title = re.sub(r'[\s:\-\(\[,]+$', '', title).strip()
+    if title.endswith(')') and '(' not in title:
+        title = title.rstrip(')').strip()
+    if title.endswith(']') and '[' not in title:
+        title = title.rstrip(']').strip()
     return title
 
 def normalize_title(title: str, is_tv: bool = False) -> str:

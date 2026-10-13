@@ -134,7 +134,10 @@ function updateThemeToggleUI(isLight) {
     const logoImg = document.getElementById("app-logo");
     if (themeBtn) {
         themeBtn.textContent = isLight ? "🌙" : "☀️";
-        themeBtn.title = isLight ? "Switch to Dark Theme" : "Switch to Light Theme";
+        const tip = isLight ? "Switch to Dark Theme" : "Switch to Light Theme";
+        themeBtn.setAttribute("data-tooltip", tip);
+        themeBtn.setAttribute("aria-label", tip);
+        themeBtn.removeAttribute("title");
     }
     if (logoImg) {
         logoImg.src = isLight ? "/static/favicon_light.png" : "/static/favicon.png";
@@ -164,7 +167,7 @@ document.addEventListener("DOMContentLoaded", () => {
 // --- API Calls ---
 
 // 1. Fetch server configs, status, and settings on startup
-async function loadSettingsAndConfig() {
+async function loadSettingsAndConfig(isInitialLoad = true) {
     try {
         // Fetch Settings
         const settingsResponse = await fetch("/api/settings");
@@ -178,8 +181,16 @@ async function loadSettingsAndConfig() {
         initializeSettingsDefaults();
         updateStatusBadges();
         
-        // Check if unconfigured (both offline)
-        if (appConfig && !appConfig.radarr.configured && !appConfig.sonarr.configured) {
+        // Surface connection errors if credentials were configured but servers are unreachable
+        if (appConfig?.radarr?.error) {
+            addNotification(`Radarr offline: ${appConfig.radarr.error}`, "error");
+        }
+        if (appConfig?.sonarr?.error) {
+            addNotification(`Sonarr offline: ${appConfig.sonarr.error}`, "error");
+        }
+        
+        // Check if unconfigured (both offline) on initial startup only
+        if (isInitialLoad && appConfig && !appConfig.radarr.configured && !appConfig.sonarr.configured) {
             openSettingsModal();
         }
         
@@ -686,8 +697,8 @@ async function saveSettings() {
         
         if (response.ok && resData.status === "success") {
             addNotification("Configuration settings updated successfully.", "success");
-            // Reload settings and configurations from server
-            await loadSettingsAndConfig();
+            // Reload settings and configurations from server without reopening settings modal
+            await loadSettingsAndConfig(false);
         } else {
             addNotification(`Failed to save settings: ${resData.message || "Unknown error."}`, "error");
         }
@@ -1110,11 +1121,16 @@ function renderLookupResults(results, type, discoveryItem) {
         const resImdbId = res.imdbId;
         const discoveryImdbId = discoveryItem.imdbId;
         
+        const stripYearSuffix = (t) => (t || "").replace(/\s*[\(\[]\d{4}[\)\]]?$/, "").trim().toLowerCase();
         if (discoveryId && resId && String(discoveryId) === String(resId)) {
             isBestMatch = true;
         } else if (discoveryImdbId && resImdbId && String(discoveryImdbId).toLowerCase() === String(resImdbId).toLowerCase()) {
             isBestMatch = true;
-        } else if (res.title.toLowerCase() === discoveryItem.title.toLowerCase() && Math.abs(res.year - discoveryItem.year) <= 1) {
+        } else if (
+            (res.title.toLowerCase() === discoveryItem.title.toLowerCase() ||
+             stripYearSuffix(res.title) === stripYearSuffix(discoveryItem.title)) &&
+            Math.abs(res.year - discoveryItem.year) <= 1
+        ) {
             isBestMatch = true;
         }
 
@@ -1187,7 +1203,7 @@ async function linkDiscoveryToLibrary(metadataItem, discoveryItem) {
             
             modalOverlay.classList.add("hidden");
             alert(data.message);
-            renderDiscoveries();
+            renderMediaLists();
         } else {
             alert(`Link failed: ${data.message}`);
         }
@@ -1195,6 +1211,8 @@ async function linkDiscoveryToLibrary(metadataItem, discoveryItem) {
         alert(`Link error: ${error.message}`);
     }
 }
+
+const renderDiscoveries = renderMediaLists;
 
 // Transition to Step 2 (Download path and profile options)
 function goToOptionsStep(metadataItem) {
@@ -1359,8 +1377,6 @@ function openSettingsModal() {
         document.getElementById("input-show-library").checked = appSettings.default_show_library === "1";
         document.getElementById("input-show-archived").checked = appSettings.default_show_archived === "1";
         document.getElementById("input-match-ignore-year").checked = appSettings.default_match_ignore_year !== "0";
-        if (inputRadarrDefaultProfile) inputRadarrDefaultProfile.value = appSettings.radarr_default_profile_id || "";
-        if (inputSonarrDefaultProfile) inputSonarrDefaultProfile.value = appSettings.sonarr_default_profile_id || "";
     }
 
     // Populate Radarr & Sonarr default folder and quality profile dropdowns
@@ -1376,7 +1392,7 @@ function openSettingsModal() {
         appConfig?.radarr?.profiles,
         "id",
         "name",
-        appSettings ? appSettings.radarr_default_quality_profile : ""
+        appSettings ? (appSettings.radarr_default_quality_profile || appSettings.radarr_default_profile_id || "") : ""
     );
     populateSettingsSelect(
         selectSonarrDefaultFolder,
@@ -1390,7 +1406,7 @@ function openSettingsModal() {
         appConfig?.sonarr?.profiles,
         "id",
         "name",
-        appSettings ? appSettings.sonarr_default_quality_profile : ""
+        appSettings ? (appSettings.sonarr_default_quality_profile || appSettings.sonarr_default_profile_id || "") : ""
     );
     
     // Set theme selector value inside View Options tab to current theme
@@ -2397,6 +2413,13 @@ function openDemoAddModal(type, item, index, searchCard = null, rawMetadata = nu
     };
     
     // Setup Step 1 UI
+    isMarkInLibraryMode = false;
+    if (linkHelperBanner) linkHelperBanner.classList.add("hidden");
+    if (btnModalMarkLibrary) {
+        btnModalMarkLibrary.classList.remove("hidden");
+        btnModalMarkLibrary.classList.remove("btn-modal-mark-library-active");
+        btnModalMarkLibrary.textContent = "Mark In Library";
+    }
     modalTitle.textContent = `[Demo Sandbox] Search Indexer for '${item.title}'`;
     modalStepSearch.classList.remove("hidden");
     modalStepOptions.classList.add("hidden");

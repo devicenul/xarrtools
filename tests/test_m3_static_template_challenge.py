@@ -17,11 +17,12 @@ from web.server import app
 @pytest.fixture(autouse=True)
 def reset_db_settings():
     """Resets api_key and clean state for tests."""
-    from core.db import set_setting, clear_all_cache
+    from core.db import get_setting, set_setting
+    orig_api_key = get_setting("api_key", "")
     set_setting("api_key", "test_api_key_challenge_12345")
     config.refresh()
     yield
-    set_setting("api_key", "test_api_key_challenge_12345")
+    set_setting("api_key", orig_api_key)
     config.refresh()
 
 

@@ -207,6 +207,7 @@ def get_server_config():
             response_data["radarr"]["configured"] = True
         except Exception as e:
             app.logger.error(f"Error fetching Radarr config: {e}")
+            response_data["radarr"]["error"] = str(e)
             
     if sonarr_client:
         try:
@@ -215,6 +216,7 @@ def get_server_config():
             response_data["sonarr"]["configured"] = True
         except Exception as e:
             app.logger.error(f"Error fetching Sonarr config: {e}")
+            response_data["sonarr"]["error"] = str(e)
             
     return jsonify(response_data)
 
@@ -226,6 +228,8 @@ def manage_settings():
         for key, val in data.items():
             set_setting(key, str(val))
         config.refresh()
+        with library_cache_lock:
+            library_cache["last_updated"] = None
         return jsonify({"status": "success", "message": "Settings saved successfully."})
     else:
         return jsonify(get_all_settings())
@@ -967,17 +971,46 @@ def lookup_media():
         
     radarr_client, sonarr_client = get_clients()
     
+    # Repair truncated trailing year parenthesis like "Carrie (2026" -> "Carrie (2026)"
+    search_title = re.sub(r'\((\d{4})$', r'(\1)', title.strip())
+    base_title = re.sub(r'\s*[\(\[]\d{4}[\)\]]?$', '', search_title).strip()
+    
+    def _merge_unique_results(primary_list, secondary_list, id_key):
+        merged = list(primary_list)
+        seen = set()
+        for item in merged:
+            key = item.get(id_key) or item.get("imdbId") or (str(item.get("title", "")).lower(), item.get("year"))
+            seen.add(key)
+        for item in secondary_list:
+            key = item.get(id_key) or item.get("imdbId") or (str(item.get("title", "")).lower(), item.get("year"))
+            if key not in seen:
+                seen.add(key)
+                merged.append(item)
+        return merged
+
     try:
         if type_ == "tv":
             if not sonarr_client:
                 return jsonify({"status": "error", "message": "Sonarr server is not configured."}), 400
-            results = sonarr_client.lookup_series(title)
+            results = sonarr_client.lookup_series(search_title)
+            if base_title and base_title != search_title:
+                try:
+                    base_results = sonarr_client.lookup_series(base_title)
+                    results = _merge_unique_results(results, base_results, "tvdbId")
+                except Exception:
+                    pass
             filtered = [item for item in results if not is_incomplete_metadata(item)]
             return jsonify({"status": "success", "results": filtered})
         elif type_ == "movie":
             if not radarr_client:
                 return jsonify({"status": "error", "message": "Radarr server is not configured."}), 400
-            results = radarr_client.lookup_movie(title)
+            results = radarr_client.lookup_movie(search_title)
+            if base_title and base_title != search_title:
+                try:
+                    base_results = radarr_client.lookup_movie(base_title)
+                    results = _merge_unique_results(results, base_results, "tmdbId")
+                except Exception:
+                    pass
             filtered = [item for item in results if not is_incomplete_metadata(item)]
             return jsonify({"status": "success", "results": filtered})
         else:

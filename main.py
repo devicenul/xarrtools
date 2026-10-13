@@ -33,8 +33,11 @@ if __name__ == "__main__":
             from gui.gui import run_gui
             run_gui(debug=args.debug)
         except Exception as e:
-            print(f"[Warning] Standalone GUI window failed to initialize: {e}", file=sys.stderr)
-            print("Falling back to standard browser-based server mode...", file=sys.stderr)
+            if args.gui:
+                print(f"[Warning] Standalone GUI window failed to initialize: {e}", file=sys.stderr)
+                print("Falling back to standard browser-based server mode...", file=sys.stderr)
+            else:
+                print("Launching in standard browser-based server mode...")
             Timer(1.5, open_browser).start()
             start_server(port=5000, debug=args.debug)
 

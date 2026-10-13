@@ -34,8 +34,10 @@ An interactive web-based and CLI media discovery manager designed to scrape upco
 ```
 xarrtools/
 │
-├── main.py                     # Entry point. Launches Web Server or CLI mode
-├── run.bat                     # Windows automated setup launcher
+├── main.py                     # Entry point. Launches Desktop GUI, Web Server, or CLI mode
+├── init.sh / init.bat / init.ps1 # Cross-platform project initialization scripts
+├── run.sh / run.bat / run.ps1  # Cross-platform automated startup launchers
+├── build.sh / build.bat / build.ps1 # Cross-platform PyInstaller compiler scripts
 ├── requirements.txt            # Python dependencies
 ├── README.md                   # System documentation
 ├── ROADMAP.md                  # Project roadmap and completed features log
@@ -107,14 +109,41 @@ Interactive command line interface built using the `rich` library. Supports sear
 
 ---
 
-## Quick Start (Windows Setup)
+## Quick Start (Cross-Platform Initialization & Launch)
 
-The easiest way to configure and run the application on Windows:
+### 1. Initialize the Project
+Run the initialization script for your platform to create the Python virtual environment (with automatic `$HOME/.cache` `ext4` fallback on Android/FUSE shared storage), install runtime and test dependencies (`requirements.txt`, `pytest`, `pytest-cov`), generate `.env` from `.env.example`, and initialize the SQLite database (`xarrtools.db`):
 
-1. **Auto Start**: Double-click `run.bat` in the root folder.
-2. The launcher will construct a Python virtual environment (`.venv`), install dependencies, generate a `.env` configuration file from the template, and open it in Notepad.
-3. Configure your URL links and API keys in the `.env` file, save, close, and re-launch `run.bat`.
-4. The dashboard will automatically launch in your browser.
+- **Linux / macOS / Android Linux VM (Bash)**:
+  ```bash
+  ./init.sh
+  ```
+- **Windows (Command Prompt / Batch)**:
+  ```cmd
+  init.bat
+  ```
+- **PowerShell (Windows PowerShell / Cross-Platform `pwsh`)**:
+  ```powershell
+  ./init.ps1
+  ```
+
+### 2. Launch the Application
+Use the platform launcher script (which automatically runs initialization if needed and forwards any CLI flags to `main.py`):
+
+- **Linux / macOS / Android Linux VM (Bash)**:
+  ```bash
+  ./run.sh            # Default standalone GUI (with browser fallback)
+  ./run.sh --server   # Web server mode
+  ./run.sh --cli      # Interactive Rich terminal CLI mode
+  ```
+- **Windows (Command Prompt / Batch)**:
+  ```cmd
+  run.bat
+  ```
+- **PowerShell**:
+  ```powershell
+  ./run.ps1
+  ```
 
 ---
 
@@ -123,7 +152,7 @@ The easiest way to configure and run the application on Windows:
 ### Web Interface Mode
 Launch the application:
 ```bash
-python main.py
+python main.py --server
 ```
 Open [http://localhost:5000](http://localhost:5000) in your browser.
 - **Scanning**: Use the sliders in the left panel to configure the date ranges, and click **Scan New Releases**. Background progress displays in the pop-over toast.
@@ -150,8 +179,13 @@ Allows searching and queueing downloads in a direct interactive command-line wor
 
 To execute the unit and integration tests with coverage:
 
-1. Activate your virtual environment and run `pytest`:
+1. **Linux / macOS / Android Linux VM**:
    ```bash
+   source ./init.sh --env-only
+   "$VENV_DIR/bin/pytest" --cov=core --cov=web --cov=cli tests/ --cov-report=term-missing
+   ```
+2. **Windows**:
+   ```cmd
    .venv\Scripts\pytest --cov=core --cov=web --cov=cli tests/ --cov-report=term-missing
    ```
-2. This runs the comprehensive test suite (testing all scrapers, config accessors, database helpers, Flask API controllers, and Rich CLI logic) against a temporary SQLite database with all external REST integrations mocked for clean, hermetic execution.
+3. This runs the comprehensive test suite (testing all scrapers, config accessors, database helpers, Flask API controllers, and Rich CLI logic) against a temporary SQLite database with all external REST integrations mocked for clean, hermetic execution.

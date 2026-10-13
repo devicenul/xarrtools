@@ -1,58 +1,55 @@
 @echo off
-setlocal
+setlocal EnableDelayedExpansion
+
+:: ==============================================================================
+:: xarrtools Windows Auto-Startup Launcher (run.bat)
+:: ==============================================================================
+
+pushd "%~dp0"
 
 echo ==================================================
 echo   xarrtools Auto-Startup Launcher
 echo ==================================================
 
-:: 1. Check for Python
-where python >nul 2>nul
-if not errorlevel 1 goto check_venv
-echo [Error] Python is not installed or not in your PATH.
-echo Please install Python and try again.
-pause
-exit /b 1
+if defined XARRTOOLS_VENV_DIR (
+    set "VENV_DIR=%XARRTOOLS_VENV_DIR%"
+) else (
+    set "VENV_DIR=.venv"
+)
 
-:check_venv
-:: 2. Setup virtual environment if missing
-if exist .venv goto install_deps
-echo Creating virtual environment (.venv)...
-python -m venv .venv
-if not errorlevel 1 goto install_deps
-echo [Error] Failed to create virtual environment.
-pause
-exit /b 1
+:: 1. Ensure project is initialized
+set "NEEDS_FULL_INIT=0"
+if not exist "%VENV_DIR%\Scripts\python.exe" set "NEEDS_FULL_INIT=1"
+if not exist ".env" set "NEEDS_FULL_INIT=1"
+if not exist "xarrtools.db" set "NEEDS_FULL_INIT=1"
 
-:install_deps
-:: 3. Install/Update requirements
-echo Checking and installing dependencies...
-.venv\Scripts\pip install -r requirements.txt
-if not errorlevel 1 goto check_env
-echo [Error] Failed to install requirements.
-pause
-exit /b 1
+if "!NEEDS_FULL_INIT!"=="0" (
+    "%VENV_DIR%\Scripts\python.exe" -c "import flask, requests, bs4, rich, dotenv, waitress, defusedxml" >nul 2>nul
+    if errorlevel 1 set "NEEDS_FULL_INIT=1"
+)
 
-:check_env
-:: 4. Check for .env config
-if exist .env goto run_app
-echo Config file .env not found. Creating from template...
-copy .env.example .env >nul
-echo.
-echo Created .env config. Please edit it with your Radarr and Sonarr details.
-echo Press any key to open the .env file in Notepad...
-pause
-start notepad .env
-echo.
-echo Please edit the file in Notepad, save, close it, and run this launcher again!
-pause
-exit /b 0
+if "!NEEDS_FULL_INIT!"=="1" (
+    call "%~dp0init.bat" --no-pause
+) else (
+    call "%~dp0init.bat" --no-pause --skip-deps
+)
 
-:run_app
-:: 5. Run the application
+if errorlevel 1 (
+    echo [Error] Project initialization failed.
+    if not defined CI pause
+    popd
+    exit /b 1
+)
+
+:: 2. Run the application, forwarding all CLI arguments
 echo.
 echo Booting xarrtools...
 echo --------------------------------------------------
-.venv\Scripts\python main.py
+"%VENV_DIR%\Scripts\python.exe" main.py %*
+set "APP_EXIT_CODE=%ERRORLEVEL%"
 echo --------------------------------------------------
 echo Application closed.
-pause
+
+if not defined CI pause
+popd
+exit /b %APP_EXIT_CODE%

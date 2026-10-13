@@ -1319,24 +1319,84 @@ select option {
     to { transform: translateY(0); opacity: 1; }
 }
 
-/* Settings Trigger Button */
+/* Settings Trigger Button & Header Action Tooltips */
+.logo-actions {
+    margin-left: auto;
+    display: flex;
+    gap: 8px;
+    align-items: center;
+}
+
 .btn-settings-trigger {
+    position: relative;
     background: transparent;
     border: none;
     font-size: 20px;
     cursor: pointer;
     padding: 6px;
     border-radius: 50%;
-    margin-left: auto;
+    margin-left: 0;
     transition: var(--transition-smooth);
     display: flex;
     align-items: center;
     justify-content: center;
 }
 
+.btn-settings-trigger .settings-cog-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    transition: var(--transition-smooth);
+}
+
 .btn-settings-trigger:hover {
     background: rgba(255, 255, 255, 0.08);
+}
+
+.btn-settings-trigger:hover .settings-cog-icon {
     transform: rotate(30deg);
+}
+
+.logo-actions [data-tooltip] {
+    position: relative;
+}
+
+.logo-actions [data-tooltip]::after {
+    content: attr(data-tooltip);
+    position: absolute;
+    top: calc(100% + 6px);
+    right: 0;
+    background: #141428;
+    color: var(--text-primary);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    padding: 4px 8px;
+    font-family: 'Inter', sans-serif;
+    font-size: 11px;
+    font-weight: 500;
+    line-height: 1.2;
+    white-space: nowrap;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.45);
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    transform: translateY(-2px);
+    transition: opacity 0.15s ease, transform 0.15s ease, visibility 0.15s ease;
+    z-index: 300;
+}
+
+.logo-actions [data-tooltip]:hover::after,
+.logo-actions [data-tooltip]:focus-visible::after {
+    opacity: 1;
+    visibility: visible;
+    transform: translateY(0);
+}
+
+body.light-theme .logo-actions [data-tooltip]::after {
+    background: #ffffff;
+    color: var(--text-primary);
+    border-color: rgba(0, 0, 0, 0.12);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
 }
 
 /* Settings Forms Grouping */

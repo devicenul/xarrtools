@@ -61,8 +61,38 @@ def get_icon_path() -> str:
         return str(icon_path)
     return None
 
+def ensure_gui_available():
+    """Verifies that a graphical display and a supported pywebview backend exist before starting a server."""
+    import os
+    import logging
+
+    pwv_logger = logging.getLogger("pywebview")
+    pwv_logger.setLevel(logging.CRITICAL)
+    pwv_logger.propagate = False
+
+    if sys.platform.startswith("linux") or sys.platform.startswith("openbsd"):
+        if not (os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY")):
+            raise RuntimeError("No graphical display (DISPLAY or WAYLAND_DISPLAY) detected.")
+
+        has_backend = False
+        for mod_name in ("webview.platforms.gtk", "webview.platforms.qt"):
+            try:
+                __import__(mod_name)
+                has_backend = True
+                break
+            except Exception:
+                continue
+        if not has_backend:
+            raise RuntimeError(
+                "You must have either QT or GTK with Python extensions installed in order to use pywebview."
+            )
+
+
 def run_gui(debug: bool = False):
     """Launches the Flask web server in a background daemon thread and displays the UI in a pywebview window."""
+    # 0. Verify GUI display and backend availability BEFORE booting the background server
+    ensure_gui_available()
+
     # 1. Hide the CMD console on Windows so the GUI feels standalone
     hide_console()
 

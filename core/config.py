@@ -46,13 +46,19 @@ class Config:
                 return env_val
             return self._cache.get(key, default)
 
+    PLACEHOLDER_API_KEYS = {
+        "your_radarr_api_key_here",
+        "your_sonarr_api_key_here",
+    }
+
     @property
     def radarr_url(self) -> str:
         return self._get_setting("radarr_url").rstrip("/")
 
     @property
     def radarr_api_key(self) -> str:
-        return self._get_setting("radarr_api_key")
+        val = self._get_setting("radarr_api_key")
+        return "" if val in self.PLACEHOLDER_API_KEYS else val
 
     @property
     def sonarr_url(self) -> str:
@@ -60,7 +66,8 @@ class Config:
 
     @property
     def sonarr_api_key(self) -> str:
-        return self._get_setting("sonarr_api_key")
+        val = self._get_setting("sonarr_api_key")
+        return "" if val in self.PLACEHOLDER_API_KEYS else val
 
     @property
     def radarr_default_quality_profile(self) -> str:
