@@ -1,5 +1,12 @@
 # Architecture
 
+## Purpose in the Radarr/Sonarr workflow
+
+xarrtools sits *in front of* the *arr servers: it finds new releases, shows what is already in the library
+(matched by tmdb/tvdb/imdb id, then normalized title), and lets the user add the wanted ones to Radarr/Sonarr
+(`/api/add`, with lookup via `/api/lookup`) so those servers can search for and download them. Everything below
+serves that hand-off.
+
 ## Data flow
 
 ```

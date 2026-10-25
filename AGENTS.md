@@ -5,6 +5,12 @@ movies** from several feeds, **enriches** them with metadata, **caches** them in
 **triage** them (archive, add to Radarr/Sonarr, see what is already in their library) from a web UI, a desktop
 window (pywebview) or a CLI.
 
+**The end goal is acquisition:** discovery exists so the user can pick what they want and *add it to their
+Radarr/Sonarr servers*, which then monitor, search for and download it. Workflow: discover -> enrich (so the user
+can judge it) -> triage (archive the rest, hide what is already in the library) -> **add to Radarr/Sonarr**
+(`/api/add`) -> the *arr apps take over. Anything that makes that decision easier or the hand-off more reliable
+(accurate library matching, correct ids, good metadata) is core to the product, not a nicety.
+
 Read this file first, then [docs/architecture.md](docs/architecture.md) (how it fits together) and
 [docs/decisions.md](docs/decisions.md) (why it is the way it is — don't undo these without a good reason).
 
