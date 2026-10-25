@@ -491,8 +491,13 @@ def test_js_filter_and_archived_visibility_simulation():
 
 def test_api_discover_and_card_rendering_simulation(client):
     """Simulates smart unarchiving flow and card rendering with has_new_metadata=True."""
+    from datetime import datetime, timedelta
     from core.db import add_cached_item
     
+    today = datetime.now()
+    date_obj = (today - timedelta(days=5)).strftime("%Y-%m-%d")
+    date_str = (today - timedelta(days=5)).strftime("%b %d")
+
     # 1. First insert TV item with low metadata (missing network & cast) -> auto-archived
     tv_item_low = {
         "title": "Empirical Challenge TV Show",
@@ -504,8 +509,8 @@ def test_api_discover_and_card_rendering_simulation(client):
         "genres": ["Sci-Fi", "Mystery"],
         "trailer": "https://youtube.com/watch?v=123",
         "is_in_library": False,
-        "date_str": "Aug 24",
-        "date_obj": "2026-08-24",
+        "date_str": date_str,
+        "date_obj": date_obj,
         "is_returning": True,
     }
     add_cached_item("tv", tv_item_low)
@@ -521,8 +526,8 @@ def test_api_discover_and_card_rendering_simulation(client):
         "genres": ["Sci-Fi", "Mystery"],
         "trailer": "https://youtube.com/watch?v=123",
         "is_in_library": False,
-        "date_str": "Aug 24",
-        "date_obj": "2026-08-24",
+        "date_str": date_str,
+        "date_obj": date_obj,
         "is_returning": True,
     }
     add_cached_item("tv", tv_item_enriched)
@@ -561,8 +566,13 @@ def test_api_discover_and_card_rendering_simulation(client):
 
 def test_api_archive_and_card_rendering_badge_removal_simulation(client):
     """Simulates archiving an item with has_new_metadata=True, ensuring badge disappears."""
+    from datetime import datetime, timedelta
     from core.db import add_cached_item, set_setting
     
+    today = datetime.now()
+    date_obj = (today - timedelta(days=5)).strftime("%Y-%m-%d")
+    date_str = (today - timedelta(days=5)).strftime("%b %d")
+
     # 1. Setup item with has_new_metadata = 1 via smart auto-unarchiving
     movie_low = {
         "title": "Empirical Movie",
@@ -574,8 +584,8 @@ def test_api_archive_and_card_rendering_badge_removal_simulation(client):
         "genres": ["Adventure"],
         "trailer": "https://youtube.com/watch?v=456",
         "is_in_library": False,
-        "date_str": "Sep 01",
-        "date_obj": "2026-09-01",
+        "date_str": date_str,
+        "date_obj": date_obj,
     }
     add_cached_item("movie", movie_low)
     
@@ -589,8 +599,8 @@ def test_api_archive_and_card_rendering_badge_removal_simulation(client):
         "genres": ["Adventure"],
         "trailer": "https://youtube.com/watch?v=456",
         "is_in_library": False,
-        "date_str": "Sep 01",
-        "date_obj": "2026-09-01",
+        "date_str": date_str,
+        "date_obj": date_obj,
     }
     add_cached_item("movie", movie_full)
     

@@ -388,11 +388,11 @@ class TestDatabaseLifecycleSimulations:
         assert row["is_archived"] == 1
         assert row["has_new_metadata"] == 0  # BADGE RESET
 
-        # Step 5: Enriched rescan after re-archiving
+        # Step 5: Enriched rescan after manual re-archiving -> stays archived (sticky)
         core.db.add_cached_item("tv", item_v3)
         row = core.db.get_cached_item("tv", title, year)
-        assert row["is_archived"] == 0
-        assert row["has_new_metadata"] == 1  # SMART UNARCHIVED AGAIN
+        assert row["is_archived"] == 1
+        assert row["has_new_metadata"] == 0  # NOT RESURFACED
 
         # Step 6: Metadata degraded
         item_v4 = {

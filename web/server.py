@@ -350,6 +350,28 @@ def archive_media():
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
 
+@app.route("/api/archive/batch", methods=["POST"])
+def archive_media_batch():
+    """Archives (or unarchives) many items at once: {"archive": bool, "items": [{type, title, year, raw_item}]}."""
+    data = request.json or {}
+    items = data.get("items")
+    archive = data.get("archive", True)
+    if not isinstance(items, list):
+        return jsonify({"status": "error", "message": "Missing items list"}), 400
+
+    done, failed = 0, []
+    for entry in items:
+        try:
+            if not isinstance(entry, dict) or not entry.get("type") or not entry.get("title"):
+                raise ValueError("Missing type or title")
+            archive_cached_item(entry["type"], entry["title"], int(entry.get("year") or 0), archive,
+                                entry.get("raw_item"))
+            done += 1
+        except Exception as e:
+            failed.append({"title": entry.get("title") if isinstance(entry, dict) else None, "message": str(e)})
+    status = "success" if not failed else ("partial" if done else "error")
+    return jsonify({"status": status, "archived": done, "failed": failed}), (200 if done or not failed else 500)
+
 @app.route("/api/cache/stats", methods=["GET"])
 def cache_stats():
     """Returns row counts and database size diagnostics."""
@@ -468,7 +490,9 @@ def discover_releases():
                 "raw_metadata": None,
                 "rating_imdb": row.get("rating_imdb", "") or "",
                 "rating_metacritic": row.get("rating_metacritic", "") or "",
-                "rating_rt": row.get("rating_rt", "") or ""
+                "rating_rt": row.get("rating_rt", "") or "",
+                "country": row.get("country", "") or "",
+                "language": row.get("language", "") or ""
             }
             enriched_tv.append(data)
             
@@ -520,7 +544,9 @@ def discover_releases():
                 "rating_metacritic": row.get("rating_metacritic", "") or "",
                 "rating_rt": row.get("rating_rt", "") or "",
                 "director": row.get("director", "") or "",
-                "producer": row.get("producer", "") or ""
+                "producer": row.get("producer", "") or "",
+                "country": row.get("country", "") or "",
+                "language": row.get("language", "") or ""
             }
             enriched_movies.append(data)
             
@@ -608,13 +634,17 @@ def discover_releases():
                         "raw_metadata": None,
                         "rating_imdb": cached.get("rating_imdb", "") or "",
                         "rating_metacritic": cached.get("rating_metacritic", "") or "",
-                        "rating_rt": cached.get("rating_rt", "") or ""
+                        "rating_rt": cached.get("rating_rt", "") or "",
+                        "country": cached.get("country", "") or "",
+                        "language": cached.get("language", "") or ""
                     }
                 else:
                     data = enrich_tv_show(item["title"], item["date_obj"].year, sonarr_client)
                     if not data["plot"] or data["plot"] == "No plot summary available.":
                         data["plot"] = item["description"]
                     data["is_returning"] = item.get("is_returning", False)
+                    data["country"] = data.get("country") or item.get("country", "")
+                    data["language"] = data.get("language") or item.get("language", "")
                     
                     # Resolve library status
                     in_library = False
@@ -744,14 +774,19 @@ def discover_releases():
                         "rating_metacritic": cached.get("rating_metacritic", "") or "",
                         "rating_rt": cached.get("rating_rt", "") or "",
                         "director": cached.get("director", "") or "",
-                        "producer": cached.get("producer", "") or ""
+                        "producer": cached.get("producer", "") or "",
+                        "country": cached.get("country", "") or "",
+                        "language": cached.get("language", "") or ""
                     }
                 else:
-                    data = enrich_movie(item["title"], item["date_obj"].year, radarr_client, item.get("imdbId"))
+                    extra = {"tmdb_id": item["tmdbId"]} if item.get("tmdbId") else {}
+                    data = enrich_movie(item["title"], item["date_obj"].year, radarr_client, item.get("imdbId"), **extra)
                     if not data["plot"] or data["plot"] == "No plot summary available.":
                         data["plot"] = item["description"]
                     if "imdbId" not in data or not data["imdbId"]:
                         data["imdbId"] = item.get("imdbId")
+                    data["country"] = data.get("country") or item.get("country", "")
+                    data["language"] = data.get("language") or item.get("language", "")
                     
                     # Resolve library status
                     in_library = False
@@ -1297,7 +1332,7 @@ def save_custom_feed():
         return jsonify({"status": "error", "message": "Parser config must be a valid JSON object"}), 400
         
     # Validate required mapping elements in parser config
-    if feed_type not in ("metacritic_tv", "metacritic_movie", "dvds_releases"):
+    if feed_type not in ("metacritic_tv", "metacritic_movie", "dvds_releases", "tvmaze_schedule", "tmdb_movies"):
         mappings = parser_cfg_dict.get("mappings", {})
         if "title" not in mappings:
             return jsonify({"status": "error", "message": "Parser config mappings must contain at least a 'title' selector rule"}), 400
@@ -1371,7 +1406,7 @@ def test_custom_feed():
             discovered_url = http_url
             for test_url in (https_url, http_url):
                 try:
-                    if feed_type in ("metacritic_tv", "metacritic_movie", "dvds_releases"):
+                    if feed_type in ("metacritic_tv", "metacritic_movie", "dvds_releases", "tvmaze_schedule", "tmdb_movies"):
                         requests.get(test_url, headers=HEADERS, timeout=5)
                     else:
                         safe_fetch_feed(test_url, headers=http_headers, timeout=5)

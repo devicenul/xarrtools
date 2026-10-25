@@ -658,3 +658,28 @@ def test_get_wikipedia_movie_details_failures():
         assert details == {"cast": "", "director": "", "producer": ""}
 
 
+
+
+def _tv_maze_response(payload):
+    r = MagicMock()
+    r.status_code = 200
+    r.json.return_value = payload
+    return r
+
+
+def test_enrich_tv_show_extracts_language_and_country():
+    network = {"name": "BBC One", "country": {"code": "GB"}}
+    with patch("core.enricher.enricher_session.get",
+               return_value=_tv_maze_response({"language": "English", "network": network})):
+        data = enrich_tv_show("Rivals", 2026)
+    assert data["language"] == "English" and data["country"] == "GB"
+
+    web = {"name": "Netflix", "country": None}
+    with patch("core.enricher.enricher_session.get",
+               return_value=_tv_maze_response({"language": "Korean", "network": None, "webChannel": web})):
+        data = enrich_tv_show("Rivals", 2026)
+    assert data["language"] == "Korean" and data["country"] == ""   # global streamer: no country
+
+    with patch("core.enricher.enricher_session.get", return_value=_tv_maze_response({})):
+        data = enrich_tv_show("Rivals", 2026)
+    assert data["language"] == "" and data["country"] == ""

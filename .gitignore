@@ -38,3 +38,14 @@ dist/
 .agents/
 .DS_Store
 
+
+# Local data, backups and logs
+*.db
+*.db.bak
+*.bak
+*.log
+.coverage.*
+coverage.xml
+
+# Node (only used for ad-hoc JS syntax checks / tests)
+node_modules/

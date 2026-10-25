@@ -1755,10 +1755,10 @@ class TestTier4RealWorldWorkloadScenarios:
         }
         core.db.add_cached_item("tv", updated_item)
 
-        # Step 4: Verify smart auto-unarchiving with badge
+        # Step 4: Manual archive is sticky: stays archived, no new-metadata badge
         cached = core.db.get_cached_item("tv", "House of the Dragon", 2024)
-        assert cached["is_archived"] == 0
-        assert cached["has_new_metadata"] == 1
+        assert cached["is_archived"] == 1
+        assert cached["has_new_metadata"] == 0
 
     def test_t4_scenario_3_partial_metadata_retention_and_invalidation(self, api_client):
         """

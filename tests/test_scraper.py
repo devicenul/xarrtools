@@ -280,10 +280,11 @@ def test_get_discoveries():
     with patch("core.scraper.scrape_new_releases") as mock_scrape_new, \
          patch("core.scraper.scrape_dvds_releases") as mock_scrape_dvd, \
          patch("core.scraper.safe_fetch_feed", return_value=""), \
+         patch("core.scraper.scrape_tvmaze_schedule", return_value=[]), \
          patch("core.scraper.datetime", MockDatetime):
          
         # Scrape new releases returns mock_tv and mock_movies
-        mock_scrape_new.side_effect = lambda url, is_tv=True: mock_tv if is_tv else mock_movies
+        mock_scrape_new.side_effect = lambda url, is_tv=True, **kw: mock_tv if is_tv else mock_movies
         mock_scrape_dvd.return_value = [] # mock dvd releases empty
         
         # Ranges spans 10 days in past (Dec 10) and 20 days in future (Jan 9, 2027) which spans December
@@ -346,3 +347,130 @@ def test_custom_feed_url_discovery():
         assert movies[0]["title"] == "My Discovered Movie"
 
 
+
+
+def test_scrape_tvmaze_schedule_filters_and_maps():
+    from core.scraper import scrape_tvmaze_schedule
+
+    def ep(show_id, name, airdate, number, type_="regular", season=1, stype="Scripted", lang="English"):
+        return {
+            "airdate": airdate, "number": number, "season": season, "type": type_,
+            "summary": "<p>ep</p>",
+            "_embedded": {"show": {
+                "id": show_id, "name": name, "type": stype, "language": lang,
+                "premiered": "2026-12-01", "url": f"https://tvmaze/{show_id}",
+                "summary": "<p>Plot <b>text</b></p>", "genres": ["Drama"],
+                "externals": {"imdb": f"tt{show_id}", "thetvdb": show_id},
+                "network": {"name": "NBC", "country": {"code": "us"}}, "webChannel": None,
+            }},
+        }
+
+    payload = [
+        ep(1, "New Series", "2026-12-01", 1),                      # series premiere -> kept
+        ep(1, "New Series", "2026-12-08", 2),                      # later episode -> ignored
+        ep(2, "Returning Show", "2026-12-03", 1, season=3),        # season premiere -> returning
+        ep(3, "Holiday Special", "2026-12-24", 5, "significant_special"),  # special -> kept
+        ep(4, "Big Game", "2026-12-05", 1, stype="Sports"),        # excluded type
+        ep(5, "Foreign Show", "2026-12-06", 1, lang="Russian"),    # excluded language
+        ep(6, "Too Late", "2027-06-01", 1),                        # outside window
+    ]
+    resp = MagicMock()
+    resp.raise_for_status.return_value = None
+    resp.json.return_value = payload
+    with patch("core.scraper.requests.get", return_value=resp):
+        items = scrape_tvmaze_schedule("https://api.tvmaze.com/schedule/full",
+                                       datetime(2026, 11, 25), datetime(2027, 1, 31))
+    by_title = {i["title"]: i for i in items}
+    assert set(by_title) == {"New Series", "Returning Show", "Holiday Special"}
+    assert by_title["New Series"]["imdbId"] == "tt1" and by_title["New Series"]["tvdbId"] == 1
+    assert by_title["New Series"]["description"] == "Plot text"
+    assert by_title["New Series"]["is_returning"] is False
+    assert by_title["Returning Show"]["is_returning"] is True
+    assert by_title["Holiday Special"]["special"] is True
+    assert by_title["Holiday Special"]["network"] == "NBC"
+    assert by_title["New Series"]["country"] == "US" and by_title["New Series"]["language"] == "English"
+
+
+def test_get_discoveries_tmdb_feed_without_key_is_flagged_as_error_not_crash(tmp_path, monkeypatch):
+    """The TMDB feed with no API key must record a clear error on the feed and not break the scan."""
+    import core.db
+    from core.scraper import get_discoveries
+    from core.tmdb import TMDBError
+
+    # Isolated temp database: never touch the developer's real xarrtools.db
+    monkeypatch.setattr(core.db, "DB_PATH", tmp_path / "isolated.db")
+    core.db.init_db()
+    conn = core.db.get_db_connection()
+    conn.execute("UPDATE custom_feeds SET enabled = 0")
+    conn.execute("UPDATE custom_feeds SET enabled = 1 WHERE feed_type = 'tmdb_movies'")
+    conn.close()
+
+    with patch("core.tmdb._get", side_effect=TMDBError("TMDB API key is not set (Settings -> TMDB API Key)")):
+        tv, movies = get_discoveries(past_days=10, future_days=10)
+    assert tv == [] and movies == []
+
+    conn = core.db.get_db_connection()
+    row = conn.execute("SELECT last_status, last_error_message FROM custom_feeds WHERE feed_type = 'tmdb_movies'").fetchone()
+    conn.close()
+    assert row["last_status"] == "error" and "not set" in row["last_error_message"]
+
+
+# --- de-duplication ----------------------------------------------------------
+
+def _mv(title, date="2026-11-10", **extra):
+    d = datetime.strptime(date, "%Y-%m-%d")
+    return dict({"title": title, "date_obj": d, "date_str": d.strftime("%b %d, %Y"), "description": ""}, **extra)
+
+
+def test_slug_keeps_non_latin_titles_distinct():
+    from core.locales import slug
+    assert slug("Οβολός") == "οβολος" and slug("Очарованные") == "очарованные"
+    assert slug("Οβολός") != slug("Αλλη Ταινία")
+    assert slug("Amélie") == slug("Amelie")
+    assert slug("Above & Below") == slug("Above and Below")
+    from core.scraper import normalize_title
+    assert normalize_title("Οβολός") != normalize_title("Άλλη")
+
+
+def test_dedupe_movies_non_latin_titles_not_collapsed():
+    from core.scraper import dedupe_movies
+    items = [_mv("Οβολός", tmdbId=1), _mv("Άλλη Ταινία", tmdbId=2), _mv("Οβολός", tmdbId=1)]
+    out = dedupe_movies(items)
+    assert sorted(i["tmdbId"] for i in out) == [1, 2]
+
+
+def test_dedupe_movies_merges_same_film_across_sources():
+    from core.scraper import dedupe_movies
+    out = dedupe_movies([
+        _mv("The Mandalorian and Grogu", "2026-10-13"),
+        _mv("Star Wars: The Mandalorian and Grogu", "2026-10-25", tmdbId=5, language="English"),
+        _mv("Above & Below", imdbId="tt1"),
+        _mv("Above and Below", tmdbId=9),
+        _mv("Mad Bills to Pay (or Destiny, dile que no soy malo)"),
+        _mv("Mad Bills to Pay", tmdbId=7),
+    ])
+    assert len(out) == 3
+    mando = out[0]
+    assert mando["title"] == "The Mandalorian and Grogu"     # first source wins
+    assert mando["tmdbId"] == 5 and mando["language"] == "English"   # gaps filled from the duplicate
+    above = [i for i in out if i["title"].startswith("Above")][0]
+    assert above["imdbId"] == "tt1" and above["tmdbId"] == 9
+
+
+def test_dedupe_movies_keeps_distinct_films():
+    from core.scraper import dedupe_movies
+    out = dedupe_movies([
+        _mv("The Beast", tmdbId=1), _mv("Beast", tmdbId=2),            # conflicting ids
+        _mv("Heart"), _mv("The Heart of the Sea", "2026-11-12"),       # short title: no containment merge
+        _mv("Dune Part Two", "2024-03-01"), _mv("Dune Part Two", "2026-03-01"),  # years too far apart
+        _mv("Saw Origins Special", "2026-01-01"), _mv("Saw Origins Special Edition", "2026-09-01"),  # dates far apart
+    ])
+    assert len(out) == 8
+
+
+def test_dedupe_movies_same_title_same_year_collapses_and_input_unmodified():
+    from core.scraper import dedupe_movies
+    a = _mv("Ink"); b = _mv("Ink", poster_url="http://p")
+    out = dedupe_movies([a, b])
+    assert len(out) == 1 and out[0]["poster_url"] == "http://p"
+    assert "poster_url" not in a and "_dk" not in out[0]

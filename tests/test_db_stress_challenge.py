@@ -311,11 +311,11 @@ class TestArchiveAndBadgeResetOracles:
         assert cached["is_archived"] == 1
         assert cached["has_new_metadata"] == 0
 
-        # 2. Rescan with rich metadata -> should transition from was_archived=1 to is_archived=0, has_new_metadata=1
+        # 2. Rescan with rich metadata -> manual archive is sticky: stays archived, no badge
         core.db.add_cached_item("movie", raw)
         cached = core.db.get_cached_item("movie", "Lifecycle Movie", 2026)
-        assert cached["is_archived"] == 0
-        assert cached["has_new_metadata"] == 1
+        assert cached["is_archived"] == 1
+        assert cached["has_new_metadata"] == 0
 
         # 3. Manual re-archive -> resets badge
         core.db.archive_cached_item("movie", "Lifecycle Movie", 2026, is_archived=True)

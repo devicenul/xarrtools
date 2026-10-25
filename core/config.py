@@ -49,7 +49,14 @@ class Config:
     PLACEHOLDER_API_KEYS = {
         "your_radarr_api_key_here",
         "your_sonarr_api_key_here",
+        "your_tmdb_api_key_here",
     }
+
+    @property
+    def tmdb_api_key(self) -> str:
+        """TMDB v4 read access token or v3 API key ('' when not configured)."""
+        val = self._get_setting("tmdb_api_key").strip()
+        return "" if val in self.PLACEHOLDER_API_KEYS else val
 
     @property
     def radarr_url(self) -> str:

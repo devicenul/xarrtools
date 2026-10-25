@@ -87,6 +87,7 @@
                         <div class="multiselect-content hidden" id="content-genres-filter">
                             <div class="multiselect-actions">
                                 <button type="button" class="btn-clear-multiselect" id="clear-genres-filter">Clear All</button>
+                                <button type="button" class="btn-clear-multiselect" id="invert-genres-filter">Invert</button>
                             </div>
                             <div class="multiselect-options" id="options-genres-filter"></div>
                         </div>
@@ -96,12 +97,37 @@
                         <div class="multiselect-content hidden" id="content-networks-filter">
                             <div class="multiselect-actions">
                                 <button type="button" class="btn-clear-multiselect" id="clear-networks-filter">Clear All</button>
+                                <button type="button" class="btn-clear-multiselect" id="invert-networks-filter">Invert</button>
                             </div>
                             <div class="multiselect-options" id="options-networks-filter"></div>
                         </div>
                     </div>
                 </div>
                 
+                <div class="dropdown-filters-row" style="margin-top: 8px;">
+                    <div class="multiselect-dropdown" id="dropdown-country">
+                        <button type="button" class="multiselect-btn" id="btn-country-filter">Country (All)</button>
+                        <div class="multiselect-content hidden" id="content-country-filter">
+                            <div class="multiselect-actions">
+                                <button type="button" class="btn-clear-multiselect" id="clear-country-filter">Clear All</button>
+                                <button type="button" class="btn-clear-multiselect" id="invert-country-filter">Invert</button>
+                            </div>
+                            <div class="multiselect-options" id="options-country-filter"></div>
+                        </div>
+                    </div>
+                    <div class="multiselect-dropdown" id="dropdown-language">
+                        <button type="button" class="multiselect-btn" id="btn-language-filter">Language (All)</button>
+                        <div class="multiselect-content hidden" id="content-language-filter">
+                            <div class="multiselect-actions">
+                                <button type="button" class="btn-clear-multiselect" id="clear-language-filter">Clear All</button>
+                                <button type="button" class="btn-clear-multiselect" id="invert-language-filter">Invert</button>
+                            </div>
+                            <div class="multiselect-options" id="options-language-filter"></div>
+                        </div>
+                    </div>
+                </div>
+                <button type="button" id="btn-archive-filtered" class="btn btn-primary" style="width: 100%; margin-top: 10px;">🗄️ Archive all filtered</button>
+
                 <div class="form-group" style="margin-top: 10px; margin-bottom: 10px;">
                     <label for="select-sort" style="display: block; margin-bottom: 5px; font-size: 12px; color: var(--text-secondary); font-weight: 500;">Sort By</label>
                     <select id="select-sort" style="background: rgba(0, 0, 0, 0.3); border: 1px solid var(--border-color); border-radius: 8px; padding: 8px 10px; color: var(--text-primary); font-size: 13px; width: 100%; outline: none; cursor: pointer;">
@@ -343,6 +369,12 @@
                                 <!-- Populated dynamically -->
                             </select>
                         </div>
+
+                        <h3 style="font-family:'Outfit', sans-serif; font-size:14px; color:var(--accent-green); text-transform:uppercase; margin-top:20px; margin-bottom:12px; border-bottom:1px solid var(--border-color); padding-bottom:4px;">TMDB (Movie Discovery &amp; Enrichment)</h3>
+                        <div class="form-group">
+                            <label for="input-tmdb-key">TMDB API Read Access Token (or v3 API Key)</label>
+                            <input type="password" id="input-tmdb-key" placeholder="Paste token from themoviedb.org/settings/api" autocomplete="off">
+                        </div>
                     </div>
 
                     <!-- Tab Panel 2: Scanning -->
@@ -459,6 +491,8 @@
                                             <option value="metacritic_tv">Metacritic TV (Built-in)</option>
                                             <option value="metacritic_movie">Metacritic Movies (Built-in)</option>
                                             <option value="dvds_releases">DVD Releases (Built-in)</option>
+                                            <option value="tvmaze_schedule">TVmaze Premieres &amp; Specials (Built-in)</option>
+                                            <option value="tmdb_movies">TMDB Movies (Built-in, needs API key)</option>
                                         </select>
                                     </div>
                                 </div>

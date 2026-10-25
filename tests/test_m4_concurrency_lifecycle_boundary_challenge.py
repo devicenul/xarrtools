@@ -528,6 +528,18 @@ class TestM4MultiStageLifecycleTransitions:
             assert row["is_archived"] == 1, f"Cycle {cycle} Step C failed"
             assert row["has_new_metadata"] == 0, f"Cycle {cycle} Step C badge reset failed"
 
+            # Step D: Rich Ingest after manual archive -> must stay archived (sticky), badge=0
+            core.db.add_cached_item("tv", rich_data)
+            row = core.db.get_cached_item("tv", title, year)
+            assert row["is_archived"] == 1, f"Cycle {cycle} Step D failed"
+            assert row["has_new_metadata"] == 0, f"Cycle {cycle} Step D badge failed"
+
+            # Step E: Manual Unarchive -> clears sticky flag so the next cycle starts fresh
+            core.db.archive_cached_item("tv", title, year, is_archived=False)
+            row = core.db.get_cached_item("tv", title, year)
+            assert row["is_archived"] == 0, f"Cycle {cycle} Step E failed"
+            assert row["manually_archived"] == 0, f"Cycle {cycle} Step E flag failed"
+
     def test_lifecycle_e2e_flask_api_full_journey(self, client):
         """
         Simulates end-to-end user HTTP requests via Flask test client:

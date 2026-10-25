@@ -5,6 +5,8 @@ let currentDiscoveries = { tv: [], movies: [] };
 let selectedItemForAdd = null;
 let selectedGenres = new Set();
 let selectedNetworks = new Set();
+let selectedCountries = new Set();
+let selectedLanguages = new Set();
 
 // Setup API Key Interceptor for all fetch requests
 const originalFetch = window.fetch;
@@ -109,6 +111,7 @@ const selectRadarrDefaultFolder = document.getElementById("select-radarr-default
 const selectRadarrDefaultProfile = document.getElementById("select-radarr-default-profile");
 const inputSonarrUrl = document.getElementById("input-sonarr-url");
 const inputSonarrKey = document.getElementById("input-sonarr-key");
+const inputTmdbKey = document.getElementById("input-tmdb-key");
 const selectSonarrDefaultFolder = document.getElementById("select-sonarr-default-folder");
 const selectSonarrDefaultProfile = document.getElementById("select-sonarr-default-profile");
 const inputPastMonths = document.getElementById("input-past-months");
@@ -671,6 +674,7 @@ async function saveSettings() {
         radarr_default_quality_profile: selectRadarrDefaultProfile ? selectRadarrDefaultProfile.value : "",
         sonarr_url: inputSonarrUrl.value.trim(),
         sonarr_api_key: inputSonarrKey.value.trim(),
+        tmdb_api_key: inputTmdbKey ? inputTmdbKey.value.trim() : "",
         sonarr_default_root_folder: selectSonarrDefaultFolder ? selectSonarrDefaultFolder.value : "",
         sonarr_default_quality_profile: selectSonarrDefaultProfile ? selectSonarrDefaultProfile.value : "",
         default_past_months: inputPastMonths.value,
@@ -720,25 +724,7 @@ function renderMediaLists() {
     const showArchived = document.getElementById("check-show-archived").checked;
 
     // 1. Render TV shows
-    const tvMatches = currentDiscoveries.tv.filter(item => {
-        if (!showReturning && item.is_returning) return false;
-        if (!showLibrary && item.is_in_library) return false;
-        if (!showArchived && item.is_archived) return false;
-        if (!matchFilter(item, searchTerm)) return false;
-
-        // Genre multi-select filter
-        if (selectedGenres.size > 0) {
-            const hasGenre = item.genres && item.genres.some(g => selectedGenres.has(g));
-            if (!hasGenre) return false;
-        }
-
-        // Network / Studio multi-select filter
-        if (selectedNetworks.size > 0) {
-            if (!item.network || !selectedNetworks.has(item.network)) return false;
-        }
-
-        return true;
-    });
+    const tvMatches = currentDiscoveries.tv.filter(item => itemPassesFilters(item, "tv"));
 
     const sortVal = selectSort ? selectSort.value : "date-asc";
     const sortItems = (a, b) => {
@@ -784,24 +770,7 @@ function renderMediaLists() {
     }
 
     // 2. Render Movies
-    const movieMatches = currentDiscoveries.movies.filter(item => {
-        if (!showLibrary && item.is_in_library) return false;
-        if (!showArchived && item.is_archived) return false;
-        if (!matchFilter(item, searchTerm)) return false;
-
-        // Genre multi-select filter
-        if (selectedGenres.size > 0) {
-            const hasGenre = item.genres && item.genres.some(g => selectedGenres.has(g));
-            if (!hasGenre) return false;
-        }
-
-        // Network / Studio multi-select filter
-        if (selectedNetworks.size > 0) {
-            if (!item.network || !selectedNetworks.has(item.network)) return false;
-        }
-
-        return true;
-    });
+    const movieMatches = currentDiscoveries.movies.filter(item => itemPassesFilters(item, "movie"));
     movieMatches.sort(sortItems);
     movieMatches.forEach((item, index) => {
         const origIndex = currentDiscoveries.movies.indexOf(item);
@@ -815,6 +784,71 @@ function renderMediaLists() {
 
     // Apply active view tab filters
     applyTabFilter();
+}
+
+// Every sidebar filter (toggles, search, genre, studio, country, language) in one place.
+function itemPassesFilters(item, type) {
+    const searchTerm = searchBar.value.toLowerCase().trim();
+    if (type === "tv" && !document.getElementById("check-show-returning").checked && item.is_returning) return false;
+    if (!document.getElementById("check-show-library").checked && item.is_in_library) return false;
+    if (!document.getElementById("check-show-archived").checked && item.is_archived) return false;
+    if (!matchLocale(item)) return false;
+    if (!matchFilter(item, searchTerm)) return false;
+    if (selectedGenres.size > 0) {
+        if (!(item.genres && item.genres.some(g => selectedGenres.has(g)))) return false;
+    }
+    if (selectedNetworks.size > 0) {
+        if (!item.network || !selectedNetworks.has(item.network)) return false;
+    }
+    return true;
+}
+
+// Items the user currently sees (respecting the active tab) that are not archived yet.
+function getFilteredUnarchived() {
+    const out = [];
+    const activeTab = document.querySelector(".tab-btn.active").getAttribute("data-tab");
+    if (activeTab === "all" || activeTab === "tv") {
+        currentDiscoveries.tv.forEach(item => { if (!item.is_archived && itemPassesFilters(item, "tv")) out.push({ type: "tv", item }); });
+    }
+    if (activeTab === "all" || activeTab === "movies") {
+        currentDiscoveries.movies.forEach(item => { if (!item.is_archived && itemPassesFilters(item, "movie")) out.push({ type: "movie", item }); });
+    }
+    return out;
+}
+
+async function archiveAllFiltered() {
+    const targets = getFilteredUnarchived();
+    if (targets.length === 0) {
+        addNotification("No un-archived items match the current filters.", "info");
+        return;
+    }
+    if (!confirm(`Archive ${targets.length} filtered item${targets.length === 1 ? "" : "s"}?`)) return;
+    try {
+        const response = await fetch("/api/archive/batch", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                archive: true,
+                items: targets.map(t => ({ type: t.type, title: t.item.title, year: t.item.year, raw_item: t.item }))
+            })
+        });
+        const res = await response.json();
+        const failedTitles = new Set((res.failed || []).map(f => f.title));
+        targets.forEach(t => {
+            if (!failedTitles.has(t.item.title)) {
+                t.item.is_archived = true;
+                t.item.has_new_metadata = false;
+            }
+        });
+        if (res.failed && res.failed.length) {
+            addNotification(`Archived ${res.archived}, failed ${res.failed.length}.`, "error");
+        } else {
+            addNotification(`Archived ${res.archived} item${res.archived === 1 ? "" : "s"}.`, "success");
+        }
+        renderMediaLists();
+    } catch (error) {
+        addNotification(`Archive error: ${error.message}`, "error");
+    }
 }
 
 function matchFilter(item, term) {
@@ -957,6 +991,7 @@ function createMediaCard(item, type, index) {
             <div class="card-badges">
                 <span class="badge badge-network">${item.network}</span>
                 ${returningBadge}
+                ${localeBadge(item)}
                 ${item.has_new_metadata ? '<span class="badge badge-new-metadata">New metadata</span>' : ''}
                 ${isAdded ? '<span class="badge badge-in-library">In Library</span>' : ''}
                 ${item.is_archived ? '<span class="badge badge-archived" style="background:rgba(255, 42, 133, 0.1); color:var(--accent-magenta); border:1px solid rgba(255, 42, 133, 0.2);">Archived</span>' : ''}
@@ -1371,6 +1406,7 @@ function openSettingsModal() {
         inputRadarrKey.value = appSettings.radarr_api_key || "";
         inputSonarrUrl.value = appSettings.sonarr_url || "";
         inputSonarrKey.value = appSettings.sonarr_api_key || "";
+        if (inputTmdbKey) inputTmdbKey.value = appSettings.tmdb_api_key || "";
         inputPastMonths.value = appSettings.default_past_months || "1";
         inputFutureMonths.value = appSettings.default_future_months || "2";
         document.getElementById("input-show-returning").checked = appSettings.default_show_returning === "1";
@@ -1739,7 +1775,7 @@ function handleFeedTypeChange() {
     const parserConfigField = document.getElementById("feed-parser-config");
     
     // Clear parser config for built-in types
-    if (["metacritic_tv", "metacritic_movie", "dvds_releases"].includes(feedType)) {
+    if (["metacritic_tv", "metacritic_movie", "dvds_releases", "tvmaze_schedule", "tmdb_movies"].includes(feedType)) {
         parserConfigField.value = "{}";
         return;
     }
@@ -1798,7 +1834,7 @@ async function saveCustomFeed() {
         return;
     }
     
-    if (!["metacritic_tv", "metacritic_movie", "dvds_releases"].includes(feedType)) {
+    if (!["metacritic_tv", "metacritic_movie", "dvds_releases", "tvmaze_schedule", "tmdb_movies"].includes(feedType)) {
         if (!parserConfig.mappings || !parserConfig.mappings.title) {
             alert("Parser config mappings must contain at least a 'title' selector rule.");
             return;
@@ -2004,12 +2040,14 @@ function applyTabFilter() {
         if (!showReturning && item.is_returning) return false;
         if (!showLibrary && item.is_in_library) return false;
         if (!showArchived && item.is_archived) return false;
+        if (!matchLocale(item)) return false;
         return matchFilter(item, searchTerm);
     }).length;
     
     const movieMatchesCount = currentDiscoveries.movies.filter(item => {
         if (!showLibrary && item.is_in_library) return false;
         if (!showArchived && item.is_archived) return false;
+        if (!matchLocale(item)) return false;
         return matchFilter(item, searchTerm);
     }).length;
     
@@ -2711,35 +2749,48 @@ function setupEventListeners() {
         });
     }
 
-    // Multiselect Dropdowns
-    const btnGenres = document.getElementById("btn-genres-filter");
-    const contentGenres = document.getElementById("content-genres-filter");
-    const btnNetworks = document.getElementById("btn-networks-filter");
-    const contentNetworks = document.getElementById("content-networks-filter");
-    
-    if (btnGenres && contentGenres) {
-        btnGenres.addEventListener("click", (e) => {
+    // Multiselect Dropdowns (opening one closes the others)
+    const dropdownContents = ["genres", "networks", "country", "language"]
+        .map(k => ({ btn: document.getElementById("btn-" + k + "-filter"), content: document.getElementById("content-" + k + "-filter") }))
+        .filter(d => d.btn && d.content);
+    dropdownContents.forEach(d => {
+        d.btn.addEventListener("click", (e) => {
             e.stopPropagation();
-            contentGenres.classList.toggle("hidden");
-            if (contentNetworks) contentNetworks.classList.add("hidden");
+            dropdownContents.forEach(o => { if (o !== d) o.content.classList.add("hidden"); });
+            d.content.classList.toggle("hidden");
         });
-        contentGenres.addEventListener("click", (e) => e.stopPropagation());
-    }
-    
-    if (btnNetworks && contentNetworks) {
-        btnNetworks.addEventListener("click", (e) => {
-            e.stopPropagation();
-            contentNetworks.classList.toggle("hidden");
-            if (contentGenres) contentGenres.classList.add("hidden");
-        });
-        contentNetworks.addEventListener("click", (e) => e.stopPropagation());
-    }
-    
-    document.addEventListener("click", () => {
-        if (contentGenres) contentGenres.classList.add("hidden");
-        if (contentNetworks) contentNetworks.classList.add("hidden");
+        d.content.addEventListener("click", (e) => e.stopPropagation());
     });
-    
+    document.addEventListener("click", () => {
+        dropdownContents.forEach(o => o.content.classList.add("hidden"));
+    });
+
+    [["country", selectedCountries, "Country"], ["language", selectedLanguages, "Language"]].forEach(([k, set, label]) => {
+        const clearBtn = document.getElementById("clear-" + k + "-filter");
+        if (clearBtn) {
+            clearBtn.addEventListener("click", () => {
+                set.clear();
+                document.querySelectorAll("#options-" + k + "-filter input").forEach(cb => cb.checked = false);
+                const btn = document.getElementById("btn-" + k + "-filter");
+                btn.textContent = `${label} (All)`;
+                btn.classList.remove("active");
+                renderMediaLists();
+            });
+        }
+    });
+
+    // Invert selection: flips every checkbox in a dropdown
+    [["genres", selectedGenres, updateGenreFilterBtnText],
+     ["networks", selectedNetworks, updateNetworkFilterBtnText],
+     ["country", selectedCountries, null],
+     ["language", selectedLanguages, null]].forEach(([k, set, update]) => {
+        const invertBtn = document.getElementById("invert-" + k + "-filter");
+        if (invertBtn) invertBtn.addEventListener("click", () => invertMultiselect(k, set, update));
+    });
+
+    const btnArchiveFiltered = document.getElementById("btn-archive-filtered");
+    if (btnArchiveFiltered) btnArchiveFiltered.addEventListener("click", archiveAllFiltered);
+
     const clearGenresBtn = document.getElementById("clear-genres-filter");
     if (clearGenresBtn) {
         clearGenresBtn.addEventListener("click", () => {
@@ -2763,7 +2814,90 @@ function setupEventListeners() {
     }
 }
 
+function invertMultiselect(key, set, update) {
+    document.querySelectorAll("#options-" + key + "-filter input").forEach(cb => {
+        cb.checked = !cb.checked;
+        if (cb.checked) set.add(cb.value); else set.delete(cb.value);
+    });
+    if (update) {
+        update();
+    } else {
+        const btn = document.getElementById("btn-" + key + "-filter");
+        const label = key === "country" ? "Country" : "Language";
+        btn.textContent = set.size === 0 ? `${label} (All)` : `${label} (${set.size})`;
+        btn.classList.toggle("active", set.size > 0);
+    }
+    renderMediaLists();
+}
+
+function escapeHtml(v) {
+    return String(v).replace(/[&<>"']/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"}[c]));
+}
+
+function countryName(code) {
+    try {
+        return new Intl.DisplayNames(["en"], { type: "region" }).of(code) || code;
+    } catch (e) {
+        return code;
+    }
+}
+
+function matchLocale(item) {
+    if (selectedCountries.size > 0 && !selectedCountries.has(item.country || "")) return false;
+    if (selectedLanguages.size > 0 && !selectedLanguages.has(item.language || "")) return false;
+    return true;
+}
+
+function localeBadge(item) {
+    const parts = [];
+    if (item.country) parts.push(escapeHtml(item.country));
+    if (item.language) parts.push(escapeHtml(item.language));
+    if (!parts.length) return "";
+    return `<span class="badge badge-network" title="Country / original language">${parts.join(" &middot; ")}</span>`;
+}
+
+// Builds a checkbox multi-select (same look as Genres / Studios) from a set of values.
+function buildLocaleMultiselect(key, values, selected, label, text) {
+    const container = document.querySelector("#options-" + key + "-filter");
+    const btn = document.querySelector("#btn-" + key + "-filter");
+    if (!container || !btn) return;
+    selected.forEach(v => { if (!values.includes(v)) selected.delete(v); });
+    const updateBtn = () => {
+        btn.textContent = selected.size === 0 ? `${label} (All)` : `${label} (${selected.size})`;
+        btn.classList.toggle("active", selected.size > 0);
+    };
+    container.innerHTML = "";
+    values.forEach(value => {
+        const option = document.createElement("label");
+        option.className = "multiselect-option";
+        option.innerHTML = `
+            <input type="checkbox" value="${escapeHtml(value)}" ${selected.has(value) ? "checked" : ""}>
+            <span>${escapeHtml(text(value))}</span>
+        `;
+        option.querySelector("input").addEventListener("change", (e) => {
+            if (e.target.checked) selected.add(value); else selected.delete(value);
+            updateBtn();
+            renderMediaLists();
+        });
+        container.appendChild(option);
+    });
+    updateBtn();
+}
+
+function populateLocaleFilters() {
+    const countries = new Set();
+    const languages = new Set();
+    [...currentDiscoveries.tv, ...currentDiscoveries.movies].forEach(item => {
+        if (item.country) countries.add(item.country);
+        if (item.language) languages.add(item.language);
+    });
+    buildLocaleMultiselect("country", Array.from(countries).sort((a, b) => countryName(a).localeCompare(countryName(b))),
+        selectedCountries, "Country", countryName);
+    buildLocaleMultiselect("language", Array.from(languages).sort(), selectedLanguages, "Language", v => v);
+}
+
 function populateFilterOptions() {
+    populateLocaleFilters();
     const allGenres = new Set();
     const allNetworks = new Set();
     

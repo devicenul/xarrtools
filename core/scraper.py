@@ -2,6 +2,7 @@ import requests
 from bs4 import BeautifulSoup
 from datetime import datetime, timedelta
 import re
+import time
 import socket
 import ipaddress
 import urllib.parse
@@ -12,6 +13,7 @@ from urllib3.connection import HTTPConnection, HTTPSConnection
 from urllib3.connectionpool import HTTPConnectionPool, HTTPSConnectionPool
 from urllib3.poolmanager import PoolManager
 from defusedxml.ElementTree import fromstring as secure_fromstring
+from core.locales import country_code, language_name, slug
 import xml.etree.ElementTree as ET
 
 HEADERS = {
@@ -489,15 +491,30 @@ def normalize_title(title: str, is_tv: bool = False) -> str:
         title = clean_tv_title(title)
     else:
         title = clean_movie_title(title)
-    return re.sub(r'[^a-z0-9]', '', title.lower())
+    return slug(title)
 
-def scrape_new_releases(url: str, is_tv: bool = True) -> List[Dict[str, Any]]:
-    """Scrapes Metacritic's new list and returns a list of items."""
-    try:
-        response = requests.get(url, headers=HEADERS, timeout=15)
-        response.raise_for_status()
-    except requests.exceptions.RequestException as e:
-        print(f"\n[Warning] Failed to fetch page {url}: {e}")
+def scrape_new_releases(url: str, is_tv: bool = True, raise_on_error: bool = False, retries: int = 2) -> List[Dict[str, Any]]:
+    """Scrapes Metacritic's new list and returns a list of items.
+
+    Transient fetch failures are retried. If raise_on_error is True, a final
+    failure is raised instead of being swallowed as an empty result.
+    """
+    response = None
+    last_error = None
+    for attempt in range(retries + 1):
+        try:
+            response = requests.get(url, headers=HEADERS, timeout=15)
+            response.raise_for_status()
+            break
+        except requests.exceptions.RequestException as e:
+            last_error = e
+            response = None
+            if attempt < retries:
+                time.sleep(1.5 * (attempt + 1))
+    if response is None:
+        print(f"\n[Warning] Failed to fetch page {url}: {last_error}")
+        if raise_on_error:
+            raise last_error
         return []
 
     soup = BeautifulSoup(response.text, "html.parser")
@@ -670,6 +687,180 @@ def merge_movie_lists(meta_movies: List[Dict[str, Any]], dvd_movies: List[Dict[s
             
     return merged
 
+def _movie_key(title: str) -> str:
+    """Comparison key for movies: unicode-aware slug without a leading article."""
+    key = slug(title)
+    for article in ("the", "a", "an"):
+        if key.startswith(article) and len(key) > len(article) + 3:
+            return key[len(article):]
+    return key
+
+
+def dedupe_movies(items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Collapses the same movie listed by several sources (or several times by one).
+
+    Two entries are the same film when they share a TMDB/IMDb id, or when their normalized titles are
+    equal and the years are within 1, or when one title contains the other at its start/end (e.g.
+    "Star Wars: The Mandalorian and Grogu" vs "The Mandalorian and Grogu") and the dates are within 30
+    days. The first entry wins; ids/poster/language/country etc. are copied from later ones if missing.
+    """
+    kept: List[Dict[str, Any]] = []
+    by_tmdb: Dict[Any, Dict[str, Any]] = {}
+    by_imdb: Dict[str, Dict[str, Any]] = {}
+    by_key: Dict[str, List[Dict[str, Any]]] = {}
+
+    def conflicts(a, b):
+        """Different TMDB/IMDb ids on both sides means they are different films."""
+        return bool((a.get("tmdbId") and b.get("tmdbId") and a["tmdbId"] != b["tmdbId"]) or
+                    (a.get("imdbId") and b.get("imdbId") and a["imdbId"] != b["imdbId"]))
+
+    def find(item, key):
+        if item.get("tmdbId") and item["tmdbId"] in by_tmdb:
+            return by_tmdb[item["tmdbId"]]
+        if item.get("imdbId") and item["imdbId"] in by_imdb:
+            return by_imdb[item["imdbId"]]
+        for cand in by_key.get(key, []):
+            if abs(cand["date_obj"].year - item["date_obj"].year) <= 1 and not conflicts(cand, item):
+                return cand
+        if len(key) >= 8:
+            for cand in kept:
+                ck = cand["_dk"]
+                if len(ck) < 8 or ck == key or conflicts(cand, item):
+                    continue
+                short, long_ = (ck, key) if len(ck) < len(key) else (key, ck)
+                if (long_.startswith(short) or long_.endswith(short)) and \
+                        abs((cand["date_obj"] - item["date_obj"]).days) <= 30:
+                    return cand
+        return None
+
+    for raw in items:
+        item = dict(raw)
+        key = _movie_key(item["title"])
+        match = find(item, key)
+        if match is None:
+            item["_dk"] = key
+            kept.append(item)
+            by_key.setdefault(key, []).append(item)
+            match = item
+        else:
+            for field in ("tmdbId", "imdbId", "poster_url", "language", "country", "href", "genres"):
+                if item.get(field) and not match.get(field):
+                    match[field] = item[field]
+            if match["date_obj"].year == 1900 and item["date_obj"].year != 1900:
+                match["date_obj"], match["date_str"] = item["date_obj"], item["date_str"]
+        if match.get("tmdbId"):
+            by_tmdb.setdefault(match["tmdbId"], match)
+        if match.get("imdbId"):
+            by_imdb.setdefault(match["imdbId"], match)
+    for item in kept:
+        item.pop("_dk", None)
+    return kept
+
+
+TVMAZE_EXCLUDED_TYPES = {"sports", "news", "talk show", "panel show", "game show"}
+
+def scrape_tvmaze_schedule(url: str, start_date: datetime, end_date: datetime, language: str = "English") -> List[Dict[str, Any]]:
+    """Extracts premieres (episode 1 of any season) and significant specials from TVmaze's full future schedule.
+
+    Raises on fetch/parse failure so the feed can be flagged as errored.
+    """
+    response = requests.get(url, headers={"User-Agent": HEADERS["User-Agent"]}, timeout=60)
+    response.raise_for_status()
+    episodes = response.json()
+    if not isinstance(episodes, list):
+        raise ValueError("Unexpected TVmaze schedule payload")
+
+    best: Dict[Any, Dict[str, Any]] = {}
+    for ep in episodes:
+        airdate = ep.get("airdate")
+        show = (ep.get("_embedded") or {}).get("show")
+        if not airdate or not show:
+            continue
+        try:
+            date_obj = datetime.strptime(airdate, "%Y-%m-%d")
+        except ValueError:
+            continue
+        if not (start_date.replace(hour=0, minute=0, second=0, microsecond=0) <= date_obj <= end_date):
+            continue
+
+        is_premiere = ep.get("number") == 1
+        is_special = ep.get("type") == "significant_special"
+        if not (is_premiere or is_special):
+            continue
+        if (show.get("type") or "").lower() in TVMAZE_EXCLUDED_TYPES:
+            continue
+        if language and show.get("language") and show["language"] != language:
+            continue
+
+        show_id = show.get("id")
+        if show_id in best and best[show_id]["date_obj"] <= date_obj:
+            continue
+
+        externals = show.get("externals") or {}
+        network = ((show.get("network") or {}).get("name")
+                   or (show.get("webChannel") or {}).get("name") or "Unknown")
+        summary_html = show.get("summary") or ep.get("summary") or ""
+        description = BeautifulSoup(summary_html, "html.parser").get_text(" ", strip=True) if summary_html else ""
+        season = ep.get("season") or 1
+        premiered_year = safe_int((show.get("premiered") or "")[:4])
+
+        best[show_id] = {
+            "title": show.get("name", "").strip(),
+            "year": premiered_year if (premiered_year and is_premiere and season == 1) else date_obj.year,
+            "date_str": date_obj.strftime("%b %d, %Y"),
+            "date_obj": date_obj,
+            "href": show.get("url", ""),
+            "imdbId": externals.get("imdb") or "",
+            "tvdbId": safe_int(externals.get("thetvdb")),
+            "description": description or "No plot summary available.",
+            "network": network,
+            "genres": show.get("genres") or [],
+            "language": language_name(show.get("language")),
+            "country": country_code(((show.get("network") or {}).get("country") or {}).get("code")
+                                    or ((show.get("webChannel") or {}).get("country") or {}).get("code")),
+            "is_returning": bool(is_premiere and season > 1),
+            "special": bool(is_special and not is_premiere),
+        }
+    return list(best.values())
+
+def _with_query(url: str, **params) -> str:
+    """Returns url with the given query parameters set/overridden."""
+    parsed = urllib.parse.urlparse(url)
+    query = dict(urllib.parse.parse_qsl(parsed.query))
+    query.update({k: str(v) for k, v in params.items()})
+    return urllib.parse.urlunparse(parsed._replace(query=urllib.parse.urlencode(query)))
+
+def scrape_metacritic_window(url: str, is_tv: bool, start_date: datetime, max_pages: int = 6) -> List[Dict[str, Any]]:
+    """Scrapes Metacritic's already-released list (paged back to start_date) plus its coming-soon list.
+
+    The base list failing raises (so the feed is flagged as errored); the coming-soon list is best-effort.
+    """
+    results: List[Dict[str, Any]] = []
+    seen = set()
+
+    def collect(list_url: str, strict: bool):
+        for page in range(1, max_pages + 1):
+            page_url = list_url if page == 1 else _with_query(list_url, page=page)
+            try:
+                items = scrape_new_releases(page_url, is_tv=is_tv, raise_on_error=True)
+            except Exception:
+                if strict and page == 1:
+                    raise
+                break
+            new_items = [i for i in items if i.get("href") not in seen]
+            if not new_items:
+                break
+            for i in new_items:
+                seen.add(i.get("href"))
+                results.append(i)
+            dated = [i["date_obj"] for i in new_items if i["date_obj"].year != 1900]
+            if dated and min(dated) < start_date:
+                break
+
+    collect(url, strict=True)
+    collect(_with_query(url, releaseType="coming-soon"), strict=False)
+    return results
+
 def get_discoveries(past_days: int = 30, future_days: int = 60) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
     """Retrieves new TV shows and movies released within the specified past/future days window, merging custom feeds."""
     tv_raw = []
@@ -699,7 +890,7 @@ def get_discoveries(past_days: int = 30, future_days: int = 60) -> Tuple[List[Di
                 discovered_url = http_url
                 for test_url in (https_url, http_url):
                     try:
-                        if feed_type in ("metacritic_tv", "metacritic_movie", "dvds_releases"):
+                        if feed_type in ("metacritic_tv", "metacritic_movie", "dvds_releases", "tvmaze_schedule", "tmdb_movies"):
                             requests.get(test_url, headers=HEADERS, timeout=5)
                         else:
                             headers_dict = json.loads(feed["http_headers"]) if feed["http_headers"] else {}
@@ -714,16 +905,35 @@ def get_discoveries(past_days: int = 30, future_days: int = 60) -> Tuple[List[Di
                 feed["url"] = discovered_url
                 
             # Built-in custom scrapers
-            if feed_type == "metacritic_tv":
-                items = scrape_new_releases(feed["url"], is_tv=True)
+            if feed_type in ("metacritic_tv", "metacritic_movie"):
+                is_tv_feed = (feed_type == "metacritic_tv")
+                items = scrape_metacritic_window(
+                    feed["url"], is_tv_feed,
+                    datetime.now() - timedelta(days=past_days)
+                )
+                if not items:
+                    raise ValueError(f"Metacritic {'TV' if is_tv_feed else 'movie'} page returned 0 results (blocked or markup changed?)")
                 for item in items:
                     item["source_feed_id"] = feed["id"]
-                    tv_raw.append(item)
-            elif feed_type == "metacritic_movie":
-                items = scrape_new_releases(feed["url"], is_tv=False)
+                    (tv_raw if is_tv_feed else movie_raw).append(item)
+            elif feed_type == "tmdb_movies":
+                from core.tmdb import discover_movies
+                items = discover_movies(
+                    datetime.now() - timedelta(days=past_days),
+                    datetime.now() + timedelta(days=future_days),
+                )
                 for item in items:
                     item["source_feed_id"] = feed["id"]
                     movie_raw.append(item)
+            elif feed_type == "tvmaze_schedule":
+                items = scrape_tvmaze_schedule(
+                    feed["url"],
+                    datetime.now() - timedelta(days=past_days),
+                    datetime.now() + timedelta(days=future_days),
+                )
+                for item in items:
+                    item["source_feed_id"] = feed["id"]
+                    tv_raw.append(item)
             elif feed_type == "dvds_releases":
                 dvd_enabled = True
                 dvd_url_template = feed["url"]
@@ -784,10 +994,18 @@ def get_discoveries(past_days: int = 30, future_days: int = 60) -> Tuple[List[Di
             dvd_movies.extend(month_movies)
             
     # Merge movie lists
-    combined_movies = merge_movie_lists(movie_raw, dvd_movies)
+    combined_movies = dedupe_movies(merge_movie_lists(movie_raw, dvd_movies))
     
-    # Filter by date range
-    tv_filtered = [item for item in tv_raw if start_date <= item["date_obj"] <= end_date]
+    # Filter by date range (deduplicating TV shows listed by multiple sources; earlier feeds win)
+    seen_tv = set()
+    tv_unique = []
+    for item in tv_raw:
+        key = slug(re.sub(r'\s*\(\d{4}\)\s*$', '', clean_tv_title(item["title"])))
+        if key in seen_tv:
+            continue
+        seen_tv.add(key)
+        tv_unique.append(item)
+    tv_filtered = [item for item in tv_unique if start_date <= item["date_obj"] <= end_date]
     movie_filtered = [item for item in combined_movies if start_date <= item["date_obj"] <= end_date]
     
     # Sort by release date (descending: newest first)

@@ -151,7 +151,7 @@ def test_settings_get_set(temp_db):
     assert all_settings["test_key"] == "test_val"
 
 def test_normalize_title():
-    assert core.db.normalize_title("A.B. C! & D-E 2026") == "abcde"
+    assert core.db.normalize_title("A.B. C! & D-E 2026") == "abcandde"
     assert core.db.normalize_title("Rivals: Season 1", is_tv=True) == "rivals"
     assert core.db.normalize_title("Rivals: Season One", is_tv=True) == "rivals"
     assert core.db.normalize_title("Slow Horses - Season 4", is_tv=True) == "slowhorses"
@@ -588,3 +588,150 @@ def test_get_cached_discoveries_includes_has_new_metadata(temp_db):
     assert tv[0]["title"] == "Discovery Show"
     assert tv[0]["has_new_metadata"] == 1
 
+
+
+def _full_item(**over):
+    item = {
+        "title": "Manual Archive Show", "year": 2026, "network": "HBO",
+        "cast": "A Actor, B Actor", "plot": "A full plot.", "poster_url": "p.jpg",
+        "genres": ["Drama"], "date_str": "Dec 01, 2026", "date_obj": "2026-12-01",
+    }
+    item.update(over)
+    return item
+
+
+def test_manual_archive_not_resurfaced_by_enrichment(temp_db):
+    # Low-metadata item is auto-archived, then archived by hand
+    low = _full_item(network="Unknown", cast="", plot="")
+    core.db.add_cached_item("tv", low)
+    core.db.archive_cached_item("tv", "Manual Archive Show", 2026, True)
+
+    # Later enrichment fills in all metadata: must stay archived, no 'new metadata' badge
+    core.db.add_cached_item("tv", _full_item())
+    row = core.db.get_cached_item("tv", "Manual Archive Show", 2026)
+    assert row["is_archived"] == 1
+    assert row["has_new_metadata"] == 0
+    assert row["manually_archived"] == 1
+
+
+def test_auto_archive_still_resurfaces_when_not_manual(temp_db):
+    core.db.add_cached_item("tv", _full_item(network="Unknown", cast="", plot=""))
+    assert core.db.get_cached_item("tv", "Manual Archive Show", 2026)["is_archived"] == 1
+
+    core.db.add_cached_item("tv", _full_item())
+    row = core.db.get_cached_item("tv", "Manual Archive Show", 2026)
+    assert row["is_archived"] == 0
+    assert row["has_new_metadata"] == 1
+    assert row["manually_archived"] == 0
+
+
+def test_manual_unarchive_clears_flag_and_allows_auto_archive_again(temp_db):
+    core.db.add_cached_item("tv", _full_item())
+    core.db.archive_cached_item("tv", "Manual Archive Show", 2026, True)
+    core.db.archive_cached_item("tv", "Manual Archive Show", 2026, False)
+    row = core.db.get_cached_item("tv", "Manual Archive Show", 2026)
+    assert row["is_archived"] == 0 and row["manually_archived"] == 0
+
+
+def test_manual_archive_flag_backfill_on_existing_db(temp_db):
+    # Simulate a pre-migration DB: drop the column by rebuilding the table state
+    conn = core.db.get_db_connection()
+    core.db.add_cached_item("tv", _full_item(title="Hand Archived"))
+    core.db.add_cached_item("tv", _full_item(title="Auto Archived", network="Unknown", cast="", plot=""))
+    conn.execute("UPDATE cache SET is_archived = 1 WHERE title = 'Hand Archived'")
+    conn.execute("ALTER TABLE cache DROP COLUMN manually_archived")
+    conn.close()
+
+    core.db.init_db()  # re-adds the column and backfills
+    conn = core.db.get_db_connection()
+    rows = {r["title"]: r["manually_archived"] for r in conn.execute("SELECT title, manually_archived FROM cache")}
+    conn.close()
+    assert rows["Hand Archived"] == 1   # archived but complete metadata -> must be manual
+    assert rows["Auto Archived"] == 0   # low metadata -> ambiguous, treated as auto
+
+
+def test_tmdb_feed_default_and_letterboxd_migration(temp_db):
+    # Fresh DB: TMDB is a default, Letterboxd is not
+    conn = core.db.get_db_connection()
+    types = [r["feed_type"] for r in conn.execute("SELECT feed_type FROM custom_feeds")]
+    assert "tmdb_movies" in types
+    assert conn.execute("SELECT COUNT(*) FROM custom_feeds WHERE url = ?", (core.db.LETTERBOXD_DEFAULT_URL,)).fetchone()[0] == 0
+
+    # Simulate a pre-migration DB: legacy Letterboxd feed present, TMDB feed + migration flag absent
+    conn.execute("DELETE FROM custom_feeds WHERE feed_type = 'tmdb_movies'")
+    conn.execute("DELETE FROM settings WHERE key = 'migrated_tmdb_feed'")
+    conn.execute(
+        "INSERT INTO custom_feeds (name, url, feed_type, default_media_type, enabled, http_headers, parser_config) "
+        "VALUES ('Letterboxd', ?, 'rss', 'movie', 1, '{}', '{}')", (core.db.LETTERBOXD_DEFAULT_URL,))
+    conn.execute(
+        "INSERT INTO custom_feeds (name, url, feed_type, default_media_type, enabled, http_headers, parser_config) "
+        "VALUES ('My Custom RSS', 'https://example.com/feed.xml', 'rss', 'movie', 1, '{}', '{}')")
+    conn.close()
+
+    core.db.init_db()
+    conn = core.db.get_db_connection()
+    urls = [r["url"] for r in conn.execute("SELECT url FROM custom_feeds")]
+    types = [r["feed_type"] for r in conn.execute("SELECT feed_type FROM custom_feeds")]
+    conn.close()
+    assert core.db.LETTERBOXD_DEFAULT_URL not in urls          # legacy default removed
+    assert "https://example.com/feed.xml" in urls              # user's own feed untouched
+    assert types.count("tmdb_movies") == 1                     # TMDB added exactly once
+
+    # Running again must not re-add a TMDB feed the user deleted
+    conn = core.db.get_db_connection()
+    conn.execute("DELETE FROM custom_feeds WHERE feed_type = 'tmdb_movies'")
+    conn.close()
+    core.db.init_db()
+    conn = core.db.get_db_connection()
+    assert conn.execute("SELECT COUNT(*) FROM custom_feeds WHERE feed_type = 'tmdb_movies'").fetchone()[0] == 0
+    conn.close()
+
+
+def test_cache_language_country_roundtrip_and_preservation(temp_db):
+    item = {"title": "Locale Show", "year": 2026, "date_str": "Dec 01", "date_obj": "2026-12-01",
+            "plot": "p", "country": "KR", "language": "Korean"}
+    core.db.add_cached_item("tv", item)
+    row = core.db.get_cached_item("tv", "Locale Show", 2026)
+    assert row["country"] == "KR" and row["language"] == "Korean"
+
+    # a later update without locale data must not wipe the stored values
+    core.db.add_cached_item("tv", dict(item, country="", language=""))
+    row = core.db.get_cached_item("tv", "Locale Show", 2026)
+    assert row["country"] == "KR" and row["language"] == "Korean"
+
+    # a new non-empty value overrides
+    core.db.add_cached_item("tv", dict(item, country="JP", language="Japanese"))
+    row = core.db.get_cached_item("tv", "Locale Show", 2026)
+    assert row["country"] == "JP" and row["language"] == "Japanese"
+
+
+def test_init_db_adds_locale_columns_to_old_schema(temp_db):
+    conn = sqlite3.connect(temp_db)
+    conn.execute("ALTER TABLE cache DROP COLUMN country")
+    conn.execute("ALTER TABLE cache DROP COLUMN language")
+    conn.commit()
+    conn.close()
+    core.db.init_db()
+    conn = sqlite3.connect(temp_db)
+    cols = {r[1] for r in conn.execute("PRAGMA table_info(cache)")}
+    conn.close()
+    assert {"country", "language"} <= cols
+
+
+def test_non_latin_titles_cached_separately_and_renormalized(temp_db):
+    core.db.add_cached_item("movie", {"title": "Οβολός", "year": 2026, "date_obj": "2026-12-03", "plot": "p"})
+    core.db.add_cached_item("movie", {"title": "Άλλη Ταινία", "year": 2026, "date_obj": "2026-12-04", "plot": "p"})
+    assert core.db.get_cached_item("movie", "Οβολός", 2026)["title"] == "Οβολός"
+    assert core.db.get_cached_item("movie", "Άλλη Ταινία", 2026)["title"] == "Άλλη Ταινία"
+    assert core.db.get_cached_item("movie", "Τρίτη", 2026) is None
+
+    # legacy rows stored with an empty key are repaired once by init_db
+    conn = sqlite3.connect(temp_db)
+    conn.execute("UPDATE cache SET normalized_title = ''")
+    conn.execute("DELETE FROM settings WHERE key = 'migrated_unicode_norm'")
+    conn.commit(); conn.close()
+    core.db.init_db()
+    conn = sqlite3.connect(temp_db)
+    norms = {r[0] for r in conn.execute("SELECT normalized_title FROM cache")}
+    conn.close()
+    assert "" not in norms and len(norms) == 2

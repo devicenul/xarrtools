@@ -582,21 +582,23 @@ def test_full_lifecycle_archive_refresh_unarchive_rearchive_loop(auth_client):
             assert res5.get_json()["item"]["is_archived"] is True
             assert res5.get_json()["item"]["has_new_metadata"] is False
 
-        # 6. Live refresh with rich metadata -> auto-unarchives with badge AGAIN!
+        # 6. Live refresh with rich metadata -> manual archive is sticky: stays archived, no badge
         with patch("web.server.enrich_tv_show", return_value=rich_enrichment):
             res6 = auth_client.post("/api/cache/refresh", json={"type": "tv", "title": title, "year": year})
             assert res6.status_code == 200
-            assert res6.get_json()["item"]["is_archived"] is False
-            assert res6.get_json()["item"]["has_new_metadata"] is True
+            assert res6.get_json()["item"]["is_archived"] is True
+            assert res6.get_json()["item"]["has_new_metadata"] is False
 
-        # 7. Manual unarchive via API (archive=False) -> is_archived=0, badge reset
-        conn = core.db.get_db_connection()
-        conn.execute("UPDATE cache SET has_new_metadata = 0, is_archived = 0 WHERE title = ?", (title,))
-        conn.commit()
-        conn.close()
+        # 7. Manual unarchive via API (archive=False) -> is_archived=0, manual flag cleared
+        res7 = auth_client.post("/api/archive", json={"type": "tv", "title": title, "year": year, "archive": False})
+        assert res7.status_code == 200
+        item7 = core.db.get_cached_item("tv", title, year)
+        assert item7["is_archived"] == 0 and item7["manually_archived"] == 0
 
         # 8. Live refresh with rich metadata while unarchived & badge=0 -> stays is_archived=0, has_new_metadata=0
-        with patch("web.server.enrich_tv_show", return_value=rich_enrichment):
+        # (use a fresh dict: the endpoint mutates the shared one with is_archived=True from step 6)
+        fresh_rich = {k: v for k, v in rich_enrichment.items() if k not in ("is_archived", "has_new_metadata")}
+        with patch("web.server.enrich_tv_show", return_value=fresh_rich):
             res8 = auth_client.post("/api/cache/refresh", json={"type": "tv", "title": title, "year": year})
             assert res8.status_code == 200
             assert res8.get_json()["item"]["is_archived"] is False

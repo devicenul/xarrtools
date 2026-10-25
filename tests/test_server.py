@@ -182,6 +182,48 @@ def test_archive_media_endpoint_error(client):
         assert res.status_code == 500
         assert "DB connection error" in res.get_json()["message"]
 
+def test_archive_batch_endpoint_validation_and_results(client):
+    assert client.post("/api/archive/batch", json={}).status_code == 400
+    assert client.post("/api/archive/batch", json={"items": "nope"}).status_code == 400
+
+    with patch("web.server.archive_cached_item") as mock_archive:
+        res = client.post("/api/archive/batch", json={"archive": True, "items": [
+            {"type": "movie", "title": "A", "year": 2026, "raw_item": {"x": 1}},
+            {"type": "tv", "title": "B", "year": 2026},
+        ]})
+    body = res.get_json()
+    assert res.status_code == 200 and body["status"] == "success" and body["archived"] == 2
+    mock_archive.assert_any_call("movie", "A", 2026, True, {"x": 1})
+    mock_archive.assert_any_call("tv", "B", 2026, True, None)
+
+    def flaky(type_, title, *a):
+        if title == "Bad":
+            raise Exception("boom")
+    with patch("web.server.archive_cached_item", side_effect=flaky):
+        res = client.post("/api/archive/batch", json={"items": [
+            {"type": "movie", "title": "Good", "year": 1}, {"type": "movie", "title": "Bad", "year": 1},
+            {"title": "no type"}]})
+    body = res.get_json()
+    assert body["status"] == "partial" and body["archived"] == 1
+    assert {f["title"] for f in body["failed"]} == {"Bad", "no type"}
+
+    with patch("web.server.archive_cached_item", side_effect=Exception("down")):
+        res = client.post("/api/archive/batch", json={"items": [{"type": "movie", "title": "X", "year": 1}]})
+    assert res.status_code == 500 and res.get_json()["status"] == "error"
+
+
+def test_archive_batch_endpoint_persists_to_db(client):
+    from core.db import add_cached_item, get_cached_item
+    for t in ("Batch One", "Batch Two"):
+        add_cached_item("movie", {"title": t, "year": 2026, "plot": "Plot", "date_obj": "2026-12-01"})
+    res = client.post("/api/archive/batch", json={"archive": True, "items": [
+        {"type": "movie", "title": t, "year": 2026} for t in ("Batch One", "Batch Two")]})
+    assert res.get_json()["archived"] == 2
+    for t in ("Batch One", "Batch Two"):
+        row = get_cached_item("movie", t, 2026)
+        assert row["is_archived"] == 1 and row["manually_archived"] == 1
+
+
 def test_cache_stats_endpoint(client):
     with patch("web.server.get_cache_stats", return_value={"total_rows": 42}):
         res = client.get("/api/cache/stats")
@@ -2030,17 +2072,19 @@ def test_custom_feed_endpoints(client):
     data = response.get_json()
     assert data["status"] == "success"
 
-    # Verify feeds are restored (5 default feeds)
+    # Verify feeds are restored (6 default feeds)
     response = client.get("/api/feeds")
     assert response.status_code == 200
     data = response.get_json()
-    assert len(data["feeds"]) == 5
+    assert len(data["feeds"]) == 6
     names = [f["name"] for f in data["feeds"]]
     assert "Metacritic - New TV Shows" in names
     assert "Metacritic - New Movies" in names
     assert "DVDs Release Dates" in names
-    assert "Letterboxd - Popular Weekly Movies" in names
+    assert "TMDB - Popular Upcoming & Recent Movies" in names
+    assert "Letterboxd - Popular Weekly Movies" not in names
     assert "Wikipedia - 2026 American Films" in names
+    assert "TVmaze - Upcoming Premieres & Specials" in names
 
     # 12. POST /api/feeds (saving built-in feed type with empty config should succeed)
     built_in_payload = {

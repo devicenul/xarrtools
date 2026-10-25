@@ -7,6 +7,7 @@ from typing import Dict, Any, Optional
 from core.client import RadarrClient, SonarrClient, ArrAPIError
 from core.config import config
 from core.metadata import is_cast_missing
+from core.tmdb import get_movie_enrichment
 
 import time
 import threading
@@ -123,6 +124,8 @@ def enrich_tv_show(title: str, year: int, sonarr_client: Optional[SonarrClient] 
     title = re.sub(r'\((\d{4})$', r'(\1)', title.strip()) if title else title
     base_title = re.sub(r'\s*[\(\[]\d{4}[\)\]]?$', '', title).strip() if title else ""
     data = {
+        "language": "",
+        "country": "",
         "title": title,
         "year": year,
         "plot": "No plot summary available.",
@@ -159,6 +162,11 @@ def enrich_tv_show(title: str, year: int, sonarr_client: Optional[SonarrClient] 
             if tvdb_id:
                 data["tvdbId"] = tvdb_id
                 
+            from core.locales import country_code, language_name
+            data["language"] = language_name(maze_data.get("language"))
+            _net = maze_data.get("network") or maze_data.get("webChannel") or {}
+            data["country"] = country_code((_net.get("country") or {}).get("code"))
+
             # Extract Network / Streaming Service
             if maze_data.get("network"):
                 data["network"] = maze_data["network"].get("name", "Unknown Network")
@@ -309,9 +317,11 @@ def get_wikipedia_movie_details(title: str, year: int) -> Dict[str, str]:
         pass
     return details
 
-def enrich_movie(title: str, year: int, radarr_client: Optional[RadarrClient] = None, imdb_id: Optional[str] = None) -> Dict[str, Any]:
-    """Retrieves plot, cast, genres, trailer and TMDB ID for a movie using Radarr and Wikipedia."""
+def enrich_movie(title: str, year: int, radarr_client: Optional[RadarrClient] = None, imdb_id: Optional[str] = None, tmdb_id: Optional[int] = None) -> Dict[str, Any]:
+    """Retrieves plot, cast, genres, trailer and TMDB ID for a movie using Radarr, TMDB (if keyed) and Wikipedia."""
     data = {
+        "language": "",
+        "country": "",
         "title": title,
         "year": year,
         "plot": "No plot summary available.",
@@ -396,13 +406,39 @@ def enrich_movie(title: str, year: int, radarr_client: Optional[RadarrClient] = 
         except ArrAPIError:
             pass
 
-    # 2. Get Cast, Director, and Producer from Wikipedia
-    wiki_details = get_wikipedia_movie_details(title, year)
-    if wiki_details.get("cast"):
+    # 2. Enrich from TMDB (if an API key is configured): fills gaps left by Radarr
+    tmdb = get_movie_enrichment(title, year, imdb_id=data.get("imdbId"),
+                                tmdb_id=tmdb_id or data.get("tmdbId"))
+    if tmdb:
+        data["tmdbId"] = data["tmdbId"] or tmdb.get("tmdbId")
+        if tmdb.get("imdbId") and not data["imdbId"]:
+            data["imdbId"] = tmdb["imdbId"]
+        if tmdb.get("plot") and data["plot"] == "No plot summary available.":
+            data["plot"] = tmdb["plot"]
+        if tmdb.get("poster_url") and not data["poster_url"]:
+            data["poster_url"] = tmdb["poster_url"]
+        if tmdb.get("genres") and not data["genres"]:
+            data["genres"] = tmdb["genres"]
+        if tmdb.get("studio") and data["network"] == "Unknown Studio":
+            data["network"] = tmdb["studio"]
+        if tmdb.get("trailer") and "youtube.com/results" in data["trailer"]:
+            data["trailer"] = tmdb["trailer"]
+        for field in ("cast", "director", "producer"):
+            if tmdb.get(field):
+                data[field] = tmdb[field]
+        for field in ("language", "country"):
+            if tmdb.get(field) and not data.get(field):
+                data[field] = tmdb[field]
+
+    # 3. Get Cast, Director, and Producer from Wikipedia for anything still missing
+    needs_wiki = (data["cast"] == "Cast details not available."
+                  or not data["director"] or not data["producer"])
+    wiki_details = get_wikipedia_movie_details(title, year) if needs_wiki else {}
+    if wiki_details.get("cast") and data["cast"] == "Cast details not available.":
         data["cast"] = wiki_details["cast"]
-    if wiki_details.get("director"):
+    if wiki_details.get("director") and not data["director"]:
         data["director"] = wiki_details["director"]
-    if wiki_details.get("producer"):
+    if wiki_details.get("producer") and not data["producer"]:
         data["producer"] = wiki_details["producer"]
         
     return data

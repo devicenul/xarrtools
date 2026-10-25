@@ -7,12 +7,17 @@ from datetime import datetime, timedelta
 
 import sys
 from core.metadata import evaluate_item_state_transition
+from core.locales import slug
 
 # Store database in the project root folder (or executable directory if compiled)
 if getattr(sys, 'frozen', False):
     DB_PATH = Path(sys.executable).resolve().parent / "xarrtools.db"
 else:
     DB_PATH = Path(__file__).resolve().parent.parent / "xarrtools.db"
+
+TVMAZE_SCHEDULE_URL = "https://api.tvmaze.com/schedule/full"
+TMDB_DISCOVER_URL = "https://api.themoviedb.org/3/discover/movie"
+LETTERBOXD_DEFAULT_URL = "https://letterboxd.com/films/popular/this/week/size/small/rss/"
 
 def get_db_connection():
     """Establishes and returns a connection to the SQLite database with Row factory."""
@@ -84,6 +89,9 @@ def init_db():
             poster_url TEXT,
             is_returning INTEGER DEFAULT 0,
             is_archived INTEGER DEFAULT 0,
+            manually_archived INTEGER DEFAULT 0,
+            country TEXT DEFAULT '',
+            language TEXT DEFAULT '',
             has_new_metadata INTEGER DEFAULT 0,
             added_at TEXT,
             rating_imdb TEXT,
@@ -119,6 +127,9 @@ def init_db():
         "poster_url": "TEXT",
         "is_returning": "INTEGER DEFAULT 0",
         "is_archived": "INTEGER DEFAULT 0",
+        "manually_archived": "INTEGER DEFAULT 0",
+        "country": "TEXT DEFAULT ''",
+        "language": "TEXT DEFAULT ''",
         "has_new_metadata": "INTEGER DEFAULT 0",
         "added_at": "TEXT",
         "rating_imdb": "TEXT",
@@ -131,9 +142,20 @@ def init_db():
         "producer": "TEXT"
     }
     
+    manual_flag_is_new = "manually_archived" not in columns
     for col, col_type in expected_cols.items():
         if col not in columns:
             cursor.execute(f"ALTER TABLE cache ADD COLUMN {col} {col_type}")
+
+    if manual_flag_is_new:
+        # Existing archived rows whose metadata is NOT low can't have been auto-archived,
+        # so the user must have archived them by hand. (Low-metadata rows are ambiguous
+        # and are left as auto-archived.)
+        from core.metadata import should_auto_archive
+        cursor.execute('SELECT id, title, network, "cast", description FROM cache WHERE is_archived = 1')
+        for r in cursor.fetchall():
+            if not should_auto_archive({"title": r["title"], "network": r["network"], "cast": r["cast"], "plot": r["description"]}):
+                cursor.execute("UPDATE cache SET manually_archived = 1 WHERE id = ?", (r["id"],))
 
     # Expunge legacy incomplete cached items (where title, cast, and plot are all missing/placeholder)
     cursor.execute('''
@@ -158,6 +180,17 @@ def init_db():
         norm = normalize_title(row["title"], is_tv)
         cursor.execute("UPDATE cache SET normalized_title = ? WHERE id = ?", (norm, row["id"]))
         
+    # One-time: recompute normalized titles with the Unicode-aware key (non-Latin titles used to collapse to '')
+    cursor.execute("SELECT value FROM settings WHERE key = 'migrated_unicode_norm'")
+    if not cursor.fetchone():
+        cursor.execute("SELECT id, title, type FROM cache")
+        cache_rows = cursor.fetchall()
+        for row in cache_rows:
+            norm = normalize_title(row["title"], row["type"] == "tv")
+            cursor.execute("UPDATE cache SET normalized_title = ? WHERE id = ?", (norm, row["id"]))
+        if cache_rows:  # keep fresh DBs' settings table empty so default seeding still runs
+            cursor.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('migrated_unicode_norm', '1')")
+
     # Create indices
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_cache_normalized ON cache(type, normalized_title)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_cache_date_obj ON cache(date_obj) WHERE date_obj IS NOT NULL AND date_obj != ''")
@@ -176,6 +209,7 @@ def init_db():
             "radarr_api_key": config.radarr_api_key,
             "sonarr_url": config.sonarr_url,
             "sonarr_api_key": config.sonarr_api_key,
+            "tmdb_api_key": config.tmdb_api_key,
             "default_past_months": "1",
             "default_future_months": "2",
             "default_show_returning": "0",
@@ -217,10 +251,33 @@ def init_db():
     cursor.execute("SELECT COUNT(*) FROM custom_feeds")
     if cursor.fetchone()[0] == 0:
         restore_default_feeds(conn)
+
+    # 7. One-time migration: add the TVmaze upcoming-premieres feed to existing databases
+    cursor.execute("SELECT 1 FROM settings WHERE key = 'migrated_tvmaze_feed'")
+    if not cursor.fetchone():
+        cursor.execute("SELECT 1 FROM custom_feeds WHERE feed_type = 'tvmaze_schedule'")
+        if not cursor.fetchone():
+            cursor.execute('''
+                INSERT INTO custom_feeds (name, url, feed_type, default_media_type, enabled, http_headers, parser_config)
+                VALUES (?, ?, 'tvmaze_schedule', 'tv', 1, '{}', '{}')
+            ''', ("TVmaze - Upcoming Premieres & Specials", TVMAZE_SCHEDULE_URL))
+        cursor.execute("INSERT INTO settings (key, value) VALUES ('migrated_tvmaze_feed', '1')")
+
+    # 8. One-time migration: replace the Cloudflare-blocked Letterboxd default feed with the TMDB feed
+    cursor.execute("SELECT 1 FROM settings WHERE key = 'migrated_tmdb_feed'")
+    if not cursor.fetchone():
+        cursor.execute("DELETE FROM custom_feeds WHERE url = ?", (LETTERBOXD_DEFAULT_URL,))
+        cursor.execute("SELECT 1 FROM custom_feeds WHERE feed_type = 'tmdb_movies'")
+        if not cursor.fetchone():
+            cursor.execute('''
+                INSERT INTO custom_feeds (name, url, feed_type, default_media_type, enabled, http_headers, parser_config)
+                VALUES (?, ?, 'tmdb_movies', 'movie', 1, '{}', '{}')
+            ''', ("TMDB - Popular Upcoming & Recent Movies", TMDB_DISCOVER_URL))
+        cursor.execute("INSERT INTO settings (key, value) VALUES ('migrated_tmdb_feed', '1')")
     conn.close()
 
 def restore_default_feeds(conn=None):
-    """Wipes all custom feeds and inserts the standard default feeds (Metacritic, DVDs, Letterboxd, Wikipedia)."""
+    """Wipes all custom feeds and inserts the standard default feeds (Metacritic, DVDs, TVmaze, TMDB, Wikipedia)."""
     local_conn = False
     if conn is None:
         conn = get_db_connection()
@@ -252,6 +309,15 @@ def restore_default_feeds(conn=None):
                 "parser_config": "{}"
             },
             {
+                "name": "TVmaze - Upcoming Premieres & Specials",
+                "url": TVMAZE_SCHEDULE_URL,
+                "feed_type": "tvmaze_schedule",
+                "default_media_type": "tv",
+                "enabled": 1,
+                "http_headers": "{}",
+                "parser_config": "{}"
+            },
+            {
                 "name": "DVDs Release Dates",
                 "url": "https://www.dvdsreleasedates.com/releases/{year}/{month:02d}/",
                 "feed_type": "dvds_releases",
@@ -261,20 +327,13 @@ def restore_default_feeds(conn=None):
                 "parser_config": "{}"
             },
             {
-                "name": "Letterboxd - Popular Weekly Movies",
-                "url": "https://letterboxd.com/films/popular/this/week/size/small/rss/",
-                "feed_type": "rss",
+                "name": "TMDB - Popular Upcoming & Recent Movies",
+                "url": TMDB_DISCOVER_URL,
+                "feed_type": "tmdb_movies",
                 "default_media_type": "movie",
                 "enabled": 1,
                 "http_headers": "{}",
-                "parser_config": json.dumps({
-                    "item_selector": "item",
-                    "mappings": {
-                        "title": {"selector": "title"},
-                        "year": {"selector": "filmYear", "transforms": [{"type": "regex_search", "pattern": "\\d{4}"}]},
-                        "href": {"selector": "link"}
-                    }
-                })
+                "parser_config": "{}"
             },
             {
                 "name": "Wikipedia - 2026 American Films",
@@ -391,7 +450,7 @@ def normalize_title(title: str, is_tv: bool = False) -> str:
         title = clean_tv_title(title)
     else:
         title = clean_movie_title(title)
-    return re.sub(r'[^a-z0-9]', '', title.lower())
+    return slug(title)
 
 def get_cached_item(type_: str, title: str, year: int, imdb_id: str = None, conn = None) -> dict:
     """Retrieves a cached movie or TV show by IMDb ID or normalized title (checking exact/close matches first, falling back to ignore year setting)."""
@@ -472,6 +531,9 @@ def add_cached_item(type_: str, item: dict, conn = None):
         
         # Compute state transition for auto-archiving and smart unarchiving
         is_archived, has_new_metadata = evaluate_item_state_transition(existing, item)
+        if existing and existing.get("manually_archived"):
+            # User archived this by hand: never resurface it due to new metadata
+            is_archived, has_new_metadata = 1, 0
         
         genres_json = json.dumps(item.get("genres", []))
         tvdb_id = item.get("tvdbId") or item.get("tvdb_id")
@@ -499,7 +561,8 @@ def add_cached_item(type_: str, item: dict, conn = None):
                     tvdb_id = ?, tmdb_id = ?, genres = ?, cast = ?, network = ?, trailer = ?,
                     poster_url = ?, is_returning = ?, is_archived = ?, has_new_metadata = ?, added_at = ?,
                     rating_imdb = ?, rating_metacritic = ?, rating_rt = ?, is_in_library = ?,
-                    source_feed_id = ?, normalized_title = ?, director = ?, producer = ?
+                    source_feed_id = ?, normalized_title = ?, director = ?, producer = ?,
+                    country = ?, language = ?
                 WHERE id = ?
             ''', (
                 item.get("date_str", ""),
@@ -526,6 +589,8 @@ def add_cached_item(type_: str, item: dict, conn = None):
                 normalized_title,
                 item.get("director", ""),
                 item.get("producer", ""),
+                item.get("country") or (existing.get("country") or ""),
+                item.get("language") or (existing.get("language") or ""),
                 existing["id"]
             ))
         else:
@@ -535,8 +600,8 @@ def add_cached_item(type_: str, item: dict, conn = None):
                     tvdb_id, tmdb_id, genres, cast, network, trailer, poster_url, is_returning,
                     is_archived, has_new_metadata, added_at,
                     rating_imdb, rating_metacritic, rating_rt, is_in_library, source_feed_id, normalized_title,
-                    director, producer
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    director, producer, country, language
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ''', (
                 type_,
                 item["title"],
@@ -564,7 +629,9 @@ def add_cached_item(type_: str, item: dict, conn = None):
                 source_feed_id,
                 normalized_title,
                 item.get("director", ""),
-                item.get("producer", "")
+                item.get("producer", ""),
+                item.get("country", ""),
+                item.get("language", "")
             ))
             
         if close_conn:
@@ -668,7 +735,12 @@ def archive_cached_item(type_: str, title: str, year: int, is_archived: bool = T
                     INSERT INTO cache (type, title, year, is_archived, has_new_metadata, added_at, normalized_title)
                     VALUES (?, ?, ?, ?, ?, ?, ?)
                 ''', (type_, title, year, archived_val, 0, datetime.now().strftime("%Y-%m-%d %H:%M:%S"), normalized_title))
-                
+        # This function is only reached from an explicit user action: remember it so
+        # later enrichment never auto-unarchives (or re-archives) the item.
+        row = get_cached_item(type_, title, year, imdb_id, conn=conn)
+        if row:
+            cursor.execute("UPDATE cache SET manually_archived = ? WHERE id = ?", (archived_val, row["id"]))
+
         conn.commit()
     except Exception:
         conn.rollback()
@@ -847,16 +919,16 @@ def import_from_dict(data: dict) -> tuple[int, int]:
                 # Update indicators and identifiers
                 cursor.execute("""
                     UPDATE cache 
-                    SET is_in_library = ?, is_archived = ?, imdb_id = COALESCE(imdb_id, ?), tvdb_id = COALESCE(tvdb_id, ?), tmdb_id = COALESCE(tmdb_id, ?)
+                    SET is_in_library = ?, is_archived = ?, manually_archived = ?, imdb_id = COALESCE(imdb_id, ?), tvdb_id = COALESCE(tvdb_id, ?), tmdb_id = COALESCE(tmdb_id, ?)
                     WHERE id = ?
-                """, (is_in_library, is_archived, imdb_id, tvdb_id, tmdb_id, existing["id"]))
+                """, (is_in_library, is_archived, is_archived, imdb_id, tvdb_id, tmdb_id, existing["id"]))
             else:
                 # Insert skeleton/stub media cache record
                 norm_title = normalize_title(title, is_tv=(type_ == "tv"))
                 cursor.execute("""
-                    INSERT INTO cache (type, title, year, imdb_id, tvdb_id, tmdb_id, is_in_library, is_archived, normalized_title)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """, (type_, title, year, imdb_id, tvdb_id, tmdb_id, is_in_library, is_archived, norm_title))
+                    INSERT INTO cache (type, title, year, imdb_id, tvdb_id, tmdb_id, is_in_library, is_archived, manually_archived, normalized_title)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, (type_, title, year, imdb_id, tvdb_id, tmdb_id, is_in_library, is_archived, is_archived, norm_title))
             media_count += 1
             
         conn.commit()

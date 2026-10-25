@@ -444,7 +444,8 @@ def handle_discovery_workflow():
             movie_task = progress.add_task("[green]Enriching movies...[/green]", total=len(movie_releases))
             for item in movie_releases:
                 try:
-                    data = enrich_movie(item["title"], item["date_obj"].year, radarr_client, item.get("imdbId"))
+                    extra = {"tmdb_id": item["tmdbId"]} if item.get("tmdbId") else {}
+                    data = enrich_movie(item["title"], item["date_obj"].year, radarr_client, item.get("imdbId"), **extra)
                     if not data["plot"] or data["plot"] == "No plot summary available.":
                         data["plot"] = item["description"]
                     data["date_str"] = item["date_str"]
