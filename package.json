@@ -1,0 +1,10 @@
+{
+  "name": "xarrtools-frontend",
+  "private": true,
+  "scripts": {
+    "build": "tsc -p tsconfig.json"
+  },
+  "devDependencies": {
+    "typescript": "^5"
+  }
+}

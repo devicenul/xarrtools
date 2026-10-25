@@ -153,6 +153,20 @@ if [ "$SKIP_DEPS" -eq 0 ]; then
     "$VENV_DIR/bin/pip" install -r requirements-dev.txt
 fi
 
+# 5b. Install frontend build dependencies (TypeScript)
+if [ "$SKIP_DEPS" -eq 0 ] && [ -f "$SCRIPT_DIR/package.json" ]; then
+    if ! command -v node >/dev/null 2>&1 || ! command -v npm >/dev/null 2>&1; then
+        echo "[Error] Node.js (npm) is required to build the frontend: install it from https://nodejs.org" >&2
+        exit 1
+    fi
+    log_init "[Init] Installing frontend dependencies from package.json..."
+    if [ -n "$PROJECT_CACHE_DIR" ]; then
+        npm_config_cache="$PROJECT_CACHE_DIR/npm" npm install --no-audit --no-fund
+    else
+        npm install --no-audit --no-fund
+    fi
+fi
+
 # 6. Generate .env configuration from template if missing
 if [ ! -f "$SCRIPT_DIR/.env" ]; then
     if [ -f "$SCRIPT_DIR/.env.example" ]; then

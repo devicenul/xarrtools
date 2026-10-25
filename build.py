@@ -6,6 +6,7 @@ make sure the environment exists (via init.*) and then call this script.
 """
 import importlib.util
 import os
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -15,7 +16,7 @@ ROOT = Path(__file__).resolve().parent
 TEMPLATES = "web/templates"
 
 
-def build_settings(platform: Optional[str] = None, cache_dir: Optional[str] = None) -> dict:
+def build_settings(platform: Optional[str] = None, cache_dir: Optional[str] = None, dist_exists: Optional[bool] = None) -> dict:
     """Returns the per-OS icon, data separator and output binary path."""
     platform = platform or sys.platform
     if platform.startswith("win"):
@@ -28,13 +29,18 @@ def build_settings(platform: Optional[str] = None, cache_dir: Optional[str] = No
         icon, binary = f"{TEMPLATES}/favicon.png", Path("dist") / "xarrtools"
         sep = ":"
     workpath = str(Path(cache_dir) / "pyinstaller-build") if cache_dir else None
-    return {"icon": icon, "separator": sep, "binary": binary, "workpath": workpath}
+    if dist_exists is None:
+        dist_exists = (ROOT / "web" / "static" / "dist").is_dir()
+    return {"icon": icon, "separator": sep, "binary": binary, "workpath": workpath, "dist_exists": dist_exists}
 
 
-def pyinstaller_args(settings: dict) -> List[str]:
+def pyinstaller_args(settings: dict, dist_exists: Optional[bool] = None) -> List[str]:
     args = ["--onefile", "--name", "xarrtools", f"--icon={settings['icon']}",
             "--add-data", f"{TEMPLATES}{settings['separator']}{TEMPLATES}"]
-    if settings["workpath"]:
+    has_dist = dist_exists if dist_exists is not None else settings.get("dist_exists", False)
+    if has_dist:
+        args += ["--add-data", f"web/static/dist{settings['separator']}web/static/dist"]
+    if settings.get("workpath"):
         args += ["--workpath", settings["workpath"]]
     return args + ["main.py"]
 
@@ -47,8 +53,39 @@ def ensure_pyinstaller() -> None:
     subprocess.check_call([sys.executable, "-m", "pip", "install", "-r", str(ROOT / "requirements-dev.txt")])
 
 
+def build_frontend(root: Optional[Path] = None) -> bool:
+    """Builds the frontend if TypeScript/JavaScript sources exist in web/static/src."""
+    base = Path(root) if root is not None else ROOT
+    src_dir = base / "web" / "static" / "src"
+    if not src_dir.is_dir():
+        return True
+    has_sources = any(p.is_file() and p.suffix in {".ts", ".js", ".tsx"} for p in src_dir.rglob("*"))
+    if not has_sources:
+        return True
+
+    npm = shutil.which("npm")
+    if not npm:
+        print("[Error] Node.js (npm) is required to build the frontend: install it from https://nodejs.org", file=sys.stderr)
+        return False
+
+    node_modules = base / "node_modules"
+    if not node_modules.is_dir():
+        print("Installing frontend dependencies (npm install)...")
+        if subprocess.call([npm, "install", "--no-audit", "--no-fund"], cwd=str(base)) != 0:
+            print("[Error] npm install failed.", file=sys.stderr)
+            return False
+
+    print("Building frontend (npm run build)...")
+    if subprocess.call([npm, "run", "build"], cwd=str(base)) != 0:
+        print("[Error] npm run build failed.", file=sys.stderr)
+        return False
+    return True
+
+
 def main() -> int:
     os.chdir(ROOT)
+    if not build_frontend(ROOT):
+        return 1
     print("Compiling xarrtools to a single executable...")
     ensure_pyinstaller()
     cache_dir = os.environ.get("XARRTOOLS_PROJECT_CACHE_DIR") or os.environ.get("PROJECT_CACHE_DIR")
@@ -63,3 +100,4 @@ def main() -> int:
 
 if __name__ == "__main__":
     sys.exit(main())
+

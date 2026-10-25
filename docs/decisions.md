@@ -16,4 +16,5 @@
 | No Makefile | `make` isn't available on stock Windows; per-OS differences live in `build.py`. |
 | Tests blank the TMDB key (`tests/conftest.py`) | Tests must be offline and must never use the real credential. |
 | Credentials only in DB/`.env` | Both git-ignored; history was audited and is clean. |
+| Frontend will move to TypeScript with a developer-side build; compiled JS is not committed | Developers can install Node; checking in generated `app.js` would create noisy, stale diffs until CI/CD builds releases. |
 | Frontend behaviour tested via Node + DOM stub | No browser tooling available; keeps JS logic regression-tested without new dependencies. |

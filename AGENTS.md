@@ -22,7 +22,9 @@ Read this file first, then [docs/architecture.md](docs/architecture.md) (how it 
   empty scrape result is treated as an *error* (`last_status = error`), not as "nothing new".
 - **The user's decisions win.** A manual archive is sticky: new metadata never resurfaces it.
 - **Works offline-ish and everywhere.** Windows/macOS/Linux/Android-VM, no required API keys (TMDB is optional).
-- **Small, dependency-light.** Flask + requests + BeautifulSoup + SQLite; frontend is plain JS (no build step).
+- **Small, dependency-light.** Flask + requests + BeautifulSoup + SQLite. The frontend is plain JS today; the planned
+  TypeScript migration (see ROADMAP.md) will add a Node build step that `init.*`/`build.py` run for developers, with
+  compiled output git-ignored (no checked-in generated JS) until CI/CD publishes releases.
 
 ## Repo map
 

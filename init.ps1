@@ -180,6 +180,26 @@ if (-not $SkipDeps) {
     }
 }
 
+# 5b. Install frontend build dependencies
+$PackageJson = Join-Path $ScriptDir "package.json"
+if ((-not $SkipDeps) -and (Test-Path -LiteralPath $PackageJson)) {
+    $NodeCmd = Get-Command "node" -ErrorAction SilentlyContinue
+    $NpmCmd = Get-Command "npm" -ErrorAction SilentlyContinue
+    if ((-not $NodeCmd) -or (-not $NpmCmd)) {
+        Write-Error "[Error] Node.js (npm) is required to build the frontend: install it from https://nodejs.org"
+        exit 1
+    }
+    Write-Host "[Init] Installing frontend dependencies from package.json..."
+    if ($ProjectCacheDir) {
+        $env:npm_config_cache = Join-Path $ProjectCacheDir "npm"
+    }
+    & npm install --no-audit --no-fund
+    if ($LASTEXITCODE -ne 0) {
+        Write-Error "[Error] Failed to install frontend dependencies."
+        exit 1
+    }
+}
+
 # 6. Generate .env configuration from template if missing
 $EnvFile = Join-Path $ScriptDir ".env"
 $EnvExample = Join-Path $ScriptDir ".env.example"

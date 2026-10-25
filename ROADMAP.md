@@ -7,12 +7,13 @@ This document tracks planned future functionality, architectural changes, and us
 ## Planned Enhancements
 
 ### 1. Frontend Modularization & Reactive State Architecture
-- **Goal**: Refactor the monolithic `web/templates/app.js` into modular ES6 modules or a lightweight reactive state management framework to improve maintainability, developer ergonomics, and UI responsiveness.
+- **Decision**: Developers are expected to install Node and build; the compiled JS is **not** checked in (it is git-ignored under `web/static/dist/`) until GitHub CI/CD can build and publish releases. `init.*` will install the Node dependencies, and `build.py` / the `run.*` launchers will run the TypeScript compile before starting or packaging the app.
+- **Goal**: Refactor the monolithic `web/templates/app.js` (~3,000 lines and growing) into modular ES6/TypeScript modules or a lightweight reactive state management framework to improve maintainability, developer ergonomics, and UI responsiveness.
 - **Implementation Strategy**:
   - Break `app.js` into focused ES6 modules (`api.js`, `state.js`, `dom.js`, `modals.js`, `filters.js`, `settings.js`).
   - Introduce standardized event buses / reactive state stores for filter changes, modal workflows, and notification feeds.
   - Implement progressive hydration and virtualized grid rendering for large release libraries (>500 items).
-- **Code files involved**: [web/templates/app.js](file:///Users/rrjefferson/Workspaces/Projects/xarrtools/web/templates/app.js), [web/templates/index.html](file:///Users/rrjefferson/Workspaces/Projects/xarrtools/web/templates/index.html), [web/server.py](file:///Users/rrjefferson/Workspaces/Projects/xarrtools/web/server.py).
+- **Code files involved**: [web/templates/app.js](web/templates/app.js), [web/templates/index.html](web/templates/index.html), [web/server.py](web/server.py).
 
 ### 2. Dockerization for NAS/Server Hosting
 - **Goal**: Allow running the application inside a lightweight container on NAS systems (Synology, Unraid, QNAP) or homelab servers.
@@ -21,34 +22,36 @@ This document tracks planned future functionality, architectural changes, and us
   - Define `/config` as a persistent volume mapping area to hold `xarrtools.db` and optional `.env` file overrides.
   - Expose port `5000` to link the internal Flask process to host requests.
   - Create a `docker-compose.yml` template to easily stand up the tool alongside Radarr and Sonarr containers.
-- **Code files involved**: [Dockerfile](file:///Users/rrjefferson/Workspaces/Projects/xarrtools/Dockerfile), [docker-compose.yml](file:///Users/rrjefferson/Workspaces/Projects/xarrtools/docker-compose.yml), [core/db.py](file:///Users/rrjefferson/Workspaces/Projects/xarrtools/core/db.py).
+- **Code files involved**: [Dockerfile](Dockerfile), [docker-compose.yml](docker-compose.yml), [core/db.py](core/db.py).
 
 ### 3. Background Scheduled Refreshes
-- **Goal**: Automatically scan Metacritic and DVD releases on a daily schedule, ensuring cache records stay updated without manual user trigger clicks.
+- **Goal**: Automatically scan all enabled feeds (Metacritic, DVDs, TVmaze, TMDB and custom feeds) on a daily schedule, ensuring cache records stay updated without manual user trigger clicks.
 - **Implementation Strategy**:
   - Integrate a background daemon thread or Python task library (like `APScheduler`) inside `server.py` starting on Flask boot.
   - Configure scan timings (e.g., run every 24 hours or customizable in Settings).
   - Scrape calendars, enrich results, and store entries in the SQLite database cache.
   - Log scan statistics and broadcast a notification update payload to the UI sidebar.
-- **Code files involved**: [web/server.py](file:///Users/rrjefferson/Workspaces/Projects/xarrtools/web/server.py), [web/templates/app.js](file:///Users/rrjefferson/Workspaces/Projects/xarrtools/web/templates/app.js).
+- **Code files involved**: [web/server.py](web/server.py), [web/templates/app.js](web/templates/app.js).
 
 ### 4. GitHub Builds and Releases Setup
 - **Goal**: Automate PyInstaller compilation and packaging workflows on GitHub tag triggers, distributing binary builds directly via GitHub Releases.
 - **Implementation Strategy**:
   - Create GitHub Actions workflows for multi-platform matrices (Ubuntu, macOS, Windows).
-  - Run `pytest` test suites across platforms before building executables.
+  - Run `pytest` test suites across platforms before building executables (`init.*` already installs `requirements-dev.txt`; `build.py` is the single build entry point to call).
   - Generate release artifacts (`.dmg`, `Setup.exe`, standalone binaries) and attach them to GitHub Releases.
 - **Code files involved**: `.github/workflows/build.yml`.
 
 ### 5. Structured Logging Architecture
+- **Status**: Only `core/tmdb.py` and `core/config.py` use `logging` today; `cli/cli.py` still has ~78 `print` calls and `core/scraper.py`, `core/db.py` and `web/server.py` a few more.
 - **Goal**: Implement systematic, configurable, structured logging across all core scraper classes, API wrappers, database operations, and server endpoints to facilitate easier troubleshooting and telemetry.
 - **Implementation Strategy**:
   - Re-architect simple print statements and sporadic `app.logger.error` instances into a unified Python standard `logging` setup.
   - Support log level configuration (e.g., DEBUG, INFO, WARNING, ERROR) via Settings.
   - Set up rotating log file handler (`xarrtools.log`) alongside console logging.
-- **Code files involved**: [core/config.py](file:///Users/rrjefferson/Workspaces/Projects/xarrtools/core/config.py), [web/server.py](file:///Users/rrjefferson/Workspaces/Projects/xarrtools/web/server.py), [cli/cli.py](file:///Users/rrjefferson/Workspaces/Projects/xarrtools/cli/cli.py).
+- **Code files involved**: [core/config.py](core/config.py), [web/server.py](web/server.py), [cli/cli.py](cli/cli.py).
 
 ### 6. Standardized Code Documentation & Type Annotations
+- **Status**: Partially done: about half of the functions carry return annotations (`web/server.py` is the main gap, 1 of 31), and `AGENTS.md` / `docs/` now describe the architecture.
 - **Goal**: Standardize and enrich inline code documentation, block comments, and docstrings across all modules to improve code legibility and maintainability.
 - **Implementation Strategy**:
   - Perform a thorough audit of the code modules, ensuring all classes, utility functions, routes, and regex matching/parsing blocks have descriptive PEP 257 compliant docstrings.
@@ -63,11 +66,32 @@ This document tracks planned future functionality, architectural changes, and us
   - **Windows (WinGet & Inno Setup)**: Use `Inno Setup` to bundle the binary into a custom `Setup.exe` installer for free. Submit the application to the community-driven Windows Package Manager (`winget`) repository so users can install it via `winget install xarrtools`.
   - **SmartScreen Whitelisting**: Set up a workflow to submit new release binary hashes to the Microsoft Security Intelligence File Submission portal for free analysis, which builds reputation and clears false-positive SmartScreen warnings.
   - **Python Package (PyPI)**: Distribute the app as a standard package on PyPI, enabling installation via `pipx install xarrtools` to bypass OS code-signing limitations completely.
-- **Code files involved**: [build.sh](file:///Users/rrjefferson/Workspaces/Projects/xarrtools/build.sh), [build.bat](file:///Users/rrjefferson/Workspaces/Projects/xarrtools/build.bat).
+- **Code files involved**: [build.py](build.py), [build.sh](build.sh), [build.bat](build.bat), [build.ps1](build.ps1).
 
 ---
 
 ## Completed Features
+
+### ✓ Agent Documentation (AGENTS.md and docs/)
+- Added `AGENTS.md`, `docs/architecture.md` and `docs/decisions.md` describing purpose, architecture and design rationale, with a test that fails when documented paths or symbols disappear.
+
+### ✓ Single Cross-Platform Build Script
+- `build.py` now holds all PyInstaller logic; `build.sh` / `build.ps1` / `build.bat` are thin wrappers, and `init.*` install `requirements-dev.txt` (pytest, pytest-cov, pyinstaller).
+
+### ✓ Bulk Archive and Filter Invert
+- "Archive all filtered" button (`POST /api/archive/batch`) and an "Invert" button on every filter dropdown.
+
+### ✓ Country and Language Metadata with Multi-Select Filters
+- Country (ISO code) and original language are collected from TVmaze, TMDB and enrichment, stored in the cache, shown as a card badge and filterable from the sidebar.
+
+### ✓ Movie De-duplication and Unicode-Safe Title Keys
+- `dedupe_movies` merges the same film across sources (ids, equal titles, subtitle variants) without merging conflicting ids; the title key keeps non-Latin letters so Greek/Cyrillic titles no longer collapse together.
+
+### ✓ TMDB Movie Source and TVmaze Schedule Feed
+- TMDB replaces the Cloudflare-blocked Letterboxd feed (chunked 7-day discovery plus rich enrichment); TVmaze's full schedule supplies upcoming TV premieres and specials.
+
+### ✓ Sticky Manual Archives
+- Items archived by hand are never resurfaced by new metadata.
 
 ### ✓ Backup & Restore Settings and Cache (Web UI, Standalone App, and CLI)
 - Export and import configuration settings and discovery cache databases with full schema validation and checksum integrity.
@@ -123,7 +147,7 @@ Committed the standard GNU General Public License v3.0 to the repository root.
 Automated launcher scripts (`run.bat` / `run.sh`) handle virtual environment setup and dependency installation on Windows, macOS, and Linux. PyInstaller compilation bundles the application into standalone single-file executables via `build.bat` and `build.sh`, with `sys._MEIPASS` path resolution for compiled asset access.
 
 ### ✓ Comprehensive Unit and Coverage Testing
-Designed and implemented a complete testing framework using `pytest` and `pytest-cov`, reaching **100% statement coverage** across all modules including `core` library logic, the Flask `web` backend, and the interactive terminal `cli`. Utilizes mock integrations for external REST clients (Sonarr, Radarr, TMDB, TVMaze) and isolates execution to a temporary SQLite test database to ensure completely clean, isolated, and deterministic test runs.
+Designed and implemented a complete testing framework using `pytest` and `pytest-cov`, currently at **~89% statement coverage** (1,070+ tests) across `core` library logic, the Flask `web` backend, and the interactive terminal `cli`, plus Node-based behavioural tests for the sidebar filter JavaScript. Utilizes mock integrations for external REST clients (Sonarr, Radarr, TMDB, TVMaze) and isolates execution to a temporary SQLite test database to ensure completely clean, isolated, and deterministic test runs.
 
 ### ✓ Reorganized Codebase & Sensible Package Layout
 Removed the redundant nested `xarrtools/xarrtools/` packaging. Reorganized the codebase into clean top-level directories: `core` (shared domain logic and database layers), `web` (Flask web server and templates), and `cli` (interactive terminal console manager). All imports have been restructured and tested successfully.

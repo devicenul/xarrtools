@@ -49,3 +49,6 @@ coverage.xml
 
 # Node (only used for ad-hoc JS syntax checks / tests)
 node_modules/
+
+# Compiled frontend output (TypeScript migration; built by init/build, not committed)
+web/static/dist/

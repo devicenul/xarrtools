@@ -79,6 +79,9 @@ Languages`. `itemPassesFilters(item, type)` is the single predicate used by `ren
 (`btn-/content-/options-/clear-/invert-<name>-filter` ids, where `<name>` is `genres`, `networks`, `country`,
 `language`). `tests/test_frontend_filters.py` runs these functions
 under Node with a DOM stub; `tests/test_m3_static_template_challenge.py` checks HTML/JS id parity.
+Build tooling for the TypeScript migration is defined in `package.json` and `tsconfig.json`. When
+sources exist under `web/static/src`, the build step compiles to output web/static/dist (git-ignored,
+nothing compiled yet; runtime currently serves directly from `web/templates/app.js`).
 
 ## Tests
 

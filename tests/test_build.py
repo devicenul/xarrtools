@@ -60,7 +60,98 @@ def test_dev_requirements_and_init_scripts_use_them():
     for needed in ("-r requirements.txt", "pytest", "pytest-cov", "pyinstaller"):
         assert needed in dev
     for script in ("init.sh", "init.ps1", "init.bat"):
-        assert "requirements-dev.txt" in (ROOT / script).read_text(), script
+        text = (ROOT / script).read_text()
+        assert "requirements-dev.txt" in text, script
+        assert "package.json" in text, script
     for script in ("build.sh", "build.ps1", "build.bat"):
         text = (ROOT / script).read_text()
         assert "build.py" in text and "pip install pyinstaller" not in text.lower(), script
+
+
+def test_build_frontend_skips_when_empty(tmp_path):
+    assert build.build_frontend(tmp_path) is True
+
+    src_dir = tmp_path / "web" / "static" / "src"
+    src_dir.mkdir(parents=True)
+    (src_dir / ".gitkeep").write_text("")
+    (src_dir / "notes.txt").write_text("notes")
+
+    with patch.object(build.shutil, "which") as mock_which, \
+         patch.object(build.subprocess, "call") as mock_call:
+        assert build.build_frontend(tmp_path) is True
+        mock_which.assert_not_called()
+        mock_call.assert_not_called()
+
+
+def test_build_frontend_npm_missing_failure(tmp_path, capsys):
+    src_dir = tmp_path / "web" / "static" / "src"
+    src_dir.mkdir(parents=True)
+    (src_dir / "app.ts").write_text("console.log('hi');")
+
+    with patch.object(build.shutil, "which", return_value=None):
+        assert build.build_frontend(tmp_path) is False
+    err = capsys.readouterr().err
+    assert "Node.js (npm) is required to build the frontend" in err
+
+
+def test_build_frontend_builds_when_sources_present(tmp_path):
+    src_dir = tmp_path / "web" / "static" / "src"
+    src_dir.mkdir(parents=True)
+    (src_dir / "app.ts").write_text("console.log('hi');")
+
+    with patch.object(build.shutil, "which", return_value="/usr/bin/npm"), \
+         patch.object(build.subprocess, "call", return_value=0) as mock_call:
+        assert build.build_frontend(tmp_path) is True
+        assert mock_call.call_count == 2
+        assert mock_call.call_args_list[0].args[0] == ["/usr/bin/npm", "install", "--no-audit", "--no-fund"]
+        assert mock_call.call_args_list[1].args[0] == ["/usr/bin/npm", "run", "build"]
+
+
+def test_main_call_order_frontend_before_pyinstaller():
+    order = []
+
+    def fake_build_frontend(root=None):
+        order.append("frontend")
+        return True
+
+    def fake_ensure_pyinstaller():
+        order.append("ensure_pyinstaller")
+
+    def fake_call(cmd, **kwargs):
+        order.append("pyinstaller")
+        return 0
+
+    with patch.object(build, "build_frontend", side_effect=fake_build_frontend), \
+         patch.object(build, "ensure_pyinstaller", side_effect=fake_ensure_pyinstaller), \
+         patch.object(build.subprocess, "call", side_effect=fake_call), \
+         patch.object(build.os, "chdir"):
+        assert build.main() == 0
+
+    assert order == ["frontend", "ensure_pyinstaller", "pyinstaller"]
+
+
+def test_main_aborts_when_frontend_fails():
+    with patch.object(build, "build_frontend", return_value=False), \
+         patch.object(build, "ensure_pyinstaller") as mock_ensure, \
+         patch.object(build.subprocess, "call") as mock_call, \
+         patch.object(build.os, "chdir"):
+        assert build.main() == 1
+    mock_ensure.assert_not_called()
+    mock_call.assert_not_called()
+
+
+def test_pyinstaller_args_conditional_dist_data():
+    settings_linux = build.build_settings("linux", dist_exists=False)
+    args = build.pyinstaller_args(settings_linux)
+    assert not any("web/static/dist" in arg for arg in args)
+
+    settings_linux_dist = build.build_settings("linux", dist_exists=True)
+    args_dist = build.pyinstaller_args(settings_linux_dist)
+    assert "web/static/dist:web/static/dist" in args_dist
+
+    settings_win_dist = build.build_settings("win32", dist_exists=True)
+    args_win = build.pyinstaller_args(settings_win_dist)
+    assert "web/static/dist;web/static/dist" in args_win
+
+    args_override = build.pyinstaller_args(settings_linux, dist_exists=True)
+    assert "web/static/dist:web/static/dist" in args_override

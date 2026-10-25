@@ -98,6 +98,31 @@ if "!SKIP_DEPS!"=="0" (
     )
 )
 
+:: 4b. Install frontend build dependencies
+if "!SKIP_DEPS!"=="0" (
+    if exist "package.json" (
+        set "NODE_MISSING=0"
+        where node >nul 2>nul
+        if errorlevel 1 set "NODE_MISSING=1"
+        where npm >nul 2>nul
+        if errorlevel 1 set "NODE_MISSING=1"
+        if "!NODE_MISSING!"=="1" (
+            echo [Error] Node.js (npm) is required to build the frontend: install it from https://nodejs.org
+            if "!NO_PAUSE!"=="0" pause
+            popd
+            exit /b 1
+        )
+        echo [Init] Installing frontend dependencies from package.json...
+        call npm install --no-audit --no-fund
+        if errorlevel 1 (
+            echo [Error] Failed to install frontend dependencies.
+            if "!NO_PAUSE!"=="0" pause
+            popd
+            exit /b 1
+        )
+    )
+)
+
 :: 5. Check for .env config
 if not exist ".env" (
     if exist ".env.example" (
