@@ -33,12 +33,14 @@ def test_pyinstaller_args_and_workpath():
 
 
 def test_main_success_and_failure(capsys):
-    with patch.object(build, "ensure_pyinstaller"), patch.object(build.subprocess, "call", return_value=0) as call, \
+    with patch.object(build, "ensure_pyinstaller"), patch.object(build, "build_frontend", return_value=True), \
+         patch.object(build.subprocess, "call", return_value=0) as call, \
          patch.object(build.os, "chdir"), patch.dict(build.os.environ, {}, clear=False):
         assert build.main() == 0
     assert call.call_args.args[0][1:3] == ["-m", "PyInstaller"]
     assert "Compilation complete" in capsys.readouterr().out
-    with patch.object(build, "ensure_pyinstaller"), patch.object(build.subprocess, "call", return_value=1), \
+    with patch.object(build, "ensure_pyinstaller"), patch.object(build, "build_frontend", return_value=True), \
+         patch.object(build.subprocess, "call", return_value=1), \
          patch.object(build.os, "chdir"):
         assert build.main() == 1
     assert "Compilation failed" in capsys.readouterr().err

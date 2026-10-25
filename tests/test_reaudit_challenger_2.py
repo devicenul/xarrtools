@@ -467,7 +467,7 @@ class TestJavaScriptHybridPresetHarness:
 
         script = f"""
         const fs = require('fs');
-        const code = fs.readFileSync('{app_js_path}', 'utf8');
+        const code = fs.readFileSync('{app_js_path}', 'utf8').split('\\n').filter(l => !l.startsWith('import ')).join('\\n');
 
         // Mock browser DOM & Storage environment
         const store = {{}};

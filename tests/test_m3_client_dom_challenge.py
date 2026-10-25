@@ -31,7 +31,7 @@ def run_node_harness(script_code: str) -> dict:
 
     wrapped_script = f"""
     const fs = require('fs');
-    const appJsCode = fs.readFileSync({json.dumps(str(APP_JS_PATH))}, 'utf8');
+    const appJsCode = fs.readFileSync({json.dumps(str(APP_JS_PATH))}, 'utf8').split('\\n').filter(l => !l.startsWith('import ')).join('\\n');
 
     class MockClassList {{
         constructor() {{ this.classes = new Set(); }}

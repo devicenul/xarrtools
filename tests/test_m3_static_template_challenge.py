@@ -366,7 +366,7 @@ def test_app_js_template_interpolation_node_ast():
     check_script = f"""
     const fs = require('fs');
     const vm = require('vm');
-    const code = fs.readFileSync({json.dumps(str(app_js_path))}, 'utf8');
+    let code = fs.readFileSync({json.dumps(str(app_js_path))}, 'utf8').split('\\n').filter(l => !l.startsWith('import ')).join('\\n');
     new vm.Script(code);
     """
     res = subprocess.run([node_bin, "-e", check_script], capture_output=True, text=True)

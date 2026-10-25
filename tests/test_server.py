@@ -2688,6 +2688,16 @@ def test_static_asset_serving_app_js(client):
     assert "renderMediaLists" in js_content
 
 
+def test_static_asset_serving_dist_filters_js(client):
+    """Verifies that GET /static/dist/filters.js returns compiled ES module."""
+    res = client.get("/static/dist/filters.js")
+    assert res.status_code == 200
+    assert "javascript" in res.content_type
+    content = res.data.decode("utf-8")
+    assert "export function itemPassesFilters" in content
+    assert "export function matchLocale" in content
+
+
 def test_index_html_live_render_structure(client):
     """Verifies that unmocked GET / renders index.html with all required filters and media grids."""
     res = client.get("/")

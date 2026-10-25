@@ -1,3 +1,6 @@
+import { matchLocale as moduleMatchLocale, matchFilter as moduleMatchFilter, itemPassesFilters as moduleItemPassesFilters, getFilteredUnarchived as moduleGetFilteredUnarchived } from '/static/dist/filters.js';
+import { archiveBatch as moduleArchiveBatch } from '/static/dist/api.js';
+
 // Global Application State
 let appConfig = null;
 let appSettings = null;
@@ -786,18 +789,42 @@ function renderMediaLists() {
     applyTabFilter();
 }
 
+function getFilterState() {
+    const searchInput = document.getElementById("search-bar");
+    const term = searchInput ? searchInput.value : (typeof searchBar !== "undefined" && searchBar ? searchBar.value : "");
+    const returningEl = document.getElementById("check-show-returning");
+    const libraryEl = document.getElementById("check-show-library");
+    const archivedEl = document.getElementById("check-show-archived");
+    return {
+        showReturning: returningEl ? returningEl.checked : false,
+        showLibrary: libraryEl ? libraryEl.checked : false,
+        showArchived: archivedEl ? archivedEl.checked : false,
+        searchTerm: term ? term.toLowerCase().trim() : "",
+        genres: typeof selectedGenres !== "undefined" ? selectedGenres : new Set(),
+        networks: typeof selectedNetworks !== "undefined" ? selectedNetworks : new Set(),
+        countries: typeof selectedCountries !== "undefined" ? selectedCountries : new Set(),
+        languages: typeof selectedLanguages !== "undefined" ? selectedLanguages : new Set()
+    };
+}
+
 // Every sidebar filter (toggles, search, genre, studio, country, language) in one place.
 function itemPassesFilters(item, type) {
-    const searchTerm = searchBar.value.toLowerCase().trim();
-    if (type === "tv" && !document.getElementById("check-show-returning").checked && item.is_returning) return false;
-    if (!document.getElementById("check-show-library").checked && item.is_in_library) return false;
-    if (!document.getElementById("check-show-archived").checked && item.is_archived) return false;
+    if (typeof moduleItemPassesFilters === "function") {
+        return moduleItemPassesFilters(item, type, getFilterState());
+    }
+    const searchTerm = (typeof searchBar !== "undefined" && searchBar ? searchBar.value : "").toLowerCase().trim();
+    const retEl = document.getElementById("check-show-returning");
+    if (type === "tv" && retEl && !retEl.checked && item.is_returning) return false;
+    const libEl = document.getElementById("check-show-library");
+    if (libEl && !libEl.checked && item.is_in_library) return false;
+    const archEl = document.getElementById("check-show-archived");
+    if (archEl && !archEl.checked && item.is_archived) return false;
     if (!matchLocale(item)) return false;
     if (!matchFilter(item, searchTerm)) return false;
-    if (selectedGenres.size > 0) {
+    if (typeof selectedGenres !== "undefined" && selectedGenres.size > 0) {
         if (!(item.genres && item.genres.some(g => selectedGenres.has(g)))) return false;
     }
-    if (selectedNetworks.size > 0) {
+    if (typeof selectedNetworks !== "undefined" && selectedNetworks.size > 0) {
         if (!item.network || !selectedNetworks.has(item.network)) return false;
     }
     return true;
@@ -805,13 +832,17 @@ function itemPassesFilters(item, type) {
 
 // Items the user currently sees (respecting the active tab) that are not archived yet.
 function getFilteredUnarchived() {
+    const activeTabEl = document.querySelector(".tab-btn.active");
+    const activeTab = activeTabEl ? activeTabEl.getAttribute("data-tab") : "all";
+    if (typeof moduleGetFilteredUnarchived === "function") {
+        return moduleGetFilteredUnarchived(currentDiscoveries, activeTab, getFilterState());
+    }
     const out = [];
-    const activeTab = document.querySelector(".tab-btn.active").getAttribute("data-tab");
     if (activeTab === "all" || activeTab === "tv") {
-        currentDiscoveries.tv.forEach(item => { if (!item.is_archived && itemPassesFilters(item, "tv")) out.push({ type: "tv", item }); });
+        (currentDiscoveries.tv || []).forEach(item => { if (!item.is_archived && itemPassesFilters(item, "tv")) out.push({ type: "tv", item }); });
     }
     if (activeTab === "all" || activeTab === "movies") {
-        currentDiscoveries.movies.forEach(item => { if (!item.is_archived && itemPassesFilters(item, "movie")) out.push({ type: "movie", item }); });
+        (currentDiscoveries.movies || []).forEach(item => { if (!item.is_archived && itemPassesFilters(item, "movie")) out.push({ type: "movie", item }); });
     }
     return out;
 }
@@ -824,15 +855,21 @@ async function archiveAllFiltered() {
     }
     if (!confirm(`Archive ${targets.length} filtered item${targets.length === 1 ? "" : "s"}?`)) return;
     try {
-        const response = await fetch("/api/archive/batch", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-                archive: true,
-                items: targets.map(t => ({ type: t.type, title: t.item.title, year: t.item.year, raw_item: t.item }))
-            })
-        });
-        const res = await response.json();
+        const batchItems = targets.map(t => ({ type: t.type, title: t.item.title, year: t.item.year, raw_item: t.item }));
+        let res;
+        if (typeof moduleArchiveBatch === "function") {
+            res = await moduleArchiveBatch(batchItems, true);
+        } else {
+            const response = await fetch("/api/archive/batch", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    archive: true,
+                    items: batchItems
+                })
+            });
+            res = await response.json();
+        }
         const failedTitles = new Set((res.failed || []).map(f => f.title));
         targets.forEach(t => {
             if (!failedTitles.has(t.item.title)) {
@@ -852,14 +889,17 @@ async function archiveAllFiltered() {
 }
 
 function matchFilter(item, term) {
+    if (typeof moduleMatchFilter === "function") {
+        return moduleMatchFilter(item, term);
+    }
     if (!term) return true;
     
-    const titleMatch = item.title.toLowerCase().includes(term);
+    const titleMatch = item.title && item.title.toLowerCase().includes(term);
     const networkMatch = item.network && item.network.toLowerCase().includes(term);
     const castMatch = item.cast && item.cast.toLowerCase().includes(term);
     const genreMatch = item.genres && item.genres.some(g => g.toLowerCase().includes(term));
     
-    return titleMatch || networkMatch || castMatch || genreMatch;
+    return Boolean(titleMatch || networkMatch || castMatch || genreMatch);
 }
 
 function buildRatingBadgesHtml(item) {
@@ -2843,8 +2883,11 @@ function countryName(code) {
 }
 
 function matchLocale(item) {
-    if (selectedCountries.size > 0 && !selectedCountries.has(item.country || "")) return false;
-    if (selectedLanguages.size > 0 && !selectedLanguages.has(item.language || "")) return false;
+    if (typeof moduleMatchLocale === "function") {
+        return moduleMatchLocale(item, typeof selectedCountries !== "undefined" ? selectedCountries : new Set(), typeof selectedLanguages !== "undefined" ? selectedLanguages : new Set());
+    }
+    if (typeof selectedCountries !== "undefined" && selectedCountries.size > 0 && !selectedCountries.has(item.country || "")) return false;
+    if (typeof selectedLanguages !== "undefined" && selectedLanguages.size > 0 && !selectedLanguages.has(item.language || "")) return false;
     return true;
 }
 

@@ -60,9 +60,26 @@ async function fetch(url, opts) { fetchCalls.push([url, JSON.parse(opts.body)]);
 """
 
 
+DIST_FILTERS = Path(__file__).resolve().parent.parent / "web" / "static" / "dist" / "filters.js"
+
+
 def run_js(body):
     code = PRELUDE + "\n" + "\n".join(_slice_function(n) for n in FUNCTIONS) + "\n(async () => {\n" + body + "\n})();"
     out = subprocess.run(["node", "-e", code], capture_output=True, text=True, timeout=30)
+    assert out.returncode == 0, out.stderr
+    return json.loads(out.stdout.strip().splitlines()[-1])
+
+
+def run_module_js(body):
+    if not DIST_FILTERS.is_file():
+        pytest.skip("web/static/dist/filters.js not found; run 'npm run build' first")
+    code = f"""
+import {{ matchLocale, matchFilter, itemPassesFilters, getFilteredUnarchived }} from {json.dumps(DIST_FILTERS.as_uri())};
+(async () => {{
+{body}
+}})();
+"""
+    out = subprocess.run(["node", "--input-type=module", "-e", code], capture_output=True, text=True, timeout=30)
     assert out.returncode == 0, out.stderr
     return json.loads(out.stdout.strip().splitlines()[-1])
 
@@ -106,10 +123,11 @@ def test_invert_uses_custom_updater_for_genres():
 
 
 def test_locale_filters_are_multi_select_and_combine():
-    res = run_js("""
+    res = run_module_js("""
       const items = [{title: "A", country: "US", language: "English"}, {title: "B", country: "KR", language: "Korean"},
                      {title: "C", country: "", language: "Korean"}, {title: "D", country: "JP", language: "Japanese"}];
-      const names = () => items.filter(i => matchLocale(i)).map(i => i.title).join("");
+      let selectedCountries = new Set(), selectedLanguages = new Set();
+      const names = () => items.filter(i => matchLocale(i, selectedCountries, selectedLanguages)).map(i => i.title).join("");
       const out = {none: names()};
       selectedCountries = new Set(["US", "KR"]); out.countries = names();
       selectedLanguages = new Set(["Korean"]); out.both = names();
@@ -128,26 +146,61 @@ def test_locale_badge_escapes_and_handles_empty():
 
 
 def test_filtered_unarchived_respects_filters_and_tab():
-    res = run_js("""
-      currentDiscoveries.tv = [
-        {title: "TV1", year: 1, country: "US", is_archived: false, is_returning: false},
-        {title: "TV2", year: 1, country: "KR", is_archived: false},
-        {title: "TVarch", year: 1, country: "US", is_archived: true},
-        {title: "TVret", year: 1, country: "US", is_archived: false, is_returning: true},
-        {title: "TVlib", year: 1, country: "US", is_archived: false, is_in_library: true}];
-      currentDiscoveries.movies = [
-        {title: "M1", year: 1, country: "US", is_archived: false}, {title: "M2", year: 1, country: "KR", is_archived: false}];
-      const names = () => getFilteredUnarchived().map(t => t.type + ":" + t.item.title);
+    res = run_module_js("""
+      const currentDiscoveries = {
+        tv: [
+          {title: "TV1", year: 1, country: "US", is_archived: false, is_returning: false},
+          {title: "TV2", year: 1, country: "KR", is_archived: false},
+          {title: "TVarch", year: 1, country: "US", is_archived: true},
+          {title: "TVret", year: 1, country: "US", is_archived: false, is_returning: true},
+          {title: "TVlib", year: 1, country: "US", is_archived: false, is_in_library: true}
+        ],
+        movies: [
+          {title: "M1", year: 1, country: "US", is_archived: false},
+          {title: "M2", year: 1, country: "KR", is_archived: false}
+        ]
+      };
+      let selectedCountries = new Set();
+      let activeTabName = "all";
+      let searchTerm = "";
+      const getState = () => ({
+        showReturning: false, showLibrary: false, showArchived: false,
+        searchTerm, countries: selectedCountries,
+        genres: new Set(), networks: new Set(), languages: new Set()
+      });
+      const names = () => getFilteredUnarchived(currentDiscoveries, activeTabName, getState()).map(t => t.type + ":" + t.item.title);
       const out = {all: names()};
       selectedCountries = new Set(["US"]); out.us = names();
       activeTabName = "movies"; out.moviesTab = names();
-      activeTabName = "tv"; searchBar.value = "tv1"; out.search = names();
+      activeTabName = "tv"; searchTerm = "tv1"; out.search = names();
       console.log(JSON.stringify(out));
     """)
     assert res["all"] == ["tv:TV1", "tv:TV2", "movie:M1", "movie:M2"]   # archived/returning/library hidden
     assert res["us"] == ["tv:TV1", "movie:M1"]
     assert res["moviesTab"] == ["movie:M1"]
     assert res["search"] == ["tv:TV1"]   # search narrows the TV tab (US filter still applies)
+
+
+def test_item_passes_filters_compiled_module():
+    res = run_module_js("""
+      const itemTv = {title: "Show", year: 2026, country: "US", language: "English", is_archived: false, is_returning: true, is_in_library: false};
+      const itemLib = {title: "InLib", year: 2026, is_archived: false, is_returning: false, is_in_library: true};
+      const itemArch = {title: "Arch", year: 2026, is_archived: true, is_returning: false, is_in_library: false};
+      const out = {
+        retHidden: itemPassesFilters(itemTv, "tv", {showReturning: false}),
+        retShown: itemPassesFilters(itemTv, "tv", {showReturning: true}),
+        libHidden: itemPassesFilters(itemLib, "tv", {showLibrary: false}),
+        libShown: itemPassesFilters(itemLib, "tv", {showLibrary: true}),
+        archHidden: itemPassesFilters(itemArch, "tv", {showArchived: false}),
+        archShown: itemPassesFilters(itemArch, "tv", {showArchived: true}),
+      };
+      console.log(JSON.stringify(out));
+    """)
+    assert res == {
+        "retHidden": False, "retShown": True,
+        "libHidden": False, "libShown": True,
+        "archHidden": False, "archShown": True
+    }
 
 
 def test_archive_all_filtered_posts_batch_and_updates_items():

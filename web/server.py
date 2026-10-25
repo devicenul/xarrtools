@@ -3,7 +3,7 @@ import sys
 import json
 import threading
 from pathlib import Path
-from flask import Flask, jsonify, request, render_template
+from flask import Flask, jsonify, request, render_template, send_from_directory
 from datetime import datetime, timedelta
 
 from core.config import config
@@ -35,6 +35,11 @@ clean_expired_cache()
 
 # Resolve template directory path inside the package folder
 templates_dir = Path(__file__).resolve().parent / "templates"
+dist_dir = Path(__file__).resolve().parent / "static" / "dist"
+
+def is_dist_built() -> bool:
+    """Checks whether compiled frontend modules exist in web/static/dist."""
+    return dist_dir.is_dir() and any(dist_dir.glob("*.js"))
 
 app = Flask(
     __name__,
@@ -42,6 +47,14 @@ app = Flask(
     static_folder=str(templates_dir),
     static_url_path="/static"
 )
+
+@app.route("/static/dist/<path:filename>")
+def serve_dist(filename):
+    """Serves compiled frontend TypeScript/ES modules."""
+    if not is_dist_built():
+        print(f"[xarrtools] WARNING: Frontend dist directory not found at {dist_dir}. Run 'npm run build'.", file=sys.stderr)
+        return jsonify({"status": "error", "message": "Frontend assets in /static/dist/ have not been built. Run 'npm run build'."}), 404
+    return send_from_directory(dist_dir, filename)
 
 # Thread-safe global scan progress
 scan_progress = {
@@ -119,7 +132,10 @@ def index():
         server_api_key = secrets.token_hex(16)
         set_setting("api_key", server_api_key)
         config.refresh()
-    return render_template("index.html", api_key=server_api_key)
+    dist_built = is_dist_built()
+    if not dist_built:
+        print("[xarrtools] WARNING: Frontend dist directory is missing or unbuilt. Run 'npm install && npm run build'.", file=sys.stderr)
+    return render_template("index.html", api_key=server_api_key, dist_built=dist_built)
 
 def sync_library_cache():
     try:

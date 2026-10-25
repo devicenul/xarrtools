@@ -17,6 +17,14 @@
     <meta name="x-api-key" content="{{ api_key }}">
 </head>
 <body>
+    {% if not dist_built %}
+    <div id="dist-missing-banner" style="background:#dc3545; color:#ffffff; padding:12px 16px; text-align:center; font-family:sans-serif; font-size:14px; font-weight:600; z-index:999999; border-bottom:2px solid #b02a37;">
+        ⚠️ Frontend TypeScript modules have not been built. Please run <code>npm install && npm run build</code> in the project directory.
+    </div>
+    <script>
+        console.error("[xarrtools] Frontend TypeScript modules (/static/dist/) are not built. Please run 'npm install && npm run build'.");
+    </script>
+    {% endif %}
     <div class="app-container">
         <!-- Sidebar / Header -->
         <header class="app-header">
@@ -620,6 +628,6 @@
     </div>
 
     <!-- Script Entry -->
-    <script src="/static/app.js"></script>
+    <script type="module" src="/static/app.js"></script>
 </body>
 </html>

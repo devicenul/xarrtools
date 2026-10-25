@@ -71,17 +71,20 @@ Convention: `language` = English name (`"Korean"`), `country` = ISO 3166 alpha-2
 (`language`, network/webChannel country), TMDB (`original_language`; country from `/movie/{id}` details only),
 filled at enrichment time for Metacritic items. Filtering is a multi-select in the sidebar.
 
-## Frontend (`web/templates/app.js`)
+## Frontend (`web/templates/app.js`, `web/static/src/`)
 
-Plain JS single page. State: `currentDiscoveries {tv, movies}` and sets `selectedGenres/Networks/Countries/
+Modular frontend architecture. Pure filter logic and API calls reside in TypeScript modules
+under `web/static/src/` (`web/static/src/types.ts`, `web/static/src/filters.ts`, `web/static/src/api.ts`)
+compiled via `tsc` to ES2020 native modules in web/static/dist (git-ignored, served at `/static/dist/*.js`).
+Single-page application state: `currentDiscoveries {tv, movies}` and sets `selectedGenres/Networks/Countries/
 Languages`. `itemPassesFilters(item, type)` is the single predicate used by `renderMediaLists` and by
 "Archive all filtered" (`getFilteredUnarchived` -> `POST /api/archive/batch`). Multi-selects share markup
 (`btn-/content-/options-/clear-/invert-<name>-filter` ids, where `<name>` is `genres`, `networks`, `country`,
-`language`). `tests/test_frontend_filters.py` runs these functions
-under Node with a DOM stub; `tests/test_m3_static_template_challenge.py` checks HTML/JS id parity.
-Build tooling for the TypeScript migration is defined in `package.json` and `tsconfig.json`. When
-sources exist under `web/static/src`, the build step compiles to output web/static/dist (git-ignored,
-nothing compiled yet; runtime currently serves directly from `web/templates/app.js`).
+`language`). `web/templates/app.js` runs as an ES module (`<script type="module" src="/static/app.js">`) and imports
+pure predicates from `/static/dist/filters.js` while maintaining thin DOM-reading wrapper functions.
+`tests/test_frontend_filters.py` directly exercises compiled filters under Node as well as `app.js` wrappers;
+`tests/test_m3_static_template_challenge.py` checks HTML/JS id parity.
+Build tooling for the TypeScript migration is defined in `package.json` and `tsconfig.json`.
 
 ## Tests
 

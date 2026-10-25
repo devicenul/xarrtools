@@ -71,9 +71,23 @@ def build_frontend(root: Optional[Path] = None) -> bool:
     node_modules = base / "node_modules"
     if not node_modules.is_dir():
         print("Installing frontend dependencies (npm install)...")
-        if subprocess.call([npm, "install", "--no-audit", "--no-fund"], cwd=str(base)) != 0:
+        res = subprocess.call([npm, "install", "--no-audit", "--no-fund"], cwd=str(base))
+        if res != 0:
+            res = subprocess.call([npm, "install", "--no-audit", "--no-fund", "--no-bin-links"], cwd=str(base))
+        if res != 0:
             print("[Error] npm install failed.", file=sys.stderr)
             return False
+
+    bin_dir = node_modules / ".bin"
+    tsc_bin = bin_dir / "tsc"
+    tsc_src = node_modules / "typescript" / "bin" / "tsc"
+    if tsc_src.is_file() and not tsc_bin.exists():
+        bin_dir.mkdir(parents=True, exist_ok=True)
+        tsc_bin.write_text('#!/bin/sh\nexec node "$(dirname "$0")/../typescript/bin/tsc" "$@"\n', encoding="utf-8")
+        try:
+            tsc_bin.chmod(0o755)
+        except OSError:
+            pass
 
     print("Building frontend (npm run build)...")
     if subprocess.call([npm, "run", "build"], cwd=str(base)) != 0:

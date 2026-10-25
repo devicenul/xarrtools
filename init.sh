@@ -161,9 +161,14 @@ if [ "$SKIP_DEPS" -eq 0 ] && [ -f "$SCRIPT_DIR/package.json" ]; then
     fi
     log_init "[Init] Installing frontend dependencies from package.json..."
     if [ -n "$PROJECT_CACHE_DIR" ]; then
-        npm_config_cache="$PROJECT_CACHE_DIR/npm" npm install --no-audit --no-fund
+        npm_config_cache="$PROJECT_CACHE_DIR/npm" npm install --no-audit --no-fund 2>/dev/null || npm_config_cache="$PROJECT_CACHE_DIR/npm" npm install --no-audit --no-fund --no-bin-links
     else
-        npm install --no-audit --no-fund
+        npm install --no-audit --no-fund 2>/dev/null || npm install --no-audit --no-fund --no-bin-links
+    fi
+    if [ -f "$SCRIPT_DIR/node_modules/typescript/bin/tsc" ] && [ ! -e "$SCRIPT_DIR/node_modules/.bin/tsc" ]; then
+        mkdir -p "$SCRIPT_DIR/node_modules/.bin"
+        printf '#!/bin/sh\nexec node "$(dirname "$0")/../typescript/bin/tsc" "$@"\n' > "$SCRIPT_DIR/node_modules/.bin/tsc"
+        chmod +x "$SCRIPT_DIR/node_modules/.bin/tsc" 2>/dev/null || true
     fi
 fi
 

@@ -204,7 +204,7 @@ class TestChallenge2EmptyOptionsLists:
         
         js_code = f"""
         const fs = require('fs');
-        let code = fs.readFileSync('{app_js_path}', 'utf8');
+        let code = fs.readFileSync('{app_js_path}', 'utf8').split('\\n').filter(l => !l.startsWith('import ')).join('\\n');
 
         // Mock window, localStorage, and DOM environment
         const localStorageStore = {{}};
