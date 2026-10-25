@@ -18,6 +18,8 @@ import subprocess
 from pathlib import Path
 import pytest
 
+from tests.frontend_harness import check_node_and_dist, get_module_injection_code
+
 APP_JS_PATH = Path(__file__).resolve().parent.parent / "web" / "templates" / "app.js"
 STYLE_CSS_PATH = Path(__file__).resolve().parent.parent / "web" / "templates" / "style.css"
 INDEX_HTML_PATH = Path(__file__).resolve().parent.parent / "web" / "templates" / "index.html"
@@ -25,11 +27,13 @@ INDEX_HTML_PATH = Path(__file__).resolve().parent.parent / "web" / "templates" /
 
 def run_node_harness(script_code: str) -> dict:
     """Executes a JavaScript test snippet in Node.js within the app.js closure scope."""
+    check_node_and_dist()
     node_bin = shutil.which("node")
-    if not node_bin:
-        pytest.skip("Node.js is not installed in the environment.")
 
     wrapped_script = f"""
+    (async () => {{
+    {get_module_injection_code()}
+
     const fs = require('fs');
     const appJsCode = fs.readFileSync({json.dumps(str(APP_JS_PATH))}, 'utf8').split('\\n').filter(l => !l.startsWith('import ')).join('\\n');
 
@@ -185,11 +189,15 @@ def run_node_harness(script_code: str) -> dict:
     // Combine appJsCode with runner inside same eval scope so let/const declarations are shared
     const combinedScript = appJsCode + "\\n;\\n(async () => {{\\n" + {json.dumps(script_code)} + "\\n}})();";
 
-    eval(combinedScript);
+    await eval(combinedScript);
+    }})().catch(err => {{
+        console.error(err);
+        process.exit(1);
+    }});
     """
 
     res = subprocess.run(
-        [node_bin, "-e", wrapped_script],
+        [node_bin, "--no-warnings", "-e", wrapped_script],
         capture_output=True,
         text=True,
         timeout=15

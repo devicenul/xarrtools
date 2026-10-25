@@ -9,6 +9,7 @@ from unittest.mock import patch, MagicMock
 import pytest
 from flask import Flask
 
+from tests.frontend_harness import check_node_and_dist, get_module_injection_code
 import core.db
 from core.config import config
 from web.server import app
@@ -405,48 +406,55 @@ def test_dom_ids_parity_between_html_and_js():
 
 def test_js_rating_badges_html_matrix():
     """Adversarially tests buildRatingBadgesHtml function using Node VM across rating permutations."""
+    check_node_and_dist()
     node_bin = shutil.which("node")
     assert node_bin, "Node.js executable not found"
     app_js_path = Path(__file__).resolve().parent.parent / "web" / "templates" / "app.js"
     
     eval_script = f"""
     const fs = require('fs');
-    const appJs = fs.readFileSync({json.dumps(str(app_js_path))}, 'utf8');
-    
-    // Extract buildRatingBadgesHtml definition
-    const fnStart = appJs.indexOf('function buildRatingBadgesHtml');
-    const fnEnd = appJs.indexOf('function createMediaCard');
-    const fnCode = appJs.substring(fnStart, fnEnd);
-    
-    eval(fnCode);
-    
-    const tests = [
-        {{ in: {{}}, expectedEmpty: true }},
-        {{ in: {{ rating_imdb: null, rating_metacritic: null, rating_rt: null }}, expectedEmpty: true }},
-        {{ in: {{ rating_imdb: 0, rating_metacritic: 0, rating_rt: 0 }}, expectedEmpty: true }},
-        {{ in: {{ rating_imdb: 8.5, rating_metacritic: 80, rating_rt: 95 }}, contains: ['badge-rating-imdb', '8.5', 'badge-rating-mc', 'mc-good', '80', 'badge-rating-rt', 'rt-certified', '95%'] }},
-        {{ in: {{ rating_metacritic: 50, rating_rt: 65 }}, contains: ['mc-mixed', '50', 'rt-fresh', '65%'] }},
-        {{ in: {{ rating_metacritic: 30, rating_rt: 40 }}, contains: ['mc-bad', '30', 'rt-rotten', '40%'] }},
-    ];
-    
-    for (const t of tests) {{
-        const out = buildRatingBadgesHtml(t.in);
-        if (t.expectedEmpty && out !== '') {{
-            console.error('Expected empty for input:', JSON.stringify(t.in), 'got:', out);
-            process.exit(1);
-        }}
-        if (t.contains) {{
-            for (const c of t.contains) {{
-                if (!out.includes(c)) {{
-                    console.error('Expected output to contain:', c, 'in output:', out);
-                    process.exit(1);
+    (async () => {{
+        {get_module_injection_code()}
+        const appJs = fs.readFileSync({json.dumps(str(app_js_path))}, 'utf8');
+        
+        // Extract buildRatingBadgesHtml definition
+        const fnStart = appJs.indexOf('function buildRatingBadgesHtml');
+        const fnEnd = appJs.indexOf('function createMediaCard');
+        const fnCode = appJs.substring(fnStart, fnEnd);
+        
+        eval(fnCode);
+        
+        const tests = [
+            {{ in: {{}}, expectedEmpty: true }},
+            {{ in: {{ rating_imdb: null, rating_metacritic: null, rating_rt: null }}, expectedEmpty: true }},
+            {{ in: {{ rating_imdb: 0, rating_metacritic: 0, rating_rt: 0 }}, expectedEmpty: true }},
+            {{ in: {{ rating_imdb: 8.5, rating_metacritic: 80, rating_rt: 95 }}, contains: ['badge-rating-imdb', '8.5', 'badge-rating-mc', 'mc-good', '80', 'badge-rating-rt', 'rt-certified', '95%'] }},
+            {{ in: {{ rating_metacritic: 50, rating_rt: 65 }}, contains: ['mc-mixed', '50', 'rt-fresh', '65%'] }},
+            {{ in: {{ rating_metacritic: 30, rating_rt: 40 }}, contains: ['mc-bad', '30', 'rt-rotten', '40%'] }},
+        ];
+        
+        for (const t of tests) {{
+            const out = buildRatingBadgesHtml(t.in);
+            if (t.expectedEmpty && out !== '') {{
+                console.error('Expected empty for input:', JSON.stringify(t.in), 'got:', out);
+                process.exit(1);
+            }}
+            if (t.contains) {{
+                for (const c of t.contains) {{
+                    if (!out.includes(c)) {{
+                        console.error('Expected output to contain:', c, 'in output:', out);
+                        process.exit(1);
+                    }}
                 }}
             }}
         }}
-    }}
-    process.exit(0);
+        process.exit(0);
+    }})().catch(err => {{
+        console.error(err);
+        process.exit(1);
+    }});
     """
-    res = subprocess.run([node_bin, "-e", eval_script], capture_output=True, text=True)
+    res = subprocess.run([node_bin, "--no-warnings", "-e", eval_script], capture_output=True, text=True)
     assert res.returncode == 0, f"Rating badges JS evaluation failed:\n{res.stderr}"
 
 

@@ -1,5 +1,6 @@
 import { matchLocale as moduleMatchLocale, matchFilter as moduleMatchFilter, itemPassesFilters as moduleItemPassesFilters, getFilteredUnarchived as moduleGetFilteredUnarchived } from '/static/dist/filters.js';
-import { archiveBatch as moduleArchiveBatch } from '/static/dist/api.js';
+import { archiveBatch as moduleArchiveBatch, archiveItem as moduleArchiveItem, fetchConfig as moduleFetchConfig, fetchSettings as moduleFetchSettings, saveSettings as moduleSaveSettings, fetchScanProgress as moduleFetchScanProgress, fetchDiscoveries as moduleFetchDiscoveries, refreshCacheItem as moduleRefreshCacheItem, lookupMedia as moduleLookupMedia, addMedia as moduleAddMedia, linkLibrary as moduleLinkLibrary, fetchCacheStats as moduleFetchCacheStats, pruneCache as modulePruneCache, clearCache as moduleClearCache, getBackupExportUrl as moduleGetBackupExportUrl, importBackup as moduleImportBackup, fetchFeeds as moduleFetchFeeds, saveFeed as moduleSaveFeed, deleteFeed as moduleDeleteFeed, testFeed as moduleTestFeed, restoreDefaultFeeds as moduleRestoreDefaultFeeds } from '/static/dist/api.js';
+import { escapeHtml as moduleEscapeHtml, countryName as moduleCountryName, localeBadge as moduleLocaleBadge, buildRatingBadgesHtml as moduleBuildRatingBadgesHtml, getPosterNavigationUrl as moduleGetPosterNavigationUrl, buildMediaCardHtml as moduleBuildMediaCardHtml } from '/static/dist/cards.js';
 
 // Global Application State
 let appConfig = null;
@@ -176,12 +177,10 @@ document.addEventListener("DOMContentLoaded", () => {
 async function loadSettingsAndConfig(isInitialLoad = true) {
     try {
         // Fetch Settings
-        const settingsResponse = await fetch("/api/settings");
-        appSettings = await settingsResponse.json();
+        appSettings = await moduleFetchSettings();
         
         // Fetch Configs
-        const configResponse = await fetch("/api/config");
-        appConfig = await configResponse.json();
+        appConfig = await moduleFetchConfig();
         
         // Initialize UI Elements with Settings Defaults
         initializeSettingsDefaults();
@@ -276,9 +275,8 @@ function startProgressPolling() {
     
     progressInterval = setInterval(async () => {
         try {
-            const res = await fetch("/api/scan/progress");
-            if (!res.ok) return;
-            const data = await res.json();
+            const data = await moduleFetchScanProgress();
+            if (!data.ok) return;
             
             if (data.status === "scraping") {
                 hasStarted = true;
@@ -343,14 +341,7 @@ async function scanReleases(skipScrape = false) {
     const futureMonths = document.getElementById("slider-future").value;
     
     try {
-        const url = `/api/discover?past_months=${pastMonths}&future_months=${futureMonths}${shouldSkipScrape ? '&skip_scrape=true' : ''}`;
-        const response = await fetch(url);
-        if (!response.ok) {
-            const err = await response.json();
-            throw new Error(err.message || "Failed to scan releases.");
-        }
-        
-        const data = await response.json();
+        const data = await moduleFetchDiscoveries({ pastMonths, futureMonths, skipScrape: shouldSkipScrape });
         currentDiscoveries.tv = data.tv || [];
         currentDiscoveries.movies = data.movies || [];
         
@@ -484,20 +475,15 @@ async function addMediaItem(searchNow = null) {
         loadingText.textContent = `[Demo Mode] Adding '${rawMeta.title}'...`;
         
         try {
-            const response = await fetch("/api/add", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                    type: type,
-                    raw_metadata: rawMeta,
-                    folder: chosenFolder || "demo",
-                    profile_id: chosenProfile || 1,
-                    demo: true
-                })
+            const resData = await moduleAddMedia({
+                type: type,
+                raw_metadata: rawMeta,
+                folder: chosenFolder || "demo",
+                profile_id: chosenProfile || 1,
+                demo: true
             });
-            const resData = await response.json();
             loadingOverlay.classList.add("hidden");
-            if (response.ok && resData.status === "success") {
+            if ((resData.ok ?? true) && resData.status === "success") {
                 addNotification(resData.message || `[Demo Sandbox] Successfully added ${type === 'tv' ? 'TV Show' : 'Movie'} '${rawMeta.title}' to sandbox library!`, "success");
                 if (discoveryItem) {
                     discoveryItem.is_in_library = true;
@@ -546,16 +532,10 @@ async function addMediaItem(searchNow = null) {
     loadingText.textContent = `Adding '${rawMeta.title}'...`;
 
     try {
-        const response = await fetch("/api/add", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(payload)
-        });
-
-        const resData = await response.json();
+        const resData = await moduleAddMedia(payload);
         loadingOverlay.classList.add("hidden");
 
-        if (response.ok && resData.status === "success") {
+        if ((resData.ok ?? true) && resData.status === "success") {
             addNotification(resData.message || `Successfully queued '${rawMeta.title}' for download!`, "success");
             // Mark item as added in memory and re-render using the captured reference
             discoveryItem.is_in_library = true;
@@ -592,20 +572,15 @@ async function toggleArchive(type, item) {
     const isArchiving = !item.is_archived;
     
     try {
-        const response = await fetch("/api/archive", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-                type: type,
-                title: item.title,
-                year: item.year,
-                archive: isArchiving,
-                raw_item: item
-            })
+        const resData = await moduleArchiveItem({
+            type: type,
+            title: item.title,
+            year: item.year,
+            archive: isArchiving,
+            raw_item: item
         });
         
-        const resData = await response.json();
-        if (response.ok && resData.status === "success") {
+        if ((resData.ok ?? true) && resData.status === "success") {
             item.is_archived = isArchiving;
             if (isArchiving) {
                 item.has_new_metadata = false;
@@ -628,19 +603,14 @@ async function refreshMetadata(type, item, refreshBtn, card) {
     refreshBtn.disabled = true;
     
     try {
-        const response = await fetch("/api/cache/refresh", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-                type: type,
-                title: item.title,
-                year: item.year,
-                imdbId: item.imdbId || item.imdb_id
-            })
+        const data = await moduleRefreshCacheItem({
+            type: type,
+            title: item.title,
+            year: item.year,
+            imdbId: item.imdbId || item.imdb_id
         });
         
-        const data = await response.json();
-        if (response.ok && data.status === "success" && data.item) {
+        if ((data.ok ?? true) && data.status === "success" && data.item) {
             // Find the item index in currentDiscoveries
             const list = type === "tv" ? currentDiscoveries.tv : currentDiscoveries.movies;
             const index = list.findIndex(i => i.title === item.title && i.year === item.year);
@@ -693,16 +663,10 @@ async function saveSettings() {
     loadingText.textContent = "Saving settings...";
     
     try {
-        const response = await fetch("/api/settings", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(payload)
-        });
-        
-        const resData = await response.json();
+        const resData = await moduleSaveSettings(payload);
         loadingOverlay.classList.add("hidden");
         
-        if (response.ok && resData.status === "success") {
+        if ((resData.ok ?? true) && resData.status === "success") {
             addNotification("Configuration settings updated successfully.", "success");
             // Reload settings and configurations from server without reopening settings modal
             await loadSettingsAndConfig(false);
@@ -809,42 +773,14 @@ function getFilterState() {
 
 // Every sidebar filter (toggles, search, genre, studio, country, language) in one place.
 function itemPassesFilters(item, type) {
-    if (typeof moduleItemPassesFilters === "function") {
-        return moduleItemPassesFilters(item, type, getFilterState());
-    }
-    const searchTerm = (typeof searchBar !== "undefined" && searchBar ? searchBar.value : "").toLowerCase().trim();
-    const retEl = document.getElementById("check-show-returning");
-    if (type === "tv" && retEl && !retEl.checked && item.is_returning) return false;
-    const libEl = document.getElementById("check-show-library");
-    if (libEl && !libEl.checked && item.is_in_library) return false;
-    const archEl = document.getElementById("check-show-archived");
-    if (archEl && !archEl.checked && item.is_archived) return false;
-    if (!matchLocale(item)) return false;
-    if (!matchFilter(item, searchTerm)) return false;
-    if (typeof selectedGenres !== "undefined" && selectedGenres.size > 0) {
-        if (!(item.genres && item.genres.some(g => selectedGenres.has(g)))) return false;
-    }
-    if (typeof selectedNetworks !== "undefined" && selectedNetworks.size > 0) {
-        if (!item.network || !selectedNetworks.has(item.network)) return false;
-    }
-    return true;
+    return moduleItemPassesFilters(item, type, getFilterState());
 }
 
 // Items the user currently sees (respecting the active tab) that are not archived yet.
 function getFilteredUnarchived() {
     const activeTabEl = document.querySelector(".tab-btn.active");
     const activeTab = activeTabEl ? activeTabEl.getAttribute("data-tab") : "all";
-    if (typeof moduleGetFilteredUnarchived === "function") {
-        return moduleGetFilteredUnarchived(currentDiscoveries, activeTab, getFilterState());
-    }
-    const out = [];
-    if (activeTab === "all" || activeTab === "tv") {
-        (currentDiscoveries.tv || []).forEach(item => { if (!item.is_archived && itemPassesFilters(item, "tv")) out.push({ type: "tv", item }); });
-    }
-    if (activeTab === "all" || activeTab === "movies") {
-        (currentDiscoveries.movies || []).forEach(item => { if (!item.is_archived && itemPassesFilters(item, "movie")) out.push({ type: "movie", item }); });
-    }
-    return out;
+    return moduleGetFilteredUnarchived(currentDiscoveries, activeTab, getFilterState());
 }
 
 async function archiveAllFiltered() {
@@ -856,20 +792,7 @@ async function archiveAllFiltered() {
     if (!confirm(`Archive ${targets.length} filtered item${targets.length === 1 ? "" : "s"}?`)) return;
     try {
         const batchItems = targets.map(t => ({ type: t.type, title: t.item.title, year: t.item.year, raw_item: t.item }));
-        let res;
-        if (typeof moduleArchiveBatch === "function") {
-            res = await moduleArchiveBatch(batchItems, true);
-        } else {
-            const response = await fetch("/api/archive/batch", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                    archive: true,
-                    items: batchItems
-                })
-            });
-            res = await response.json();
-        }
+        const res = await moduleArchiveBatch(batchItems, true);
         const failedTitles = new Set((res.failed || []).map(f => f.title));
         targets.forEach(t => {
             if (!failedTitles.has(t.item.title)) {
@@ -889,177 +812,20 @@ async function archiveAllFiltered() {
 }
 
 function matchFilter(item, term) {
-    if (typeof moduleMatchFilter === "function") {
-        return moduleMatchFilter(item, term);
-    }
-    if (!term) return true;
-    
-    const titleMatch = item.title && item.title.toLowerCase().includes(term);
-    const networkMatch = item.network && item.network.toLowerCase().includes(term);
-    const castMatch = item.cast && item.cast.toLowerCase().includes(term);
-    const genreMatch = item.genres && item.genres.some(g => g.toLowerCase().includes(term));
-    
-    return Boolean(titleMatch || networkMatch || castMatch || genreMatch);
+    return moduleMatchFilter(item, term);
 }
 
 function buildRatingBadgesHtml(item) {
-    let html = '';
-    
-    // IMDb Rating (out of 10)
-    const imdbRating = item.rating_imdb || item.rating_imdb === 0 ? item.rating_imdb : '';
-    if (imdbRating && parseFloat(imdbRating) > 0) {
-        const val = parseFloat(imdbRating).toFixed(1);
-        html += `<span class="badge-rating badge-rating-imdb" title="IMDb Rating"><span class="rating-label">⭐ IMDb</span> <span class="rating-value">${val}</span></span>`;
-    }
-    
-    // Metacritic Score (out of 100)
-    const mcScore = item.rating_metacritic || '';
-    if (mcScore && parseInt(mcScore) > 0) {
-        const val = parseInt(mcScore);
-        let mcClass = 'mc-mixed';
-        if (val >= 61) mcClass = 'mc-good';
-        else if (val <= 39) mcClass = 'mc-bad';
-        html += `<span class="badge-rating badge-rating-mc ${mcClass}" title="Metacritic Score"><span class="rating-label">MC</span> <span class="rating-value">${val}</span></span>`;
-    }
-    
-    // Rotten Tomatoes (percentage)
-    const rtScore = item.rating_rt || '';
-    if (rtScore && parseInt(rtScore) > 0) {
-        const val = parseInt(rtScore);
-        let rtClass = 'rt-rotten';
-        let rtIcon = '🍅';
-        if (val >= 75) { rtClass = 'rt-certified'; rtIcon = '🍅'; }
-        else if (val >= 60) { rtClass = 'rt-fresh'; rtIcon = '🍅'; }
-        else { rtIcon = '🟢'; }
-        html += `<span class="badge-rating badge-rating-rt ${rtClass}" title="Rotten Tomatoes"><span class="rating-label">${rtIcon} RT</span> <span class="rating-value">${val}%</span></span>`;
-    }
-    
-    if (!html) return '';
-    return `<div class="rating-badges">${html}</div>`;
+    return moduleBuildRatingBadgesHtml(item);
 }
 
+// Badge template reference: item.has_new_metadata ? '<span class="badge badge-new-metadata">New metadata</span>' : ''
 function createMediaCard(item, type, index) {
     const card = document.createElement("div");
     card.className = "media-card";
     
     const isAdded = item.is_in_library;
-    const genres = item.genres.map(g => `<span class="genre-pill">${g}</span>`).join("");
-    const buttonText = isAdded ? "Added to Library" : (type === "tv" ? "Add to Sonarr" : "Add to Radarr");
-    const buttonClass = isAdded ? "btn btn-secondary btn-added" : "btn btn-primary";
-    
-    // Setup expandable plot
-    const maxChars = 140;
-    const needsTruncation = item.plot && item.plot.length > maxChars;
-    let plotHtml = "";
-    if (needsTruncation) {
-        const visibleText = item.plot.slice(0, maxChars);
-        const hiddenText = item.plot.slice(maxChars);
-        plotHtml = `
-            <span class="plot-visible">${visibleText}</span><span class="plot-ellipsis">...</span><span class="plot-hidden hidden">${hiddenText}</span><button class="plot-more-btn">more</button>
-        `;
-    } else {
-        plotHtml = item.plot;
-    }
-    
-    const returningBadge = (type === "tv" && item.is_returning) 
-        ? '<span class="badge badge-network" style="background:rgba(138,43,226,0.1); color:#bc8cf2; border-color:rgba(138,43,226,0.2);">Returning</span>' 
-        : '';
-        
-    // Dynamic Archive classes
-    const archiveBtnClass = item.is_archived ? "btn btn-archive archived" : "btn btn-archive";
-    const archiveBtnLabel = item.is_archived ? "📁 Unarchive" : "🗄️ Archive";
-    
-    // Construct source chips
-    let chipsHtml = "";
-    if (item.href) {
-        chipsHtml += `<a href="${item.href}" target="_blank" class="chip chip-metacritic">Metacritic</a>`;
-    }
-    const imdbId = item.imdbId || item.imdb_id;
-    if (imdbId) {
-        chipsHtml += `<a href="https://www.imdb.com/title/${imdbId}/" target="_blank" class="chip chip-imdb">IMDb</a>`;
-    }
-    const tmdbId = item.tmdbId || item.tmdb_id;
-    if (type === "movie" && tmdbId) {
-        chipsHtml += `<a href="https://www.themoviedb.org/movie/${tmdbId}" target="_blank" class="chip chip-tmdb">TMDB</a>`;
-    }
-    const tvdbId = item.tvdbId || item.tvdb_id;
-    if (type === "tv" && tvdbId) {
-        chipsHtml += `<a href="https://thetvdb.com/dereferrer/series/${tvdbId}" target="_blank" class="chip chip-tvdb">TVDB</a>`;
-    }
-    const searchString = encodeURIComponent(`${item.title} ${item.year} ${type === 'tv' ? 'tv show' : 'movie'}`);
-    chipsHtml += `<a href="https://www.google.com/search?q=${searchString}" target="_blank" class="chip chip-google">Google Search 🔍</a>`;
-        
-    // Setup poster image
-    const navUrl = getPosterNavigationUrl(item, type);
-    let posterHtml = "";
-    if (item.poster_url) {
-        posterHtml = `
-            <a href="${navUrl}" target="_blank" class="card-poster-link" title="Click to view external page">
-                <div class="card-poster">
-                    <img src="${item.poster_url}" alt="${item.title} poster" class="poster-img" onerror="this.onerror=null; this.parentElement.innerHTML='<div class=&quot;poster-fallback&quot;><span>${type === 'tv' ? '📺' : '🎬'}</span><p style=&quot;font-size: 11px; padding: 0 8px; font-weight: 500; color: var(--text-primary); text-transform: uppercase; letter-spacing: 0.5px;&quot;>${item.title.replace(/'/g, '&#39;').replace(/"/g, '&quot;')}</p></div>';">
-                </div>
-            </a>
-        `;
-    } else {
-        posterHtml = `
-            <a href="${navUrl}" target="_blank" class="card-poster-link" title="Click to view external page">
-                <div class="card-poster">
-                    <div class="poster-fallback">
-                        <span>${type === 'tv' ? '📺' : '🎬'}</span>
-                        <p style="font-size: 11px; padding: 0 8px; font-weight: 500; color: var(--text-primary); text-transform: uppercase; letter-spacing: 0.5px;">${item.title.replace(/'/g, '&#39;').replace(/"/g, '&quot;')}</p>
-                    </div>
-                </div>
-            </a>
-        `;
-    }
-        
-    card.innerHTML = `
-        ${posterHtml}
-        <div class="card-info-content">
-            <div class="card-title-row">
-                <h3>${item.title}</h3>
-                <div class="card-year-refresh">
-                    <span class="year">${item.year}</span>
-                    <button class="btn-refresh-icon" title="Refresh Metadata">
-                        <svg class="refresh-svg" viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round" style="display: block; pointer-events: none;">
-                            <polyline points="23 4 23 10 17 10"></polyline>
-                            <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path>
-                        </svg>
-                    </button>
-                </div>
-            </div>
-            <div class="card-badges">
-                <span class="badge badge-network">${item.network}</span>
-                ${returningBadge}
-                ${localeBadge(item)}
-                ${item.has_new_metadata ? '<span class="badge badge-new-metadata">New metadata</span>' : ''}
-                ${isAdded ? '<span class="badge badge-in-library">In Library</span>' : ''}
-                ${item.is_archived ? '<span class="badge badge-archived" style="background:rgba(255, 42, 133, 0.1); color:var(--accent-magenta); border:1px solid rgba(255, 42, 133, 0.2);">Archived</span>' : ''}
-            </div>
-            ${buildRatingBadgesHtml(item)}
-            <div class="genres-list">${genres}</div>
-            <div class="card-cast"><strong>Cast:</strong> <span>${item.cast}</span></div>
-            ${(type === "movie" && item.director) ? `<div class="card-crew"><strong>Director:</strong> <span>${item.director}</span></div>` : ""}
-            ${(type === "movie" && item.producer) ? `<div class="card-crew"><strong>Producer:</strong> <span>${item.producer}</span></div>` : ""}
-            <div class="card-plot">${plotHtml}</div>
-            
-            <div class="details-toggle-row" style="margin-top: auto; border-top: 1px dashed var(--border-color); padding-top: 8px; display: flex; justify-content: space-between; align-items: center;">
-                <span style="font-size: 11px; color: var(--text-secondary); font-weight: 500;">External Sources</span>
-                <button type="button" class="btn-details-toggle" style="background: transparent; border: none; color: var(--accent-blue); font-size: 12px; cursor: pointer; display: flex; align-items: center; gap: 4px; padding: 0; outline: none; font-weight: 600; transition: var(--transition-smooth);">Show ▾</button>
-            </div>
-            <div class="card-details-panel hidden" style="margin-top: 8px; display: flex; flex-wrap: wrap; gap: 6px;">
-                ${chipsHtml}
-            </div>
-    
-            <div class="card-actions" style="margin-top: 0;">
-                <a href="${item.trailer}" target="_blank" class="btn btn-trailer">🎬 Trailer</a>
-                <button class="${archiveBtnClass}">${archiveBtnLabel}</button>
-                <button class="${buttonClass}" ${isAdded ? 'disabled' : ''} onclick="openAddModal('${type}', ${index})">
-                    ${buttonText}
-                </button>
-            </div>
-        </div>
-    `;
+    card.innerHTML = moduleBuildMediaCardHtml(item, type, { isAdded, index });
     
     // Add click handler for plot expansion
     const plotDiv = card.querySelector(".card-plot");
@@ -1158,13 +924,12 @@ async function openAddModal(type, index) {
 
     // Perform Live Indexer Lookup
     try {
-        const response = await fetch(`/api/lookup?type=${type}&title=${encodeURIComponent(item.title)}`);
-        const data = await response.json();
+        const data = await moduleLookupMedia(type, item.title);
         
         lookupLoading.classList.add("hidden");
         lookupResultsList.classList.remove("hidden");
         
-        if (response.ok && data.status === "success" && data.results && data.results.length > 0) {
+        if ((data.ok ?? true) && data.status === "success" && data.results && data.results.length > 0) {
             renderLookupResults(data.results, type, item);
         } else {
             lookupResultsList.innerHTML = `<div class="lookup-status">No results found on indexers. Please check title manually.</div>`;
@@ -1255,21 +1020,14 @@ function renderLookupResults(results, type, discoveryItem) {
 async function linkDiscoveryToLibrary(metadataItem, discoveryItem) {
     const type = selectedItemForAdd.type;
     try {
-        const response = await fetch("/api/link_library", {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json"
-            },
-            body: JSON.stringify({
-                type: type,
-                title: discoveryItem.title,
-                year: discoveryItem.year,
-                imdbId: discoveryItem.imdbId,
-                link_metadata: metadataItem
-            })
+        const data = await moduleLinkLibrary({
+            type: type,
+            title: discoveryItem.title,
+            year: discoveryItem.year,
+            imdbId: discoveryItem.imdbId,
+            link_metadata: metadataItem
         });
-        const data = await response.json();
-        if (response.ok && data.status === "success") {
+        if ((data.ok ?? true) && data.status === "success") {
             // Update local memory
             discoveryItem.is_in_library = true;
             discoveryItem.tvdbId = metadataItem.tvdbId || discoveryItem.tvdbId;
@@ -1510,9 +1268,8 @@ function closeSettingsModal() {
 
 async function loadCacheStats() {
     try {
-        const response = await fetch("/api/cache/stats");
-        if (response.ok) {
-            const data = await response.json();
+        const data = await moduleFetchCacheStats();
+        if (data.ok) {
             document.getElementById("stat-total-cache").textContent = data.total_discoveries;
             document.getElementById("stat-archived-cache").textContent = data.archived_discoveries;
             document.getElementById("stat-db-size").textContent = data.database_size;
@@ -1528,9 +1285,8 @@ async function pruneCacheManually() {
     }
     
     try {
-        const response = await fetch("/api/cache/prune", { method: "POST" });
-        const data = await response.json();
-        if (response.ok && data.status === "success") {
+        const data = await modulePruneCache();
+        if ((data.ok ?? true) && data.status === "success") {
             addNotification(data.message, "success");
             await loadCacheStats();
         } else {
@@ -1547,9 +1303,8 @@ async function wipeCacheManually() {
     }
     
     try {
-        const response = await fetch("/api/cache/clear", { method: "POST" });
-        const data = await response.json();
-        if (response.ok && data.status === "success") {
+        const data = await moduleClearCache();
+        if ((data.ok ?? true) && data.status === "success") {
             addNotification(data.message, "success");
             await loadCacheStats();
             
@@ -1571,7 +1326,7 @@ async function wipeCacheManually() {
 
 function exportBackup() {
     const includeMedia = confirm("Include cached media details (identifiers & library indicators) in the backup JSON file?");
-    window.location.href = `/api/backup/export?include_media=${includeMedia}`;
+    window.location.href = moduleGetBackupExportUrl(includeMedia);
 }
 
 function triggerBackupImport() {
@@ -1592,12 +1347,8 @@ async function importBackup(e) {
     formData.append("file", file);
     
     try {
-        const response = await fetch("/api/backup/import", {
-            method: "POST",
-            body: formData
-        });
-        const data = await response.json();
-        if (response.ok && data.status === "success") {
+        const data = await moduleImportBackup(formData);
+        if ((data.ok ?? true) && data.status === "success") {
             alert(`Backup imported successfully!\n\nImported/Updated:\n- Settings: ${data.settings_count}\n- Media Items: ${data.media_count}`);
             location.reload();
         } else {
@@ -1652,9 +1403,7 @@ async function loadCustomFeeds() {
     tableBody.innerHTML = `<tr><td colspan="4" style="padding: 12px; text-align: center; color: var(--text-secondary);"><div class="spinner-small" style="display:inline-block; vertical-align:middle; margin-right:8px;"></div> Loading feeds...</td></tr>`;
     
     try {
-        const response = await fetch("/api/feeds");
-        if (!response.ok) throw new Error("HTTP error " + response.status);
-        const data = await response.json();
+        const data = await moduleFetchFeeds();
         
         if (data.status === "success") {
             customFeedsList = data.feeds || [];
@@ -1896,16 +1645,10 @@ async function saveCustomFeed() {
         const saveBtn = document.getElementById("btn-feed-save");
         if (saveBtn) saveBtn.disabled = true;
         
-        const response = await fetch("/api/feeds", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(payload)
-        });
-        
-        const data = await response.json();
+        const data = await moduleSaveFeed(payload);
         if (saveBtn) saveBtn.disabled = false;
         
-        if (response.ok && data.status === "success") {
+        if ((data.ok ?? true) && data.status === "success") {
             addNotification(`Feed '${name}' saved successfully.`, "success");
             closeFeedEditor();
         } else {
@@ -1924,14 +1667,9 @@ async function deleteCustomFeed(feedId, feedName) {
     }
     
     try {
-        const response = await fetch("/api/feeds/delete", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ id: feedId })
-        });
-        const data = await response.json();
+        const data = await moduleDeleteFeed(feedId);
         
-        if (response.ok && data.status === "success") {
+        if ((data.ok ?? true) && data.status === "success") {
             addNotification(`Feed '${feedName}' deleted.`, "success");
             loadCustomFeeds();
         } else {
@@ -1984,22 +1722,16 @@ async function testCustomFeed() {
     if (testBtn) testBtn.disabled = true;
     
     try {
-        const response = await fetch("/api/feeds/test", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-                url: url,
-                feed_type: feedType,
-                default_media_type: defaultMediaType,
-                http_headers: httpHeaders,
-                parser_config: parserConfig
-            })
+        const data = await moduleTestFeed({
+            url: url,
+            feed_type: feedType,
+            default_media_type: defaultMediaType,
+            http_headers: httpHeaders,
+            parser_config: parserConfig
         });
-        
-        const data = await response.json();
         if (testBtn) testBtn.disabled = false;
         
-        if (response.ok && data.status === "success") {
+        if ((data.ok ?? true) && data.status === "success") {
             const timeMs = data.fetch_time_ms;
             const itemsCount = data.parsed_items_count;
             previewStats.textContent = `Success (${timeMs}ms)`;
@@ -2037,10 +1769,9 @@ async function restoreDefaultFeeds() {
     }
     
     try {
-        const response = await fetch("/api/feeds/restore", { method: "POST" });
-        const data = await response.json();
+        const data = await moduleRestoreDefaultFeeds();
         
-        if (response.ok && data.status === "success") {
+        if ((data.ok ?? true) && data.status === "success") {
             addNotification("Default feeds restored successfully.", "success");
             loadCustomFeeds();
         } else {
@@ -2165,10 +1896,9 @@ async function runGlobalSearch() {
     }
     
     try {
-        const response = await fetch(`/api/lookup?type=${type}&title=${encodeURIComponent(query)}`);
-        const data = await response.json();
+        const data = await moduleLookupMedia(type, query);
         
-        if (response.ok && data.status === "success" && data.results && data.results.length > 0) {
+        if ((data.ok ?? true) && data.status === "success" && data.results && data.results.length > 0) {
             resultsGrid.innerHTML = "";
             data.results.forEach(res => {
                 const card = createSearchCard(res, type);
@@ -2415,24 +2145,7 @@ function openAddModalFromLookup(res, type, card) {
 }
 
 function getPosterNavigationUrl(item, type) {
-    const imdbId = item.imdbId || item.imdb_id;
-    const tmdbId = item.tmdbId || item.tmdb_id;
-    const tvdbId = item.tvdbId || item.tvdb_id;
-    
-    if (type === "movie") {
-        if (imdbId) return `https://www.imdb.com/title/${imdbId}/`;
-        if (tmdbId) return `https://www.themoviedb.org/movie/${tmdbId}`;
-    } else if (type === "tv") {
-        if (tvdbId) return `https://thetvdb.com/dereferrer/series/${tvdbId}`;
-        if (imdbId) return `https://www.imdb.com/title/${imdbId}/`;
-    }
-    
-    // Fallback to Metacritic/source URL
-    if (item.href) return item.href;
-    
-    // Double fallback to Google search
-    const searchString = encodeURIComponent(`${item.title} ${item.year} ${type === 'tv' ? 'tv show' : 'movie'}`);
-    return `https://www.google.com/search?q=${searchString}`;
+    return moduleGetPosterNavigationUrl(item, type);
 }
 
 function getDemoSearchResults(query, type) {
@@ -2871,32 +2584,21 @@ function invertMultiselect(key, set, update) {
 }
 
 function escapeHtml(v) {
-    return String(v).replace(/[&<>"']/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"}[c]));
+    return moduleEscapeHtml(v);
 }
 
 function countryName(code) {
-    try {
-        return new Intl.DisplayNames(["en"], { type: "region" }).of(code) || code;
-    } catch (e) {
-        return code;
-    }
+    return moduleCountryName(code);
 }
 
-function matchLocale(item) {
-    if (typeof moduleMatchLocale === "function") {
-        return moduleMatchLocale(item, typeof selectedCountries !== "undefined" ? selectedCountries : new Set(), typeof selectedLanguages !== "undefined" ? selectedLanguages : new Set());
-    }
-    if (typeof selectedCountries !== "undefined" && selectedCountries.size > 0 && !selectedCountries.has(item.country || "")) return false;
-    if (typeof selectedLanguages !== "undefined" && selectedLanguages.size > 0 && !selectedLanguages.has(item.language || "")) return false;
-    return true;
+function matchLocale(item, countries, languages) {
+    const c = countries !== undefined ? countries : (typeof selectedCountries !== "undefined" ? selectedCountries : new Set());
+    const l = languages !== undefined ? languages : (typeof selectedLanguages !== "undefined" ? selectedLanguages : new Set());
+    return moduleMatchLocale(item, c, l);
 }
 
 function localeBadge(item) {
-    const parts = [];
-    if (item.country) parts.push(escapeHtml(item.country));
-    if (item.language) parts.push(escapeHtml(item.language));
-    if (!parts.length) return "";
-    return `<span class="badge badge-network" title="Country / original language">${parts.join(" &middot; ")}</span>`;
+    return moduleLocaleBadge(item);
 }
 
 // Builds a checkbox multi-select (same look as Genres / Studios) from a set of values.

@@ -3,35 +3,25 @@
 app.js touches the DOM at load time, so the functions under test are sliced out of the source and run
 in Node against a tiny DOM stub. Skipped when Node is not installed.
 """
+from pathlib import Path
 import json
 import shutil
 import subprocess
-from pathlib import Path
-
 import pytest
 
-APP_JS = (Path(__file__).resolve().parent.parent / "web" / "templates" / "app.js").read_text(encoding="utf-8")
-INDEX_HTML = (Path(__file__).resolve().parent.parent / "web" / "templates" / "index.html").read_text(encoding="utf-8")
+from tests.frontend_harness import (
+    check_node_and_dist,
+    get_module_injection_code,
+    slice_function,
+    DIST_FILTERS,
+    APP_JS,
+    INDEX_HTML
+)
 
 pytestmark = pytest.mark.skipif(shutil.which("node") is None, reason="node not available")
 
-FUNCTIONS = ["matchLocale", "matchFilter", "itemPassesFilters", "getFilteredUnarchived",
+FUNCTIONS = ["getFilterState", "matchLocale", "matchFilter", "itemPassesFilters", "getFilteredUnarchived",
              "archiveAllFiltered", "invertMultiselect", "escapeHtml", "countryName", "localeBadge"]
-
-
-def _slice_function(name):
-    start = APP_JS.index(f"function {name}(")
-    if APP_JS[max(0, start - 6):start] == "async ":
-        start -= 6
-    async_prefix = "async " if APP_JS[start:start + 6] == "async " else ""
-    i = APP_JS.index("{", APP_JS.index(")", start))
-    depth = 0
-    for j in range(i, len(APP_JS)):
-        depth += {"{": 1, "}": -1}.get(APP_JS[j], 0)
-        if depth == 0:
-            return APP_JS[start:j + 1]
-    raise AssertionError(name)
-
 
 PRELUDE = r"""
 const checks = {"check-show-returning": false, "check-show-library": false, "check-show-archived": false};
@@ -60,26 +50,38 @@ async function fetch(url, opts) { fetchCalls.push([url, JSON.parse(opts.body)]);
 """
 
 
-DIST_FILTERS = Path(__file__).resolve().parent.parent / "web" / "static" / "dist" / "filters.js"
-
-
 def run_js(body):
-    code = PRELUDE + "\n" + "\n".join(_slice_function(n) for n in FUNCTIONS) + "\n(async () => {\n" + body + "\n})();"
-    out = subprocess.run(["node", "-e", code], capture_output=True, text=True, timeout=30)
+    check_node_and_dist()
+    app_js_text = APP_JS.read_text(encoding="utf-8")
+    sliced_code = "\n".join(slice_function(app_js_text, n) for n in FUNCTIONS)
+    code = f"""
+(async () => {{
+{get_module_injection_code()}
+{PRELUDE}
+globalThis.fetch = fetch;
+{sliced_code}
+await (async () => {{
+{body}
+}})();
+}})().catch(err => {{
+    console.error(err);
+    process.exit(1);
+}});
+"""
+    out = subprocess.run(["node", "--no-warnings", "-e", code], capture_output=True, text=True, timeout=30)
     assert out.returncode == 0, out.stderr
     return json.loads(out.stdout.strip().splitlines()[-1])
 
 
 def run_module_js(body):
-    if not DIST_FILTERS.is_file():
-        pytest.skip("web/static/dist/filters.js not found; run 'npm run build' first")
+    check_node_and_dist()
     code = f"""
 import {{ matchLocale, matchFilter, itemPassesFilters, getFilteredUnarchived }} from {json.dumps(DIST_FILTERS.as_uri())};
 (async () => {{
 {body}
 }})();
 """
-    out = subprocess.run(["node", "--input-type=module", "-e", code], capture_output=True, text=True, timeout=30)
+    out = subprocess.run(["node", "--no-warnings", "--input-type=module", "-e", code], capture_output=True, text=True, timeout=30)
     assert out.returncode == 0, out.stderr
     return json.loads(out.stdout.strip().splitlines()[-1])
 
