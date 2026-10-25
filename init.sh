@@ -149,8 +149,8 @@ if [ "$SKIP_DEPS" -eq 0 ]; then
     log_init "[Init] Installing runtime dependencies from requirements.txt..."
     "$VENV_DIR/bin/pip" install -r requirements.txt
 
-    log_init "[Init] Installing test and development dependencies (pytest, pytest-cov)..."
-    "$VENV_DIR/bin/pip" install pytest pytest-cov
+    log_init "[Init] Installing test, development and build dependencies (pytest, pytest-cov, pyinstaller)..."
+    "$VENV_DIR/bin/pip" install -r requirements-dev.txt
 fi
 
 # 6. Generate .env configuration from template if missing

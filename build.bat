@@ -29,29 +29,10 @@ if not exist "%VENV_DIR%\Scripts\python.exe" (
     )
 )
 
-echo Ensuring PyInstaller is installed in the virtual environment...
-"%VENV_DIR%\Scripts\pip.exe" install pyinstaller
-if errorlevel 1 (
-    echo [Error] Failed to install PyInstaller.
-    if not defined CI pause
-    popd
-    exit /b 1
-)
-
+:: 2. Compile (icon/data-path/workpath selection and PyInstaller install live in build.py)
 echo.
-echo Compiling xarrtools to a single executable...
-"%VENV_DIR%\Scripts\pyinstaller.exe" --onefile --name xarrtools --icon=web/templates/favicon.ico --add-data "web/templates;web/templates" main.py
-
-if not errorlevel 1 (
-    echo.
-    echo [Success] Compilation complete!
-    echo Binary available at: dist\xarrtools.exe
-    set "BUILD_EXIT=0"
-) else (
-    echo.
-    echo [Error] Compilation failed.
-    set "BUILD_EXIT=1"
-)
+"%VENV_DIR%\Scripts\python.exe" build.py
+set "BUILD_EXIT=%ERRORLEVEL%"
 
 if not defined CI pause
 popd

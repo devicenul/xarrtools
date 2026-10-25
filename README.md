@@ -37,7 +37,9 @@ xarrtools/
 ├── main.py                     # Entry point. Launches Desktop GUI, Web Server, or CLI mode
 ├── init.sh / init.bat / init.ps1 # Cross-platform project initialization scripts
 ├── run.sh / run.bat / run.ps1  # Cross-platform automated startup launchers
-├── build.sh / build.bat / build.ps1 # Cross-platform PyInstaller compiler scripts
+├── build.py                         # Cross-platform PyInstaller build logic
+├── build.sh / build.bat / build.ps1 # Thin wrappers: ensure the venv (init.*) then run build.py
+├── requirements-dev.txt             # Test + build tooling (pytest, pytest-cov, pyinstaller)
 ├── requirements.txt            # Python dependencies
 ├── README.md                   # System documentation
 ├── ROADMAP.md                  # Project roadmap and completed features log
@@ -112,7 +114,7 @@ Interactive command line interface built using the `rich` library. Supports sear
 ## Quick Start (Cross-Platform Initialization & Launch)
 
 ### 1. Initialize the Project
-Run the initialization script for your platform to create the Python virtual environment (with automatic `$HOME/.cache` `ext4` fallback on Android/FUSE shared storage), install runtime and test dependencies (`requirements.txt`, `pytest`, `pytest-cov`), generate `.env` from `.env.example`, and initialize the SQLite database (`xarrtools.db`):
+Run the initialization script for your platform to create the Python virtual environment (with automatic `$HOME/.cache` `ext4` fallback on Android/FUSE shared storage), install runtime, test and build dependencies (`requirements.txt` plus `requirements-dev.txt`: `pytest`, `pytest-cov`, `pyinstaller`), generate `.env` from `.env.example`, and initialize the SQLite database (`xarrtools.db`):
 
 - **Linux / macOS / Android Linux VM (Bash)**:
   ```bash

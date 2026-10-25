@@ -172,8 +172,8 @@ if (-not $SkipDeps) {
         exit 1
     }
 
-    Write-Host "[Init] Installing test and development dependencies (pytest, pytest-cov)..."
-    & $VenvPip install pytest pytest-cov
+    Write-Host "[Init] Installing test and development dependencies (pytest, pytest-cov, pyinstaller)..."
+    & $VenvPip install -r requirements-dev.txt
     if ($LASTEXITCODE -ne 0) {
         Write-Error "[Error] Failed to install test/development dependencies."
         exit 1

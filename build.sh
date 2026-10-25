@@ -21,31 +21,10 @@ if [ ! -x "$VENV_DIR/bin/python" ]; then
     bash "$SCRIPT_DIR/init.sh"
 fi
 
-echo "Ensuring PyInstaller is installed in the virtual environment..."
-"$VENV_DIR/bin/pip" install pyinstaller
-
-# 2. Detect OS to set the appropriate icon format
-OS_NAME="$(uname -s)"
-if [ "$OS_NAME" = "Darwin" ]; then
-    ICON_FILE="web/templates/favicon.icns"
-else
-    ICON_FILE="web/templates/favicon.png"
-fi
-
-# 3. Redirect intermediate PyInstaller workpath to local ext4 cache when available
-WORKPATH_ARGS=()
-if [ -n "${PROJECT_CACHE_DIR:-}" ]; then
-    WORKPATH_ARGS=(--workpath "$PROJECT_CACHE_DIR/pyinstaller-build")
-fi
-
+# 2. Compile (icon/data-path/workpath selection and PyInstaller install live in build.py)
 echo ""
-echo "Compiling xarrtools to a single executable..."
-if "$VENV_DIR/bin/pyinstaller" --onefile --name xarrtools --icon="$ICON_FILE" --add-data "web/templates:web/templates" "${WORKPATH_ARGS[@]}" main.py; then
-    echo ""
-    echo "[Success] Compilation complete!"
-    echo "Binary available at: dist/xarrtools"
+if "$VENV_DIR/bin/python" "$SCRIPT_DIR/build.py"; then
+    exit 0
 else
-    echo ""
-    echo "[Error] Compilation failed." >&2
     exit 1
 fi

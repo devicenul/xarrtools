@@ -88,8 +88,8 @@ if "!SKIP_DEPS!"=="0" (
         exit /b 1
     )
 
-    echo [Init] Installing test and development dependencies (pytest, pytest-cov)...
-    "%VENV_DIR%\Scripts\pip.exe" install pytest pytest-cov
+    echo [Init] Installing test and development dependencies (pytest, pytest-cov, pyinstaller)...
+    "%VENV_DIR%\Scripts\pip.exe" install -r requirements-dev.txt
     if errorlevel 1 (
         echo [Error] Failed to install test/development dependencies.
         if "!NO_PAUSE!"=="0" pause
