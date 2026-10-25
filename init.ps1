@@ -198,6 +198,12 @@ if ((-not $SkipDeps) -and (Test-Path -LiteralPath $PackageJson)) {
         Write-Error "[Error] Failed to install frontend dependencies."
         exit 1
     }
+    Write-Host "[Init] Compiling the TypeScript frontend (web/static/dist)..."
+    & npm run build --silent
+    if ($LASTEXITCODE -ne 0) {
+        Write-Error "[Error] Frontend build failed."
+        exit 1
+    }
 }
 
 # 6. Generate .env configuration from template if missing

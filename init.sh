@@ -170,6 +170,8 @@ if [ "$SKIP_DEPS" -eq 0 ] && [ -f "$SCRIPT_DIR/package.json" ]; then
         printf '#!/bin/sh\nexec node "$(dirname "$0")/../typescript/bin/tsc" "$@"\n' > "$SCRIPT_DIR/node_modules/.bin/tsc"
         chmod +x "$SCRIPT_DIR/node_modules/.bin/tsc" 2>/dev/null || true
     fi
+    log_init "[Init] Compiling the TypeScript frontend (web/static/dist)..."
+    npm run build --silent
 fi
 
 # 6. Generate .env configuration from template if missing

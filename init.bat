@@ -120,6 +120,14 @@ if "!SKIP_DEPS!"=="0" (
             popd
             exit /b 1
         )
+        echo [Init] Compiling the TypeScript frontend ^(web/static/dist^)...
+        call npm run build --silent
+        if errorlevel 1 (
+            echo [Error] Frontend build failed.
+            if "!NO_PAUSE!"=="0" pause
+            popd
+            exit /b 1
+        )
     )
 )
 
