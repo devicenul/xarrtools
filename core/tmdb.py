@@ -15,7 +15,7 @@ from urllib3.util.retry import Retry
 
 from core.locales import country_code, language_name, slug
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("xarrtools.tmdb")
 
 TMDB_API_BASE = "https://api.themoviedb.org/3"
 TMDB_IMAGE_BASE = "https://image.tmdb.org/t/p/w500"

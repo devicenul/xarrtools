@@ -32,6 +32,7 @@ import {
   wipeCacheManually,
   exportBackup,
   exportFullBackup,
+  downloadLogs,
   triggerBackupImport,
   importBackup,
   loadCustomFeeds,
@@ -447,6 +448,9 @@ export function setupEventListeners(): void {
 
   const btnBackupExportFull = document.getElementById("btn-backup-export-full");
   if (btnBackupExportFull) btnBackupExportFull.addEventListener("click", exportFullBackup);
+
+  const btnDownloadLogs = document.getElementById("btn-download-logs");
+  if (btnDownloadLogs) btnDownloadLogs.addEventListener("click", downloadLogs);
 
   const btnBackupImport = document.getElementById("btn-backup-import");
   if (btnBackupImport) btnBackupImport.addEventListener("click", triggerBackupImport);

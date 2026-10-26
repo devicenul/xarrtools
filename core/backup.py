@@ -6,6 +6,9 @@ import hashlib
 import zipfile
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+import logging
+
+logger = logging.getLogger("xarrtools.backup")
 
 import core.db
 from core.db import get_db_connection, get_cached_item, normalize_title
@@ -50,6 +53,7 @@ def export_full_backup(path_or_fileobj, include_media: bool = True) -> dict:
     Returns:
         Dictionary of counts: settings_count, custom_feeds_count, media_count, posters_count.
     """
+    logger.info(f"Starting full backup export (include_media={include_media})...")
     conn = get_db_connection()
     cursor = conn.cursor()
     
@@ -178,6 +182,7 @@ def import_full_backup(fileobj) -> dict:
     Returns:
         dict with status and counts.
     """
+    logger.info("Starting full backup import...")
     try:
         zf = zipfile.ZipFile(fileobj, mode="r")
     except Exception as e:

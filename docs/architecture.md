@@ -113,8 +113,19 @@ Node-based test suites exercise compiled modules: `tests/test_frontend_filters.p
 - **Endpoints**:
   - `GET /api/scheduler/status`: returns `{status, enabled, interval_hours, time_of_day, last_run, next_run, running, last_result}`.
   - `POST /api/scheduler/run-now`: API key protected manual trigger; returns 409 if a scan is running, starts `run_scheduler_job` in a background thread and returns 200 `{status: "started"}`.
-- **Settings keys**: `scheduler_enabled` (0/1), `scheduler_interval_hours` (1-168), `scheduler_time_of_day` (optional `HH:MM`), `scheduler_last_run` (ISO UTC), `scheduler_last_result` (JSON string recording status, counts, new items, and errors). Validated with 400 on bad values.
-- **Frontend integration**: Settings modal dedicated Scheduler tab (`#panel-scheduler`), live polling (~60s) with toast notification and sidebar badge when `new_items > 0`.
+## Structured Logging Architecture (`core/logging_setup.py`)
+
+- **Hierarchy**: All loggers sit under the `xarrtools` namespace (`xarrtools.scraper`, `xarrtools.db`, `xarrtools.enricher`, `xarrtools.client`, `xarrtools.server`, `xarrtools.scheduler`, `xarrtools.posters`, `xarrtools.backup`, etc.). The root `xarrtools` logger has `propagate = False` to prevent double-logging in parent processes.
+- **Handlers**:
+  - `StreamHandler(sys.stdout)` with formatted, structured plain text logs (`%(asctime)s [%(levelname)s] %(name)s: %(message)s`).
+  - `RotatingFileHandler(xarrtools.log)` located under `logs/` adjacent to `xarrtools.db` (configurable via `LOG_DIR` or `XARRTOOLS_LOG_DIR`), capped at ~1MB (`maxBytes=1048576`) and `backupCount=1` (strictly max 2 log files: `xarrtools.log` and `xarrtools.log.1`).
+- **Security & Redaction**:
+  - `RedactingFilter` and `RedactingFormatter` automatically redact credentials, API keys, tokens, query parameters (`?apikey=...`, `?token=...`, etc.), headers (`X-Api-Key`, `Bearer <token>`, `Authorization`), configured service keys (Radarr, Sonarr, TMDB, server API key), and exception tracebacks before records hit stdout or disk.
+- **Dynamic Configuration**:
+  - Log level is stored in settings (`log_level`, default `INFO`, allowed `DEBUG`, `INFO`, `WARNING`, `ERROR`).
+  - Updates via `POST /api/settings` validate the level (400 on invalid) and call `setup_logging(level=...)` to update root and handler levels live without requiring server restarts.
+- **Log Export**:
+  - `GET /api/logs/download` streams an in-memory ZIP archive of pre-redacted logs (`xarrtools.log` and `xarrtools.log.1`). If no logs are present, it gracefully returns a ZIP containing an explanatory README.txt file.
 
 ## Tests
 

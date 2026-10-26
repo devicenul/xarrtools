@@ -32,16 +32,7 @@ This document tracks planned future functionality, architectural changes, and us
   - Generate release artifacts (`.dmg`, `Setup.exe`, standalone binaries) and attach them to GitHub Releases.
 - **Code files involved**: `.github/workflows/build.yml`.
 
-### 4. Structured Logging Architecture
-- **Status**: Only `core/tmdb.py` and `core/config.py` use `logging` today; `cli/cli.py` still has ~78 `print` calls and `core/scraper.py`, `core/db.py` and `web/server.py` a few more.
-- **Goal**: Implement systematic, configurable, structured logging across all core scraper classes, API wrappers, database operations, and server endpoints to facilitate easier troubleshooting and telemetry.
-- **Implementation Strategy**:
-  - Re-architect simple print statements and sporadic `app.logger.error` instances into a unified Python standard `logging` setup.
-  - Support log level configuration (e.g., DEBUG, INFO, WARNING, ERROR) via Settings.
-  - Set up rotating log file handler (`xarrtools.log`) alongside console logging.
-- **Code files involved**: [core/config.py](core/config.py), [web/server.py](web/server.py), [cli/cli.py](cli/cli.py).
-
-### 5. Standardized Code Documentation & Type Annotations
+### 4. Standardized Code Documentation & Type Annotations
 - **Status**: Partially done: about half of the functions carry return annotations (`web/server.py` is the main gap, 1 of 31), and `AGENTS.md` / `docs/` now describe the architecture.
 - **Goal**: Standardize and enrich inline code documentation, block comments, and docstrings across all modules to improve code legibility and maintainability.
 - **Implementation Strategy**:
@@ -50,7 +41,7 @@ This document tracks planned future functionality, architectural changes, and us
   - Add context comments explaining non-trivial business logic, database queries, and test isolation design details.
 - **Code files involved**: all Python files under `core/`, `web/`, and `cli/`.
 
-### 6. Free Packaging and Distribution Pipeline
+### 5. Free Packaging and Distribution Pipeline
 - **Goal**: Create cross-platform installation packages and setup distribution channels completely free of charge, avoiding developer registration fees.
 - **Implementation Strategy**:
   - **macOS (Homebrew Tap & DMG)**: Distribute the compiled `.app` bundle inside an unsigned drag-and-drop `.dmg` using `create-dmg` or `dmgbuild`. Create a custom Homebrew Tap repository (`homebrew-xarrtools`) with a Ruby formula to distribute the pre-compiled binary seamlessly via `brew install xarrtools`. Provide clear instructions for Gatekeeper bypass (`xattr -d com.apple.quarantine`).
@@ -62,6 +53,16 @@ This document tracks planned future functionality, architectural changes, and us
 ---
 
 ## Completed Features
+
+### ✓ Structured Logging Architecture
+- Centralized `core/logging_setup.py` with idempotent `setup_logging(level=None)` attaching console and `RotatingFileHandler` to the `xarrtools` hierarchy root.
+- Log rotation strictly capped at a maximum of 2 files (`xarrtools.log` and `xarrtools.log.1`, `backupCount=1`, ~1MB).
+- Security-first `RedactingFilter` and `RedactingFormatter` preventing API keys, bearer tokens, query parameters, configured secrets, and exception tracebacks from ever reaching console or disk.
+- Dynamic `log_level` setting (DEBUG, INFO, WARNING, ERROR) managed in DB settings and applied live without server restart.
+- Downloadable sanitized logs ZIP endpoint (`GET /api/logs/download`) with in-memory streaming and empty fallback `README.txt`.
+- Settings UI integration under "System" tab (`panel-system`) with log level dropdown and Download Logs button.
+- Comprehensive conversion of diagnostic `print` and `app.logger` statements across `core/`, `web/`, `main.py`, and `gui/` to structured hierarchical loggers (`xarrtools.<module>`), while preserving interactive CLI output.
+- Isolated test suite (`tests/test_logging_setup.py`) with zero leakage to real database or repository logs directory.
 
 ### ✓ Background Scheduled Refreshes
 - Automatic background scheduled refresh daemon thread in `web/server.py` with zero external dependencies (no APScheduler).

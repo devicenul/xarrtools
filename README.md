@@ -26,6 +26,7 @@ An interactive web-based and CLI media discovery manager designed to scrape upco
 16. **Clickable Poster Links**: Wrap movie and series poster graphics in deep links to external resources (IMDb/TVDB) in new tabs.
 17. **Interface Theme Sync dropdown**: Add a setting dropdown inside settings view tab to swap dark/light themes, fully synchronized in real-time with the header toggler.
 18. **Background Scheduled Refreshes**: Automatically refresh discoveries from all configured feeds on a customizable interval (1-168h) or daily local time without third-party cron dependencies, with immediate "Run Now" controls, status tracking, and toast notifications when new items arrive.
+19. **Structured Logging & Diagnostics**: Standardized hierarchical logging across all components with automatic credential redaction (masking API keys, tokens, and query credentials). Includes capped log file rotation (~1MB, max 2 files: `xarrtools.log` and `xarrtools.log.1`), configurable live log level (DEBUG/INFO/WARNING/ERROR) via the Settings UI without restarts, and a one-click sanitized log ZIP download.
 
 
 ---
@@ -53,6 +54,7 @@ xarrtools/
 │   ├── config.py               # Dynamic settings accessor (DB with .env fallback)
 │   ├── db.py                   # SQLite Cache & Settings database manager
 │   ├── enricher.py             # Metadata crawler (TVDB, TMDB, IMDb matching)
+│   ├── logging_setup.py        # Central structured logging, credential masking & rotation
 │   ├── posters.py              # Poster disk cache and SSRF-safe download helpers
 │   ├── scheduler.py            # Background refresh calculations and due-checks
 │   └── scraper.py              # Metacritic / Release calendar HTML scrapers

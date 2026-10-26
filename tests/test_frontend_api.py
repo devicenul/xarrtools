@@ -62,7 +62,8 @@ import {{
   testFeed,
   restoreDefaultFeeds,
   getSchedulerStatus,
-  runSchedulerNow
+  runSchedulerNow,
+  getLogsDownloadUrl
 }} from {json.dumps(DIST_API.as_uri())};
 
 (async () => {{
@@ -240,13 +241,15 @@ def test_cache_maintenance_and_backup_and_feeds():
 
       mockResponses["POST /api/feeds/restore"] = { status: 200, ok: true, json: { status: "success", message: "Restored" } };
       const restoreF = await restoreDefaultFeeds();
+      const logsUrl = getLogsDownloadUrl();
 
-      console.log(JSON.stringify({ stats, prune, clear, exportUrl, importRes, feeds, saveF, delF, testF, restoreF, calls }));
+      console.log(JSON.stringify({ stats, prune, clear, exportUrl, logsUrl, importRes, feeds, saveF, delF, testF, restoreF, calls }));
     """)
     assert res["stats"]["total_discoveries"] == 150
     assert res["prune"]["message"] == "Pruned"
     assert res["clear"]["message"] == "Cleared"
     assert res["exportUrl"] == "/api/backup/export?include_media=true"
+    assert res["logsUrl"] == "/api/logs/download"
     assert res["importRes"]["settings_count"] == 5
     assert res["feeds"]["feeds"][0]["id"] == 1
     assert res["saveF"]["feed_id"] == 2

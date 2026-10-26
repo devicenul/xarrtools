@@ -73,7 +73,8 @@ def test_resolve_settings_defaults():
         sonarr_default_root_folder: "/data/tv",
         scheduler_enabled: "1",
         scheduler_interval_hours: "12",
-        scheduler_time_of_day: "04:30"
+        scheduler_time_of_day: "04:30",
+        log_level: "DEBUG"
       });
       console.log(JSON.stringify({ d1, d2, d3 }));
     """)
@@ -86,6 +87,7 @@ def test_resolve_settings_defaults():
     assert res["d1"]["scheduler_enabled"] is False
     assert res["d1"]["scheduler_interval_hours"] == "24"
     assert res["d1"]["scheduler_time_of_day"] == ""
+    assert res["d1"]["log_level"] == "INFO"
 
     # custom values
     assert res["d3"]["radarr_url"] == "http://radarr:7878"
@@ -101,6 +103,7 @@ def test_resolve_settings_defaults():
     assert res["d3"]["scheduler_enabled"] is True
     assert res["d3"]["scheduler_interval_hours"] == "12"
     assert res["d3"]["scheduler_time_of_day"] == "04:30"
+    assert res["d3"]["log_level"] == "DEBUG"
 
 
 def test_resolve_hybrid_preset_all_tiers():
@@ -373,7 +376,8 @@ def test_collect_settings_payload():
         sonarrDefaultProfile: "3",
         schedulerEnabled: true,
         schedulerInterval: "8",
-        schedulerTimeOfDay: " 05:00 "
+        schedulerTimeOfDay: " 05:00 ",
+        logLevel: "debug"
       };
 
       const payload = collectSettingsPayload(values);
@@ -395,3 +399,4 @@ def test_collect_settings_payload():
     assert p["scheduler_enabled"] == "1"
     assert p["scheduler_interval_hours"] == "8"
     assert p["scheduler_time_of_day"] == "05:00"
+    assert p["log_level"] == "DEBUG"

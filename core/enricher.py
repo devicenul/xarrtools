@@ -11,8 +11,11 @@ from core.tmdb import get_movie_enrichment
 
 import time
 import threading
+import logging
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
+
+logger = logging.getLogger("xarrtools.enricher")
 
 # Global session with connection pooling and retry strategy
 enricher_session = requests.Session()
@@ -121,6 +124,7 @@ def get_wikipedia_cast(title: str, year: int, is_tv: bool = False) -> Optional[s
 
 def enrich_tv_show(title: str, year: int, sonarr_client: Optional[SonarrClient] = None) -> Dict[str, Any]:
     """Retrieves plot, cast, genres, trailer and TVDB ID for a TV show using TVMaze and Sonarr API."""
+    logger.debug(f"Enriching TV show: {title} ({year})")
     title = re.sub(r'\((\d{4})$', r'(\1)', title.strip()) if title else title
     base_title = re.sub(r'\s*[\(\[]\d{4}[\)\]]?$', '', title).strip() if title else ""
     data = {
@@ -319,6 +323,7 @@ def get_wikipedia_movie_details(title: str, year: int) -> Dict[str, str]:
 
 def enrich_movie(title: str, year: int, radarr_client: Optional[RadarrClient] = None, imdb_id: Optional[str] = None, tmdb_id: Optional[int] = None) -> Dict[str, Any]:
     """Retrieves plot, cast, genres, trailer and TMDB ID for a movie using Radarr, TMDB (if keyed) and Wikipedia."""
+    logger.debug(f"Enriching movie: {title} ({year})")
     data = {
         "language": "",
         "country": "",

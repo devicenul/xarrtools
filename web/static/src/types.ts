@@ -121,6 +121,7 @@ export interface SettingsResponse extends ApiResponse {
   scheduler_time_of_day?: string;
   scheduler_last_run?: string;
   scheduler_last_result?: string;
+  log_level?: string;
   [key: string]: unknown;
 }
 

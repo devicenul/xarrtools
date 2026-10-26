@@ -13,7 +13,7 @@ load_dotenv(dotenv_path=dotenv_path)
 
 import logging
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("xarrtools.config")
 
 class Config:
     def __init__(self):
@@ -149,6 +149,11 @@ class Config:
     @property
     def scheduler_last_result(self) -> str:
         return self._get_setting("scheduler_last_result", "").strip()
+
+    @property
+    def log_level(self) -> str:
+        val = self._get_setting("log_level", "INFO").strip().upper()
+        return val if val in ("DEBUG", "INFO", "WARNING", "ERROR") else "INFO"
 
     def validate_radarr(self) -> bool:
         """Returns True if Radarr config is complete, otherwise False."""

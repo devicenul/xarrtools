@@ -15,6 +15,9 @@ from urllib3.poolmanager import PoolManager
 from defusedxml.ElementTree import fromstring as secure_fromstring
 from core.locales import country_code, language_name, slug
 import xml.etree.ElementTree as ET
+import logging
+
+logger = logging.getLogger("xarrtools.scraper")
 
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
@@ -512,7 +515,7 @@ def scrape_new_releases(url: str, is_tv: bool = True, raise_on_error: bool = Fal
             if attempt < retries:
                 time.sleep(1.5 * (attempt + 1))
     if response is None:
-        print(f"\n[Warning] Failed to fetch page {url}: {last_error}")
+        logger.warning(f"Failed to fetch page {url}: {last_error}")
         if raise_on_error:
             raise last_error
         return []
@@ -592,10 +595,10 @@ def scrape_dvds_releases(year: int, month: int, url_template: str = None) -> Lis
     try:
         response = requests.get(url, headers=HEADERS, timeout=15)
         if response.status_code != 200:
-            print(f"\n[Warning] Failed to fetch page {url}: Status {response.status_code}")
+            logger.warning(f"Failed to fetch page {url}: Status {response.status_code}")
             return []
     except requests.exceptions.RequestException as e:
-        print(f"\n[Warning] Failed to fetch page {url}: {e}")
+        logger.warning(f"Failed to fetch page {url}: {e}")
         return []
 
     soup = BeautifulSoup(response.text, "html.parser")
@@ -863,6 +866,7 @@ def scrape_metacritic_window(url: str, is_tv: bool, start_date: datetime, max_pa
 
 def get_discoveries(past_days: int = 30, future_days: int = 60) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
     """Retrieves new TV shows and movies released within the specified past/future days window, merging custom feeds."""
+    logger.info(f"Starting discovery scan for past {past_days} days and future {future_days} days...")
     tv_raw = []
     movie_raw = []
     dvd_enabled = False
@@ -961,6 +965,7 @@ def get_discoveries(past_days: int = 30, future_days: int = 60) -> Tuple[List[Di
             )
         except Exception as e:
             # Feed Loop Isolation: catch error, log, and proceed
+            logger.warning(f"Error scraping feed '{feed.get('name')}' ({feed.get('url')}): {e}", exc_info=True)
             cursor.execute(
                 "UPDATE custom_feeds SET last_run = ?, last_status = ?, last_error_message = ? WHERE id = ?",
                 (datetime.now().strftime("%Y-%m-%d %H:%M:%S"), "error", str(e), feed["id"])
@@ -1012,4 +1017,5 @@ def get_discoveries(past_days: int = 30, future_days: int = 60) -> Tuple[List[Di
     tv_filtered.sort(key=lambda x: x["date_obj"], reverse=True)
     movie_filtered.sort(key=lambda x: x["date_obj"], reverse=True)
     
+    logger.info(f"Discovery scan complete: found {len(tv_filtered)} TV shows and {len(movie_filtered)} movies")
     return tv_filtered, movie_filtered

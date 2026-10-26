@@ -3,8 +3,11 @@ import time
 import socket
 import threading
 import ctypes
+import logging
 from pathlib import Path
 import webview
+
+logger = logging.getLogger("xarrtools.gui")
 
 def hide_console():
     """Hides the console window when running on Windows in GUI mode."""
@@ -15,6 +18,7 @@ def hide_console():
                 # SW_HIDE = 0
                 ctypes.windll.user32.ShowWindow(hwnd, 0)
         except Exception as e:
+            logger.warning(f"Failed to hide console window: {e}")
             print(f"[Warning] Failed to hide console window: {e}", file=sys.stderr)
 
 def get_free_port() -> int:
@@ -110,6 +114,7 @@ def run_gui(debug: bool = False):
 
     # 4. Block briefly until Flask starts accepting connections
     if not wait_for_server(port):
+        logger.error(f"Flask server failed to start on port {port} in time.")
         print(f"[Error] Flask server failed to start on port {port} in time.", file=sys.stderr)
         sys.exit(1)
 

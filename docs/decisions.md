@@ -22,3 +22,8 @@
 | Scheduler 60s startup delay on first run | Prevents heavy scrape/enrich jobs from competing with server boot and user's initial UI load. |
 | Restarts do not rescan unless overdue | Preserves previous execution schedule without spamming feeds on every server/app restart. |
 | Scheduler reuses scan progress lock & 409 status | Prevents race conditions and duplicate scans between background scheduled tasks and manual UI scans. |
+| Capped log file rotation (max 2 files: `xarrtools.log` and `xarrtools.log.1`, ~1MB each) | Prevents runaway disk growth on resource-constrained host devices, NAS, or VM environments while preserving previous session history for diagnostics. |
+| In-flight credential redaction via filter and formatter | Prevents secret API keys, tokens, query params, and Authorization headers from ever being written to console or disk, even in debug mode or crash tracebacks. |
+| In-memory ZIP for log downloads with fallback README | Safe, streaming download endpoint (`GET /api/logs/download`) with zero disk-write overhead; returns informative README if logs directory is empty or missing. |
+| Live log level updating without restart | Allows users to toggle DEBUG logging on-the-fly to diagnose an issue and return to INFO without stopping the Flask server or interrupting scans. |
+

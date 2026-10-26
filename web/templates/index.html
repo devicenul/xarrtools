@@ -650,6 +650,20 @@
                             </div>
                             <input type="file" id="file-backup-import" style="display: none;" accept=".json,.zip">
                         </div>
+
+                        <h3 style="font-family:'Outfit', sans-serif; font-size:14px; color:var(--accent-purple, #bf5af2); text-transform:uppercase; margin-top:20px; margin-bottom:12px; border-bottom:1px solid var(--border-color); padding-bottom:4px;">Logging & Diagnostics</h3>
+                        <div style="display: flex; flex-direction: column; gap: 10px;">
+                            <div style="display: flex; gap: 12px; align-items: center;">
+                                <label for="select-log-level" style="font-size: 12px; color: var(--text-secondary); width: 80px;">Log Level:</label>
+                                <select id="select-log-level" class="form-input" style="flex: 1; padding: 6px 10px; font-size: 12px;">
+                                    <option value="DEBUG">DEBUG</option>
+                                    <option value="INFO">INFO</option>
+                                    <option value="WARNING">WARNING</option>
+                                    <option value="ERROR">ERROR</option>
+                                </select>
+                                <button type="button" id="btn-download-logs" class="btn btn-secondary" style="font-size:12px; padding:6px 12px; white-space: nowrap;">📥 Download logs (ZIP)</button>
+                            </div>
+                        </div>
                     </div>
                 </form>
             </div>

@@ -7,7 +7,10 @@ import ipaddress
 import hashlib
 import json
 from pathlib import Path
+import logging
 import requests
+
+logger = logging.getLogger("xarrtools.posters")
 
 import core.db
 from core.config import config
@@ -178,5 +181,6 @@ def download_poster(url: str) -> tuple[bytes, str] | None:
         data = b"".join(chunks)
         store_poster(url, data, ct)
         return data, ct
-    except Exception:
+    except Exception as e:
+        logger.warning(f"Failed to download poster from {url}: {e}")
         return None

@@ -170,7 +170,7 @@ def sync_library_cache():
                         if movie.get("year"):
                             radarr_titles[title_norm].append(int(movie["year"]))
             except Exception as e:
-                app.logger.error(f"Error fetching Radarr library for cache: {e}")
+                logger.error(f"Error fetching Radarr library for cache: {e}")
                 
         if sonarr_client:
             try:
@@ -189,7 +189,7 @@ def sync_library_cache():
                         if show.get("year"):
                             sonarr_titles[title_norm].append(int(show["year"]))
             except Exception as e:
-                app.logger.error(f"Error fetching Sonarr library for cache: {e}")
+                logger.error(f"Error fetching Sonarr library for cache: {e}")
                 
         with library_cache_lock:
             library_cache["radarr_tmdb_ids"] = radarr_tmdb_ids
@@ -200,7 +200,7 @@ def sync_library_cache():
             library_cache["sonarr_titles"] = sonarr_titles
             library_cache["last_updated"] = datetime.now()
     except Exception as e:
-        app.logger.error(f"Library cache thread error: {e}")
+        logger.error(f"Library cache thread error: {e}")
 
 def update_library_cache_loop():
     while True:
@@ -228,7 +228,7 @@ def get_server_config():
             response_data["radarr"]["profiles"] = radarr_client.get_quality_profiles()
             response_data["radarr"]["configured"] = True
         except Exception as e:
-            app.logger.error(f"Error fetching Radarr config: {e}")
+            logger.error(f"Error fetching Radarr config: {e}")
             response_data["radarr"]["error"] = str(e)
             
     if sonarr_client:
@@ -237,7 +237,7 @@ def get_server_config():
             response_data["sonarr"]["profiles"] = sonarr_client.get_quality_profiles()
             response_data["sonarr"]["configured"] = True
         except Exception as e:
-            app.logger.error(f"Error fetching Sonarr config: {e}")
+            logger.error(f"Error fetching Sonarr config: {e}")
             response_data["sonarr"]["error"] = str(e)
             
     return jsonify(response_data)
@@ -292,9 +292,18 @@ def manage_settings():
                     except Exception:
                         return jsonify({"status": "error", "message": "scheduler_last_result must be valid JSON."}), 400
 
+        if "log_level" in data:
+            val = str(data["log_level"]).strip().upper()
+            if val not in ("DEBUG", "INFO", "WARNING", "ERROR"):
+                return jsonify({"status": "error", "message": "Invalid value for log_level. Must be DEBUG, INFO, WARNING, or ERROR."}), 400
+            data["log_level"] = val
+
         for key, val in data.items():
             set_setting(key, str(val))
         config.refresh()
+        if "log_level" in data:
+            from core.logging_setup import setup_logging
+            setup_logging(level=data["log_level"])
         with library_cache_lock:
             library_cache["last_updated"] = None
         return jsonify({"status": "success", "message": "Settings saved successfully."})
@@ -328,8 +337,40 @@ def backup_export():
             "Content-Disposition": "attachment; filename=xarrtools_backup.json"
         }
     except Exception as e:
-        app.logger.error(f"Error exporting backup: {e}")
+        logger.error(f"Error exporting backup: {e}")
         return jsonify({"status": "error", "message": str(e)}), 500
+
+@app.route("/api/logs/download", methods=["GET"])
+def download_logs():
+    """Downloads application log files (xarrtools.log, xarrtools.log.1) packaged in a ZIP archive.
+    
+    Returns a ZIP containing existing log files, or a README note if no logs are present.
+    """
+    from core.logging_setup import get_log_dir
+    import io
+    import zipfile
+
+    log_dir = get_log_dir()
+    log_files = [log_dir / "xarrtools.log", log_dir / "xarrtools.log.1"]
+    existing_files = [p for p in log_files if p.is_file() and p.stat().st_size > 0]
+
+    bio = io.BytesIO()
+    with zipfile.ZipFile(bio, mode="w", compression=zipfile.ZIP_DEFLATED) as zf:
+        if not existing_files:
+            zf.writestr("README.txt", "No log files currently exist or logs are empty.\n")
+        else:
+            for p in existing_files:
+                zf.write(p, arcname=p.name)
+
+    bio.seek(0)
+    return Response(
+        bio.getvalue(),
+        mimetype="application/zip",
+        headers={
+            "Content-Type": "application/zip",
+            "Content-Disposition": "attachment; filename=xarrtools_logs.zip"
+        }
+    )
 
 @app.route("/api/backup/import", methods=["POST"])
 def backup_import():
@@ -380,10 +421,10 @@ def backup_import():
             "posters_count": 0
         })
     except ValueError as ve:
-        app.logger.error(f"Validation error importing backup: {ve}")
+        logger.error(f"Validation error importing backup: {ve}")
         return jsonify({"status": "error", "message": str(ve)}), 400
     except Exception as e:
-        app.logger.error(f"Error importing backup: {e}")
+        logger.error(f"Error importing backup: {e}")
         return jsonify({"status": "error", "message": str(e)}), 500
 
 import re
@@ -1285,7 +1326,7 @@ def cache_refresh_item():
             
         return jsonify({"status": "success", "item": refreshed})
     except Exception as e:
-        app.logger.error(f"Error refreshing cache item '{title}': {e}")
+        logger.error(f"Error refreshing cache item '{title}': {e}")
         return jsonify({"status": "error", "message": str(e)}), 500
 
 @app.route("/api/lookup", methods=["GET"])
@@ -1509,7 +1550,7 @@ def link_library():
             
         return jsonify({"status": "success", "message": f"Successfully linked '{title}' and marked In Library."})
     except Exception as e:
-        app.logger.error(f"Error linking library item '{title}': {e}")
+        logger.error(f"Error linking library item '{title}': {e}")
         return jsonify({"status": "error", "message": str(e)}), 500
 
 
@@ -1566,7 +1607,7 @@ def background_poster_healer():
             time.sleep(2)
             
         except Exception as e:
-            # Silently catch and retry after a delay to avoid crashing the background thread
+            logger.warning(f"Background poster healer error: {e}", exc_info=True)
             time.sleep(5)
 
 # Start background healer thread
@@ -1781,11 +1822,13 @@ def restore_default_feeds_route():
 
 def start_server(port=5000, debug=False):
     """Starts the Flask web server."""
+    from core.logging_setup import setup_logging
+    setup_logging(level="DEBUG" if debug else None)
     if debug:
-        print(f"Starting xarrtools server in DEBUG mode at http://localhost:{port}...")
+        logger.info(f"Starting xarrtools server in DEBUG mode at http://localhost:{port}...")
         app.run(host="127.0.0.1", port=port, debug=True)
     else:
-        print(f"Starting xarrtools production server at http://localhost:{port}...")
+        logger.info(f"Starting xarrtools production server at http://localhost:{port}...")
         try:
             from waitress import serve
             serve(app, host="127.0.0.1", port=port)

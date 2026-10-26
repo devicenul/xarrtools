@@ -226,6 +226,22 @@ export function getBackupExportUrl(includeMedia: boolean = true, format?: string
 }
 
 /**
+ * Build logs download URL.
+ */
+export function getLogsDownloadUrl(): string {
+  return "/api/logs/download";
+}
+
+/**
+ * Trigger browser download of structured log archives.
+ */
+export function downloadLogs(): void {
+  if (typeof window !== "undefined") {
+    window.location.href = getLogsDownloadUrl();
+  }
+}
+
+/**
  * Import settings and cached media data from an uploaded JSON or ZIP file.
  * POST /api/backup/import
  */

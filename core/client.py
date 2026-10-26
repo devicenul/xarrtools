@@ -1,5 +1,8 @@
 import requests
+import logging
 from typing import List, Dict, Any, Optional
+
+logger = logging.getLogger("xarrtools.client")
 
 class ArrAPIError(Exception):
     """Custom exception for Sonarr/Radarr API errors."""
@@ -52,6 +55,7 @@ class BaseArrClient:
             self.base_url = self._discover_protocol()
             
         url = f"{self.base_url}/api/v3/{endpoint.lstrip('/')}"
+        logger.debug(f"{self.name} API request: {method} {endpoint}")
         try:
             response = requests.request(
                 method=method,
@@ -76,8 +80,10 @@ class BaseArrClient:
                     detail = detail_json.get("message", detail)
             except Exception:
                 pass
+            logger.warning(f"{err_msg}: {detail}")
             raise ArrAPIError(f"{err_msg}: {detail}", status_code=response.status_code, response_text=response.text) from e
         except requests.exceptions.RequestException as e:
+            logger.warning(f"Connection to {self.name} failed: {e}")
             raise ArrAPIError(f"Connection to {self.name} failed: {e}") from e
 
 class RadarrClient(BaseArrClient):

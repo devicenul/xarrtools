@@ -29,7 +29,8 @@ import {
   testFeed as apiTestFeed,
   restoreDefaultFeeds as apiRestoreDefaultFeeds,
   getSchedulerStatus as apiGetSchedulerStatus,
-  runSchedulerNow as apiRunSchedulerNow
+  runSchedulerNow as apiRunSchedulerNow,
+  downloadLogs as apiDownloadLogs
 } from "./api.js";
 import { addNotification } from "./notifications.js";
 import { emit, on } from "./events.js";
@@ -132,6 +133,7 @@ export function openSettingsModal(): void {
   const checkSchedulerEnabled = document.getElementById("check-scheduler-enabled") as HTMLInputElement | null;
   const inputSchedulerInterval = document.getElementById("input-scheduler-interval") as HTMLInputElement | null;
   const inputSchedulerTime = document.getElementById("input-scheduler-time") as HTMLInputElement | null;
+  const selectLogLevel = document.getElementById("select-log-level") as HTMLSelectElement | null;
 
   if (state.appSettings) {
     const defaults = moduleResolveSettingsDefaults(state.appSettings);
@@ -149,6 +151,7 @@ export function openSettingsModal(): void {
     if (checkSchedulerEnabled) checkSchedulerEnabled.checked = defaults.scheduler_enabled;
     if (inputSchedulerInterval) inputSchedulerInterval.value = defaults.scheduler_interval_hours;
     if (inputSchedulerTime) inputSchedulerTime.value = defaults.scheduler_time_of_day;
+    if (selectLogLevel) selectLogLevel.value = defaults.log_level || "INFO";
   }
 
   const selectRadarrDefaultFolder = document.getElementById(
@@ -241,6 +244,7 @@ export async function saveSettings(): Promise<void> {
   const schedulerEnabled = (document.getElementById("check-scheduler-enabled") as HTMLInputElement | null)?.checked ?? false;
   const schedulerInterval = (document.getElementById("input-scheduler-interval") as HTMLInputElement | null)?.value || "24";
   const schedulerTimeOfDay = (document.getElementById("input-scheduler-time") as HTMLInputElement | null)?.value || "";
+  const selectLogLevel = (document.getElementById("select-log-level") as HTMLSelectElement | null)?.value || "INFO";
 
   const payload = moduleCollectSettingsPayload({
     radarrUrl: inputRadarrUrl,
@@ -260,7 +264,8 @@ export async function saveSettings(): Promise<void> {
     matchIgnoreYear,
     schedulerEnabled,
     schedulerInterval,
-    schedulerTimeOfDay
+    schedulerTimeOfDay,
+    logLevel: selectLogLevel
   });
 
   closeSettingsModal();
@@ -370,6 +375,10 @@ export function exportFullBackup(): void {
     includeMedia = window.confirm("Include cached media details and posters in the full backup archive (.zip)?\n\nNote: The export file contains your API keys in plain text.");
   }
   window.location.href = apiGetBackupExportUrl(includeMedia, "full");
+}
+
+export function downloadLogs(): void {
+  apiDownloadLogs();
 }
 
 export function triggerBackupImport(): void {

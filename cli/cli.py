@@ -1,6 +1,9 @@
 import sys
+import logging
 import urllib.parse
 from rich.console import Console
+
+logger = logging.getLogger("xarrtools.cli")
 from rich.table import Table
 from rich.prompt import Prompt, Confirm, IntPrompt
 from rich.panel import Panel
@@ -175,6 +178,7 @@ def handle_radarr_workflow():
             profiles = client.get_quality_profiles()
             folders = client.get_root_folders()
     except ArrAPIError as e:
+        logger.error(f"Error communicating with Radarr: {e}")
         console.print(f"[red]Error communicating with Radarr: {e}[/red]")
         return
 
@@ -280,6 +284,7 @@ def handle_sonarr_workflow():
             profiles = client.get_quality_profiles()
             folders = client.get_root_folders()
     except ArrAPIError as e:
+        logger.error(f"Error communicating with Sonarr: {e}")
         console.print(f"[red]Error communicating with Sonarr: {e}[/red]")
         return
 
@@ -551,6 +556,7 @@ def handle_discovery_workflow():
                         if results:
                             item_data["raw_metadata"] = results[0]
                 except Exception as e:
+                    logger.error(f"Error fetching API metadata for '{item_data['title']}': {e}")
                     console.print(f"[red]Error fetching API metadata for '{item_data['title']}': {e}[/red]")
                     
         if not item_data.get("raw_metadata"):
@@ -691,6 +697,7 @@ def handle_export_workflow():
                 
             console.print(f"[green]✓ Successfully exported backup to '{filename}'[/green]")
     except Exception as e:
+        logger.error(f"Error exporting backup: {e}")
         console.print(f"[red]Error exporting backup: {e}[/red]")
 
 
@@ -725,10 +732,11 @@ def handle_import_workflow():
         if not isinstance(data, dict):
             console.print("[red]Invalid backup file structure.[/red]")
             return
-            
+        
         from core.db import verify_backup_checksum, import_from_dict
         check = verify_backup_checksum(data)
         if check is False:
+            logger.warning("Backup checksum verification failed.")
             console.print("[red]Error: Backup checksum verification failed (file corrupted or tampered).[/red]")
             return
             
@@ -737,10 +745,13 @@ def handle_import_workflow():
         console.print(f"  - Settings imported/updated: [bold]{s_count}[/bold]")
         console.print(f"  - Media items imported/updated: [bold]{m_count}[/bold]")
     except Exception as e:
+        logger.error(f"Error importing backup: {e}")
         console.print(f"[red]Error importing backup: {e}[/red]")
 
 
 def run_cli():
+    from core.logging_setup import setup_logging
+    setup_logging()
     while True:
         console.clear()
         console.print(Panel(

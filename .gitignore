@@ -44,6 +44,7 @@ dist/
 *.db.bak
 *.bak
 *.log
+logs/
 .coverage.*
 coverage.xml
 posters/

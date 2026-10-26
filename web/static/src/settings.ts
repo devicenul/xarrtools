@@ -63,6 +63,7 @@ export interface SettingsFormValues {
   schedulerEnabled?: boolean | string | number | null;
   schedulerInterval?: string | number | null;
   schedulerTimeOfDay?: string | null;
+  logLevel?: string | null;
 }
 
 /**
@@ -96,7 +97,8 @@ export function collectSettingsPayload(values: SettingsFormValues): Record<strin
     default_match_ignore_year: isChecked(values.matchIgnoreYear, true),
     scheduler_enabled: isChecked(values.schedulerEnabled, false),
     scheduler_interval_hours: values.schedulerInterval !== undefined && values.schedulerInterval !== null && String(values.schedulerInterval).trim() !== "" ? String(values.schedulerInterval) : "24",
-    scheduler_time_of_day: (values.schedulerTimeOfDay || "").trim()
+    scheduler_time_of_day: (values.schedulerTimeOfDay || "").trim(),
+    log_level: (values.logLevel || "INFO").trim().toUpperCase()
   };
 }
 
@@ -119,6 +121,7 @@ export interface SettingsDefaults {
   scheduler_enabled: boolean;
   scheduler_interval_hours: string;
   scheduler_time_of_day: string;
+  log_level: string;
 }
 
 /**
@@ -153,7 +156,8 @@ export function resolveSettingsDefaults(settings?: SettingsResponse | Record<str
       : (typeof s.sonarr_default_profile_id === "string" ? s.sonarr_default_profile_id : ""),
     scheduler_enabled: isSchedEnabled,
     scheduler_interval_hours: schedInterval,
-    scheduler_time_of_day: schedTime
+    scheduler_time_of_day: schedTime,
+    log_level: typeof s.log_level === "string" && s.log_level ? s.log_level : "INFO"
   };
 }
 

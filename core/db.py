@@ -6,8 +6,11 @@ from pathlib import Path
 from datetime import datetime, timedelta
 
 import sys
+import logging
 from core.metadata import evaluate_item_state_transition
 from core.locales import slug
+
+logger = logging.getLogger("xarrtools.db")
 
 # Store database in the project root folder (or executable directory if compiled)
 if getattr(sys, 'frozen', False):
@@ -33,9 +36,11 @@ def init_db():
     """Creates settings, cache, and custom_feeds tables, and migrates existing settings/columns."""
     parent_dir = DB_PATH.parent
     if not os.access(parent_dir, os.W_OK):
+        logger.error(f"Database parent directory {parent_dir} is not writable. UID: {os.getuid()}, GID: {os.getgid()}")
         print(f"ERROR: Database parent directory {parent_dir} is not writable. UID: {os.getuid()}, GID: {os.getgid()}", file=sys.stderr)
         sys.exit(1)
     if DB_PATH.exists() and not os.access(DB_PATH, os.R_OK | os.W_OK):
+        logger.error(f"Database file {DB_PATH} is not writable. UID: {os.getuid()}, GID: {os.getgid()}")
         print(f"ERROR: Database file {DB_PATH} is not writable. UID: {os.getuid()}, GID: {os.getgid()}", file=sys.stderr)
         sys.exit(1)
 
@@ -217,7 +222,8 @@ def init_db():
             "default_show_archived": "0",
             "default_match_ignore_year": "1",
             "radarr_default_profile_id": "",
-            "sonarr_default_profile_id": ""
+            "sonarr_default_profile_id": "",
+            "log_level": getattr(config, "log_level", "INFO")
         }
         for key, val in env_settings.items():
             if val is not None:
@@ -237,7 +243,8 @@ def init_db():
         "scheduler_interval_hours": "24",
         "scheduler_time_of_day": "",
         "scheduler_last_run": "",
-        "scheduler_last_result": ""
+        "scheduler_last_result": "",
+        "log_level": "INFO"
     }
     for key, val in default_settings.items():
         cursor.execute("SELECT COUNT(*) FROM settings WHERE key = ?", (key,))
@@ -662,7 +669,7 @@ def add_cached_items_batch(type_: str, items: list):
             conn.commit()
         except Exception as e:
             conn.rollback()
-            print(f"Error in batch insertion: {e}", file=sys.stderr)
+            logger.error(f"Error in batch insertion: {e}", exc_info=True)
         finally:
             conn.close()
 
@@ -769,7 +776,7 @@ def clean_expired_cache():
     conn.commit()
     conn.close()
     if deleted > 0:
-        print(f"Purged {deleted} expired entries from cache.")
+        logger.info(f"Purged {deleted} expired entries from cache.")
 
 def get_cache_stats() -> dict:
     """Returns row counts and disk space diagnostics of the cache."""
