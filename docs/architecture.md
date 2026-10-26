@@ -130,4 +130,4 @@ Node-based test suites exercise compiled modules: `tests/test_frontend_filters.p
 ## Tests
 
 `pytest tests -q --no-cov`. Many files are named after review "challenge" rounds; they are regular tests.
-Shared DB access in tests uses temp DBs; a few legacy tests use the repo DB path through `core.db` — do not add more.
+`tests/conftest.py` redirects `core.db.DB_PATH` and the log dir to a session temp dir before any test module is imported, redirects any test that resolves to the real DB, and fails the run if the real `xarrtools.db` changes. Individual test modules may still use their own temp DB.

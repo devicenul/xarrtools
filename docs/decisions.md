@@ -26,4 +26,4 @@
 | In-flight credential redaction via filter and formatter | Prevents secret API keys, tokens, query params, and Authorization headers from ever being written to console or disk, even in debug mode or crash tracebacks. |
 | In-memory ZIP for log downloads with fallback README | Safe, streaming download endpoint (`GET /api/logs/download`) with zero disk-write overhead; returns informative README if logs directory is empty or missing. |
 | Live log level updating without restart | Allows users to toggle DEBUG logging on-the-fly to diagnose an issue and return to INFO without stopping the Flask server or interrupting scans. |
-
+| Tests are globally isolated from the real DB in `conftest.py` | Legacy modules each patched `DB_PATH` themselves (import-time, per file), so single-file runs and early imports wiped the developer's real cache and settings. A session-wide redirect plus a hash guard makes that impossible. |

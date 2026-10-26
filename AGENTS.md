@@ -63,9 +63,11 @@ symlinks); `source init.sh --env-only` (sourced, as `build.sh` does) exports `VE
 
 ## Hard rules
 
-1. **Never touch the real `xarrtools.db` from tests or scripts.** Use a temp DB: the `temp_db` fixture in `tests/test_db.py` (it is local to that
-   file — copy the pattern, or point `core.db.DB_PATH` at a temp file as `tests/test_server.py` does). A few
-   legacy tests still touch the repo DB; don't add more. `tests/conftest.py` blanks the TMDB key so tests stay offline.
+1. **Never touch the real `xarrtools.db` from tests or scripts.** `tests/conftest.py` now enforces this: it redirects
+   `core.db.DB_PATH` (and the log dir) to a session temp dir before any test module is imported, an autouse fixture
+   redirects any test that resolves to the real DB, and the run fails if the real DB's hash changes. Tests may still
+   point `DB_PATH` at their own temp file (see the `temp_db` fixture in `tests/test_db.py`). `tests/conftest.py` also
+   blanks the TMDB key so tests stay offline. Ad-hoc scripts must use a temp DB too.
 2. **Never print, log, commit or write credentials** (TMDB token, Radarr/Sonarr keys). They live in the DB
    `settings` table / `.env`, both git-ignored. `.env.example` holds placeholders only.
 3. **Titles are compared with `slug()` / `normalize_title()`**, never an ASCII-only regex — non-Latin titles
