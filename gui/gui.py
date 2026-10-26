@@ -6,10 +6,74 @@ import threading
 import ctypes
 import logging
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Any, Dict, Union, Tuple, List, Sequence
 import webview
 
 logger = logging.getLogger("xarrtools.gui")
+
+class DesktopApi:
+    """Pywebview JavaScript API bridge for native desktop interactions (e.g. file downloads)."""
+
+    def __init__(self, port: int) -> None:
+        self.port = port
+
+    def save_file(self, url: str, filename: str = "") -> Dict[str, Any]:
+        """Prompts the user with a native Save File dialog and streams the file from the local server."""
+        try:
+            window = webview.active_window()
+            if not window and len(webview.windows) > 0:
+                window = webview.windows[0]
+            if not window:
+                return {"status": "error", "message": "No active window available"}
+
+            default_name = filename or "download"
+            file_types: Tuple[str, ...]
+            if default_name.lower().endswith(".json"):
+                file_types = ("JSON Files (*.json)", "All Files (*.*)")
+            elif default_name.lower().endswith(".zip"):
+                file_types = ("ZIP Archives (*.zip)", "All Files (*.*)")
+            else:
+                file_types = ("All Files (*.*)",)
+
+            dialog_type = getattr(getattr(webview, "FileDialog", None), "SAVE", getattr(webview, "SAVE_DIALOG", 30))
+            result = window.create_file_dialog(
+                dialog_type,
+                save_filename=default_name,
+                file_types=file_types
+            )
+            if not result:
+                return {"status": "cancelled"}
+
+            file_path: Optional[str] = None
+            if isinstance(result, (list, tuple)):
+                if len(result) > 0 and isinstance(result[0], str):
+                    file_path = result[0]
+            elif isinstance(result, str):
+                file_path = result
+
+            if not file_path:
+                return {"status": "cancelled"}
+
+            download_url = url
+            if download_url.startswith("/"):
+                download_url = f"http://127.0.0.1:{self.port}{download_url}"
+
+            import requests
+            with requests.get(download_url, stream=True, timeout=120) as resp:
+                resp.raise_for_status()
+                with open(file_path, "wb") as f:
+                    for chunk in resp.iter_content(chunk_size=65536):
+                        f.write(chunk)
+
+            logger.info(f"Successfully saved download to {file_path}")
+            return {"status": "success", "path": str(file_path)}
+        except Exception as e:
+            logger.error(f"Failed to save file download: {e}")
+            return {"status": "error", "message": str(e)}
+
+    def saveFile(self, url: str, filename: str = "") -> Dict[str, Any]:
+        """CamelCase alias for save_file."""
+        return self.save_file(url, filename)
 
 def hide_console() -> None:
     """Hides the console window when running on Windows in GUI mode."""
@@ -123,13 +187,19 @@ def run_gui(debug: bool = False) -> None:
         print(f"[Error] Flask server failed to start on port {port} in time.", file=sys.stderr)
         sys.exit(1)
 
-    # 5. Create the GUI window frame pointing to the local port
+    # Enable pywebview native download handling
+    if hasattr(webview, "settings") and isinstance(webview.settings, dict):
+        webview.settings["ALLOW_DOWNLOADS"] = True
+
+    # 5. Create the GUI window frame pointing to the local port with native desktop js_api
     icon_path = get_icon_path()
+    api = DesktopApi(port=port)
     
     # Establish a sleek default background matching xarrtools' dark aesthetic
     window = webview.create_window(
         title="xarrtools",
         url=f"http://127.0.0.1:{port}",
+        js_api=api,
         width=1280,
         height=720,
         min_size=(800, 600),

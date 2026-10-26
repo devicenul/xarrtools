@@ -633,3 +633,71 @@ def test_api_poster_ssrf_blocked(client):
     # Missing URL
     res_empty = client.get("/api/poster")
     assert res_empty.status_code == 400
+
+
+def test_export_full_backup_cached_posters_fast():
+    """Verify that cached posters are read directly without calling download_poster."""
+    p_url = "https://images.example.com/cached_movie.jpg"
+    poster_data = b"\xff\xd8\xff\xe0cached_poster_content"
+    store_poster(p_url, poster_data, "image/jpeg")
+
+    conn = core.db.get_db_connection()
+    conn.execute("""
+        INSERT INTO cache (type, title, year, imdb_id, poster_url, is_in_library, is_archived)
+        VALUES ('movie', 'Fast Movie', 2024, 'tt111111', ?, 0, 0)
+    """, (p_url,))
+    conn.commit()
+    conn.close()
+
+    bio = BytesIO()
+    with patch("core.backup.download_poster") as mock_dl:
+        counts = export_full_backup(bio, include_media=True, max_poster_fetch_time=5.0)
+        mock_dl.assert_not_called()
+
+    assert counts["media_count"] == 1
+    assert counts["posters_count"] == 1
+
+    bio.seek(0)
+    with zipfile.ZipFile(bio, "r") as zf:
+        names = zf.namelist()
+        assert "manifest.json" in names
+        assert "backup.json" in names
+        poster_files = [n for n in names if n.startswith("posters/")]
+        assert len(poster_files) == 1
+        assert zf.read(poster_files[0]) == poster_data
+
+
+def test_export_full_backup_uncached_posters_timeout():
+    """Verify that uncached poster downloads are bounded by max_poster_fetch_time and don't hang."""
+    import time
+    p_url1 = "https://images.example.com/slow1.jpg"
+    p_url2 = "https://images.example.com/slow2.jpg"
+
+    conn = core.db.get_db_connection()
+    conn.execute("""
+        INSERT INTO cache (type, title, year, imdb_id, poster_url, is_in_library, is_archived)
+        VALUES ('movie', 'Slow Movie 1', 2024, 'tt222221', ?, 0, 0),
+               ('movie', 'Slow Movie 2', 2024, 'tt222222', ?, 0, 0)
+    """, (p_url1, p_url2))
+    conn.commit()
+    conn.close()
+
+    def slow_download(url):
+        time.sleep(2.0)
+        return (b"\xff\xd8fake", "image/jpeg")
+
+    bio = BytesIO()
+    t0 = time.time()
+    with patch("core.backup.download_poster", side_effect=slow_download):
+        counts = export_full_backup(bio, include_media=True, max_poster_fetch_time=0.3)
+    duration = time.time() - t0
+
+    # Ensure it terminated promptly around the timeout, not taking 2+ seconds
+    assert duration < 1.5
+    assert counts["media_count"] == 2
+
+    bio.seek(0)
+    with zipfile.ZipFile(bio, "r") as zf:
+        names = zf.namelist()
+        assert "manifest.json" in names
+        assert "backup.json" in names

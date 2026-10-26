@@ -24,15 +24,7 @@ This document tracks planned future functionality, architectural changes, and us
   - Generate release artifacts (`.dmg`, `Setup.exe`, standalone binaries) and attach them to GitHub Releases.
 - **Code files involved**: `.github/workflows/build.yml`.
 
-### 3. Advanced Frontend Performance & Virtualized Grid
-- **Goal**: Optimize UI responsiveness and DOM memory footprint for very large release libraries (>500 items).
-- **Implementation Strategy**:
-  - **Done (first step):** cards use `content-visibility: auto`, poster images are `loading="lazy"`, and `renderMediaLists` uses an index map plus a single fragment insert (was O(n^2) `indexOf`). Plot text stays clamped with click-to-expand.
-  - **Next:** measure with thousands of synthetic items; only if still slow, implement virtualized grid rendering / progressive hydration (event delegation instead of per-card listeners) to eliminate offscreen DOM nodes.
-  - Expand reactive event bus pub/sub patterns across complex modal workflows and live status updates.
-- **Code files involved**: [web/static/src/render.ts](web/static/src/render.ts), [web/static/src/events.ts](web/static/src/events.ts).
-
-### 4. Free Packaging and Distribution Pipeline
+### 3. Free Packaging and Distribution Pipeline
 - **Goal**: Create cross-platform installation packages and setup distribution channels completely free of charge, avoiding developer registration fees.
 - **Implementation Strategy**:
   - **macOS (Homebrew Tap & DMG)**: Distribute the compiled `.app` bundle inside an unsigned drag-and-drop `.dmg` using `create-dmg` or `dmgbuild`. Create a custom Homebrew Tap repository (`homebrew-xarrtools`) with a Ruby formula to distribute the pre-compiled binary seamlessly via `brew install xarrtools`. Provide clear instructions for Gatekeeper bypass (`xattr -d com.apple.quarantine`).
@@ -40,6 +32,14 @@ This document tracks planned future functionality, architectural changes, and us
   - **SmartScreen Whitelisting**: Set up a workflow to submit new release binary hashes to the Microsoft Security Intelligence File Submission portal for free analysis, which builds reputation and clears false-positive SmartScreen warnings.
   - **Python Package (PyPI)**: Distribute the app as a standard package on PyPI, enabling installation via `pipx install xarrtools` to bypass OS code-signing limitations completely.
 - **Code files involved**: [build.py](build.py), [build.sh](build.sh), [build.bat](build.bat), [build.ps1](build.ps1).
+
+### 4. Frontend Performance Run (Large Sample Set)
+- **Goal**: Determine whether further frontend work is needed for very large release libraries by measuring, not building.
+- **Implementation Strategy**:
+  - **Already done:** cards use `content-visibility: auto`, poster images are `loading="lazy"`, and `renderMediaLists` uses an index map plus a single fragment insert (was O(n^2) `indexOf`). Plot text stays clamped with click-to-expand.
+  - Run the UI against a large synthetic sample set (thousands of items) and record initial render time, filter/sort latency, scroll smoothness and DOM/memory footprint.
+  - Only if the results show a real problem, open a follow-up item (e.g. virtualized grid or event delegation). Otherwise close this item with the measurements.
+- **Code files involved**: [web/static/src/render.ts](web/static/src/render.ts).
 
 ---
 

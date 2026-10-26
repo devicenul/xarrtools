@@ -785,7 +785,7 @@ def test_background_poster_healer_exception(mock_get_clients, mock_sleep):
 @patch("waitress.serve")
 def test_start_server_production(mock_serve, mock_run):
     start_server(1234, debug=False)
-    mock_serve.assert_called_once_with(app, host="127.0.0.1", port=1234)
+    mock_serve.assert_called_once_with(app, host="127.0.0.1", port=1234, threads=8)
     mock_run.assert_not_called()
 
 @patch("web.server.app.run")

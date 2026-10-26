@@ -233,12 +233,44 @@ export function getLogsDownloadUrl(): string {
 }
 
 /**
+ * Trigger file download via pywebview js_api if running in GUI mode,
+ * or via a synthetic anchor element with download attribute in browser mode.
+ */
+export async function triggerFileDownload(url: string, filename: string): Promise<boolean> {
+  if (typeof window !== "undefined") {
+    const pw = (window as unknown as { pywebview?: { api?: { save_file?: (url: string, filename: string) => Promise<{ status: string; message?: string }> } } }).pywebview;
+    if (pw?.api?.save_file) {
+      try {
+        const res = await pw.api.save_file(url, filename);
+        if (res && res.status === "error") {
+          console.error("Native download failed:", res.message);
+        } else {
+          return res?.status === "success";
+        }
+      } catch (err) {
+        console.warn("Native download bridge error, falling back to anchor:", err);
+      }
+    }
+
+    if (typeof document !== "undefined" && document.createElement) {
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      a.style.display = "none";
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
  * Trigger browser download of structured log archives.
  */
-export function downloadLogs(): void {
-  if (typeof window !== "undefined") {
-    window.location.href = getLogsDownloadUrl();
-  }
+export async function downloadLogs(): Promise<boolean> {
+  return triggerFileDownload(getLogsDownloadUrl(), "xarrtools_logs.zip");
 }
 
 /**

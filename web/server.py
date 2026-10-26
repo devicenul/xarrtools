@@ -1871,6 +1871,6 @@ def start_server(port: int = 5000, debug: bool = False) -> None:
         logger.info(f"Starting xarrtools production server at http://localhost:{port}...")
         try:
             from waitress import serve
-            serve(app, host="127.0.0.1", port=port)
+            serve(app, host="127.0.0.1", port=port, threads=8)
         except ImportError:
             app.run(host="127.0.0.1", port=port, debug=False)

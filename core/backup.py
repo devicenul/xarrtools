@@ -4,7 +4,7 @@ import io
 import json
 import hashlib
 import zipfile
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, as_completed, TimeoutError
 from pathlib import Path
 import logging
 from typing import Any, Dict, IO, List, Optional, Set, Tuple, Union
@@ -44,12 +44,17 @@ def verify_backup_checksum(data: Dict[str, Any]) -> Optional[bool]:
     return actual == expected
 
 
-def export_full_backup(path_or_fileobj: Union[str, Path, IO[bytes]], include_media: bool = True) -> Dict[str, int]:
+def export_full_backup(
+    path_or_fileobj: Union[str, Path, IO[bytes]],
+    include_media: bool = True,
+    max_poster_fetch_time: float = 10.0
+) -> Dict[str, int]:
     """Exports a full backup zip containing backup.json (format_version 2), posters, and manifest.json.
     
     Args:
         path_or_fileobj: File path or file-like object to write the ZIP archive to.
         include_media: Whether to include cache entries and download/archive posters.
+        max_poster_fetch_time: Maximum total time (seconds) to spend downloading uncached posters.
         
     Returns:
         Dictionary of counts: settings_count, custom_feeds_count, media_count, posters_count.
@@ -118,37 +123,59 @@ def export_full_backup(path_or_fileobj: Union[str, Path, IO[bytes]], include_med
     backup_data["checksum"] = hashlib.sha256(canonical).hexdigest()
     backup_json_bytes = json.dumps(backup_data, indent=2, ensure_ascii=False).encode('utf-8')
     
-    # 5. Fetch/cache posters concurrently (ThreadPoolExecutor with 8 workers)
+    # 5. Fetch/cache posters concurrently (cached first, uncached bounded by max_poster_fetch_time)
     manifest_files = {
         "backup.json": hashlib.sha256(backup_json_bytes).hexdigest()
     }
     poster_index: Dict[str, str] = {}  # sha256_of_url -> url
     poster_archive_data: Dict[str, bytes] = {}  # archive_name -> bytes
-    
-    def process_poster(url: str) -> Optional[Tuple[str, str, str, bytes]]:
-        """Downloads or retrieves cached poster bytes, returning (url, sha256, archive_name, data)."""
-        try:
-            res = get_cached_poster(url)
-            if not res:
-                res = download_poster(url)
-            if res:
-                data, ct = res
-                key = hashlib.sha256(url.encode("utf-8")).hexdigest()
-                ext = get_extension_for_mimetype(ct)
-                archive_name = f"posters/{key}{ext}"
-                return url, key, archive_name, data
-        except Exception:
-            pass
-        return None
 
+    uncached_poster_urls: List[str] = []
     if distinct_poster_urls:
-        with ThreadPoolExecutor(max_workers=8) as executor:
-            for result in executor.map(process_poster, distinct_poster_urls):
-                if result:
-                    url, key, archive_name, data = result
+        # Load all already-cached posters immediately without thread pool / network overhead
+        for url in distinct_poster_urls:
+            try:
+                res = get_cached_poster(url)
+                if res:
+                    data, ct = res
+                    key = hashlib.sha256(url.encode("utf-8")).hexdigest()
+                    ext = get_extension_for_mimetype(ct)
+                    archive_name = f"posters/{key}{ext}"
                     poster_index[key] = url
                     poster_archive_data[archive_name] = data
                     manifest_files[archive_name] = hashlib.sha256(data).hexdigest()
+                else:
+                    uncached_poster_urls.append(url)
+            except Exception:
+                uncached_poster_urls.append(url)
+
+        # Download uncached posters concurrently with bounded overall time
+        if uncached_poster_urls and max_poster_fetch_time > 0:
+            executor = ThreadPoolExecutor(max_workers=8)
+            try:
+                future_to_url = {executor.submit(download_poster, url): url for url in uncached_poster_urls}
+                for future in as_completed(future_to_url, timeout=max_poster_fetch_time):
+                    url = future_to_url[future]
+                    try:
+                        res = future.result()
+                        if res:
+                            data, ct = res
+                            key = hashlib.sha256(url.encode("utf-8")).hexdigest()
+                            ext = get_extension_for_mimetype(ct)
+                            archive_name = f"posters/{key}{ext}"
+                            poster_index[key] = url
+                            poster_archive_data[archive_name] = data
+                            manifest_files[archive_name] = hashlib.sha256(data).hexdigest()
+                    except Exception as e:
+                        logger.warning(f"Failed to fetch poster {url} for backup: {e}")
+            except (TimeoutError, Exception) as te:
+                if isinstance(te, TimeoutError):
+                    logger.warning(
+                        f"Poster download deadline ({max_poster_fetch_time}s) reached during full backup; "
+                        f"continuing export with {len(poster_archive_data)} posters."
+                    )
+            finally:
+                executor.shutdown(wait=False, cancel_futures=True)
                     
     # 6. Construct manifest.json
     manifest_data = {

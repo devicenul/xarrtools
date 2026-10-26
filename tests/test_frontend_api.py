@@ -63,7 +63,9 @@ import {{
   restoreDefaultFeeds,
   getSchedulerStatus,
   runSchedulerNow,
-  getLogsDownloadUrl
+  getLogsDownloadUrl,
+  downloadLogs,
+  triggerFileDownload
 }} from {json.dumps(DIST_API.as_uri())};
 
 (async () => {{
@@ -291,3 +293,103 @@ def test_scheduler_api():
     urls = [c["url"] for c in res["calls"]]
     assert "/api/scheduler/status" in urls
     assert "/api/scheduler/run-now" in urls
+
+
+def test_trigger_file_download_gui_mode():
+    res = run_api_test("""
+      let pywebviewCalled = null;
+      globalThis.window = {
+        pywebview: {
+          api: {
+            save_file: async (url, filename) => {
+              pywebviewCalled = { url, filename };
+              return { status: "success", path: "/saved/" + filename };
+            }
+          }
+        }
+      };
+
+      const resSuccess = await triggerFileDownload("/api/backup/export?format=json", "xarrtools_backup.json");
+      const calledArgs = pywebviewCalled;
+
+      // Now test cancelled
+      globalThis.window.pywebview.api.save_file = async (url, filename) => ({ status: "cancelled" });
+      const resCancel = await triggerFileDownload("/api/backup/export?format=full", "xarrtools_full_backup.zip");
+
+      console.log(JSON.stringify({ resSuccess, calledArgs, resCancel }));
+    """)
+    assert res["resSuccess"] is True
+    assert res["calledArgs"] == {"url": "/api/backup/export?format=json", "filename": "xarrtools_backup.json"}
+    assert res["resCancel"] is False
+
+
+def test_trigger_file_download_browser_mode():
+    res = run_api_test("""
+      let createdTag = null;
+      let clicked = false;
+      let appended = false;
+      let removed = false;
+      const mockAnchor = {
+        href: "",
+        download: "",
+        style: {},
+        click: () => { clicked = true; }
+      };
+
+      const mockDoc = {
+        createElement: (tag) => {
+          createdTag = tag;
+          return mockAnchor;
+        },
+        body: {
+          appendChild: (el) => { appended = (el === mockAnchor); },
+          removeChild: (el) => { removed = (el === mockAnchor); }
+        }
+      };
+
+      globalThis.window = { document: mockDoc };
+      globalThis.document = mockDoc;
+
+      const ok = await triggerFileDownload("/api/logs/download", "xarrtools_logs.zip");
+
+      console.log(JSON.stringify({
+        ok,
+        createdTag,
+        clicked,
+        appended,
+        removed,
+        href: mockAnchor.href,
+        download: mockAnchor.download
+      }));
+    """)
+    assert res["ok"] is True
+    assert res["createdTag"] == "a"
+    assert res["clicked"] is True
+    assert res["appended"] is True
+    assert res["removed"] is True
+    assert res["href"] == "/api/logs/download"
+    assert res["download"] == "xarrtools_logs.zip"
+
+
+def test_download_logs_triggers_zip():
+    res = run_api_test("""
+      let downloadedUrl = null;
+      let downloadedFilename = null;
+      globalThis.window = {
+        pywebview: {
+          api: {
+            save_file: async (url, filename) => {
+              downloadedUrl = url;
+              downloadedFilename = filename;
+              return { status: "success" };
+            }
+          }
+        }
+      };
+
+      const ok = await downloadLogs();
+      console.log(JSON.stringify({ ok, downloadedUrl, downloadedFilename }));
+    """)
+    assert res["ok"] is True
+    assert res["downloadedUrl"] == "/api/logs/download"
+    assert res["downloadedFilename"] == "xarrtools_logs.zip"

@@ -30,7 +30,8 @@ import {
   restoreDefaultFeeds as apiRestoreDefaultFeeds,
   getSchedulerStatus as apiGetSchedulerStatus,
   runSchedulerNow as apiRunSchedulerNow,
-  downloadLogs as apiDownloadLogs
+  downloadLogs as apiDownloadLogs,
+  triggerFileDownload as apiTriggerFileDownload
 } from "./api.js";
 import { addNotification } from "./notifications.js";
 import { emit, on } from "./events.js";
@@ -361,24 +362,24 @@ export async function wipeCacheManually(): Promise<void> {
   }
 }
 
-export function exportBackup(): void {
+export async function exportBackup(): Promise<void> {
   let includeMedia = false;
   if (typeof window !== "undefined" && window.confirm) {
     includeMedia = window.confirm("Include cached media details (identifiers & library indicators) in the backup JSON file?\n\nNote: The export file contains your API keys in plain text.");
   }
-  window.location.href = apiGetBackupExportUrl(includeMedia);
+  await apiTriggerFileDownload(apiGetBackupExportUrl(includeMedia), "xarrtools_backup.json");
 }
 
-export function exportFullBackup(): void {
+export async function exportFullBackup(): Promise<void> {
   let includeMedia = true;
   if (typeof window !== "undefined" && window.confirm) {
     includeMedia = window.confirm("Include cached media details and posters in the full backup archive (.zip)?\n\nNote: The export file contains your API keys in plain text.");
   }
-  window.location.href = apiGetBackupExportUrl(includeMedia, "full");
+  await apiTriggerFileDownload(apiGetBackupExportUrl(includeMedia, "full"), "xarrtools_full_backup.zip");
 }
 
-export function downloadLogs(): void {
-  apiDownloadLogs();
+export async function downloadLogs(): Promise<void> {
+  await apiDownloadLogs();
 }
 
 export function triggerBackupImport(): void {
