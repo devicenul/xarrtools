@@ -23,7 +23,8 @@ import {
   SaveFeedPayload,
   SaveFeedResponse,
   TestFeedPayload,
-  TestFeedResponse
+  TestFeedResponse,
+  SchedulerStatusResponse
 } from "./types.js";
 
 async function parseResponse<T extends ApiResponse>(response: Response): Promise<T> {
@@ -293,5 +294,26 @@ export async function testFeed(payload: TestFeedPayload): Promise<TestFeedRespon
  */
 export async function restoreDefaultFeeds(): Promise<ApiResponse> {
   const response = await fetch("/api/feeds/restore", { method: "POST" });
+  return parseResponse<ApiResponse>(response);
+}
+
+/**
+ * Retrieve background scheduler execution state and history.
+ * GET /api/scheduler/status
+ */
+export async function getSchedulerStatus(): Promise<SchedulerStatusResponse> {
+  const response = await fetch("/api/scheduler/status");
+  return parseResponse<SchedulerStatusResponse>(response);
+}
+
+/**
+ * Trigger an immediate background scheduled refresh.
+ * POST /api/scheduler/run-now
+ */
+export async function runSchedulerNow(): Promise<ApiResponse> {
+  const response = await fetch("/api/scheduler/run-now", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" }
+  });
   return parseResponse<ApiResponse>(response);
 }

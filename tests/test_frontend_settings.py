@@ -70,7 +70,10 @@ def test_resolve_settings_defaults():
         default_show_archived: "1",
         default_match_ignore_year: "0",
         radarr_default_quality_profile: "7",
-        sonarr_default_root_folder: "/data/tv"
+        sonarr_default_root_folder: "/data/tv",
+        scheduler_enabled: "1",
+        scheduler_interval_hours: "12",
+        scheduler_time_of_day: "04:30"
       });
       console.log(JSON.stringify({ d1, d2, d3 }));
     """)
@@ -80,6 +83,9 @@ def test_resolve_settings_defaults():
     assert res["d1"]["default_match_ignore_year"] is True
     assert res["d1"]["default_show_returning"] is False
     assert res["d1"]["radarr_url"] == ""
+    assert res["d1"]["scheduler_enabled"] is False
+    assert res["d1"]["scheduler_interval_hours"] == "24"
+    assert res["d1"]["scheduler_time_of_day"] == ""
 
     # custom values
     assert res["d3"]["radarr_url"] == "http://radarr:7878"
@@ -92,6 +98,9 @@ def test_resolve_settings_defaults():
     assert res["d3"]["default_match_ignore_year"] is False
     assert res["d3"]["radarr_default_quality_profile"] == "7"
     assert res["d3"]["sonarr_default_root_folder"] == "/data/tv"
+    assert res["d3"]["scheduler_enabled"] is True
+    assert res["d3"]["scheduler_interval_hours"] == "12"
+    assert res["d3"]["scheduler_time_of_day"] == "04:30"
 
 
 def test_resolve_hybrid_preset_all_tiers():
@@ -361,7 +370,10 @@ def test_collect_settings_payload():
         radarrDefaultFolder: "/data/movies",
         radarrDefaultProfile: "5",
         sonarrDefaultFolder: "/data/tv",
-        sonarrDefaultProfile: "3"
+        sonarrDefaultProfile: "3",
+        schedulerEnabled: true,
+        schedulerInterval: "8",
+        schedulerTimeOfDay: " 05:00 "
       };
 
       const payload = collectSettingsPayload(values);
@@ -380,3 +392,6 @@ def test_collect_settings_payload():
     assert p["radarr_default_quality_profile"] == "5"
     assert p["sonarr_default_root_folder"] == "/data/tv"
     assert p["sonarr_default_quality_profile"] == "3"
+    assert p["scheduler_enabled"] == "1"
+    assert p["scheduler_interval_hours"] == "8"
+    assert p["scheduler_time_of_day"] == "05:00"

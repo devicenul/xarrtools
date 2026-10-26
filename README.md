@@ -25,6 +25,7 @@ An interactive web-based and CLI media discovery manager designed to scrape upco
 15. **Standalone Demo Sandbox Mode**: Fully browse, search, and configure addition settings (folders and profiles) using mock data without configuring Radarr or Sonarr servers. Automatically launches Settings modal on unconfigured startups and renders a glowing "Demo Active" badge in the header.
 16. **Clickable Poster Links**: Wrap movie and series poster graphics in deep links to external resources (IMDb/TVDB) in new tabs.
 17. **Interface Theme Sync dropdown**: Add a setting dropdown inside settings view tab to swap dark/light themes, fully synchronized in real-time with the header toggler.
+18. **Background Scheduled Refreshes**: Automatically refresh discoveries from all configured feeds on a customizable interval (1-168h) or daily local time without third-party cron dependencies, with immediate "Run Now" controls, status tracking, and toast notifications when new items arrive.
 
 
 ---
@@ -53,6 +54,7 @@ xarrtools/
 │   ├── db.py                   # SQLite Cache & Settings database manager
 │   ├── enricher.py             # Metadata crawler (TVDB, TMDB, IMDb matching)
 │   ├── posters.py              # Poster disk cache and SSRF-safe download helpers
+│   ├── scheduler.py            # Background refresh calculations and due-checks
 │   └── scraper.py              # Metacritic / Release calendar HTML scrapers
 │
 ├── web/                        # Web Backend (Flask) & Frontend Assets

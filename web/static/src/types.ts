@@ -116,7 +116,32 @@ export interface SettingsResponse extends ApiResponse {
   default_show_library?: string;
   default_show_archived?: string;
   default_match_ignore_year?: string;
+  scheduler_enabled?: string | boolean;
+  scheduler_interval_hours?: string | number;
+  scheduler_time_of_day?: string;
+  scheduler_last_run?: string;
+  scheduler_last_result?: string;
   [key: string]: unknown;
+}
+
+export interface SchedulerLastResult {
+  started_at: string;
+  finished_at: string;
+  status: "ok" | "error" | string;
+  tv_count: number;
+  movie_count: number;
+  new_items: number;
+  error?: string | null;
+}
+
+export interface SchedulerStatusResponse extends ApiResponse {
+  enabled: boolean;
+  interval_hours: number;
+  time_of_day: string;
+  last_run: string | null;
+  next_run: string | null;
+  running: boolean;
+  last_result: SchedulerLastResult | null;
 }
 
 export interface ScanProgressResponse extends ApiResponse {

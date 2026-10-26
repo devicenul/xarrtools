@@ -23,16 +23,8 @@ This document tracks planned future functionality, architectural changes, and us
   - Create a `docker-compose.yml` template to easily stand up the tool alongside Radarr and Sonarr containers.
 - **Code files involved**: [Dockerfile](Dockerfile), [docker-compose.yml](docker-compose.yml), [core/db.py](core/db.py).
 
-### 3. Background Scheduled Refreshes
-- **Goal**: Automatically scan all enabled feeds (Metacritic, DVDs, TVmaze, TMDB and custom feeds) on a daily schedule, ensuring cache records stay updated without manual user trigger clicks.
-- **Implementation Strategy**:
-  - Integrate a background daemon thread or Python task library (like `APScheduler`) inside `server.py` starting on Flask boot.
-  - Configure scan timings (e.g., run every 24 hours or customizable in Settings).
-  - Scrape calendars, enrich results, and store entries in the SQLite database cache.
-  - Log scan statistics and broadcast a notification update payload to the UI sidebar.
-- **Code files involved**: [web/server.py](web/server.py), [web/static/src/main.ts](web/static/src/main.ts).
 
-### 4. GitHub Builds and Releases Setup
+### 3. GitHub Builds and Releases Setup
 - **Goal**: Automate PyInstaller compilation and packaging workflows on GitHub tag triggers, distributing binary builds directly via GitHub Releases.
 - **Implementation Strategy**:
   - Create GitHub Actions workflows for multi-platform matrices (Ubuntu, macOS, Windows).
@@ -40,7 +32,7 @@ This document tracks planned future functionality, architectural changes, and us
   - Generate release artifacts (`.dmg`, `Setup.exe`, standalone binaries) and attach them to GitHub Releases.
 - **Code files involved**: `.github/workflows/build.yml`.
 
-### 5. Structured Logging Architecture
+### 4. Structured Logging Architecture
 - **Status**: Only `core/tmdb.py` and `core/config.py` use `logging` today; `cli/cli.py` still has ~78 `print` calls and `core/scraper.py`, `core/db.py` and `web/server.py` a few more.
 - **Goal**: Implement systematic, configurable, structured logging across all core scraper classes, API wrappers, database operations, and server endpoints to facilitate easier troubleshooting and telemetry.
 - **Implementation Strategy**:
@@ -49,7 +41,7 @@ This document tracks planned future functionality, architectural changes, and us
   - Set up rotating log file handler (`xarrtools.log`) alongside console logging.
 - **Code files involved**: [core/config.py](core/config.py), [web/server.py](web/server.py), [cli/cli.py](cli/cli.py).
 
-### 6. Standardized Code Documentation & Type Annotations
+### 5. Standardized Code Documentation & Type Annotations
 - **Status**: Partially done: about half of the functions carry return annotations (`web/server.py` is the main gap, 1 of 31), and `AGENTS.md` / `docs/` now describe the architecture.
 - **Goal**: Standardize and enrich inline code documentation, block comments, and docstrings across all modules to improve code legibility and maintainability.
 - **Implementation Strategy**:
@@ -58,7 +50,7 @@ This document tracks planned future functionality, architectural changes, and us
   - Add context comments explaining non-trivial business logic, database queries, and test isolation design details.
 - **Code files involved**: all Python files under `core/`, `web/`, and `cli/`.
 
-### 7. Free Packaging and Distribution Pipeline
+### 6. Free Packaging and Distribution Pipeline
 - **Goal**: Create cross-platform installation packages and setup distribution channels completely free of charge, avoiding developer registration fees.
 - **Implementation Strategy**:
   - **macOS (Homebrew Tap & DMG)**: Distribute the compiled `.app` bundle inside an unsigned drag-and-drop `.dmg` using `create-dmg` or `dmgbuild`. Create a custom Homebrew Tap repository (`homebrew-xarrtools`) with a Ruby formula to distribute the pre-compiled binary seamlessly via `brew install xarrtools`. Provide clear instructions for Gatekeeper bypass (`xattr -d com.apple.quarantine`).
@@ -70,6 +62,15 @@ This document tracks planned future functionality, architectural changes, and us
 ---
 
 ## Completed Features
+
+### ✓ Background Scheduled Refreshes
+- Automatic background scheduled refresh daemon thread in `web/server.py` with zero external dependencies (no APScheduler).
+- Pure scheduling logic and validation in `core/scheduler.py` (`compute_next_run`, `is_due`, `validate_time_of_day`, `parse_time_of_day`).
+- Configurable interval (1-168 hours) and optional local time of day (`HH:MM`).
+- Startup delay (60s) for first-run refreshes; server restarts preserve scheduled execution without rescan unless overdue.
+- Reusable `run_scan(past_months, future_months)` decouples scanning from Flask request context and respects progress locking.
+- REST endpoints `GET /api/scheduler/status` and `POST /api/scheduler/run-now` (API key protected, 409 when busy).
+- Settings UI dedicated Scheduler tab with instant Run Now trigger, status metrics, and periodic frontend polling badge/toast in `web/static/src/main.ts`.
 
 ### ✓ TypeScript Frontend Modularization
 - Migrated legacy monolithic `app.js` into modular TypeScript modules under `web/static/src/` (`main.ts`, `types.ts`, `state.ts`, `filters.ts`, `render.ts`, `cards.ts`, `api.ts`, `settings.ts`, `modals.ts`, etc.) compiled to ES2020 in `web/static/dist/` via `npm run build`.

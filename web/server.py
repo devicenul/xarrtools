@@ -2,14 +2,18 @@ import os
 import sys
 import json
 import threading
+import logging
 from pathlib import Path
-from flask import Flask, jsonify, request, render_template, send_from_directory
-from datetime import datetime, timedelta
+from flask import Flask, jsonify, request, render_template, send_from_directory, Response
+from datetime import datetime, timedelta, timezone
+
+logger = logging.getLogger("xarrtools.server")
 
 from core.config import config
 from core.client import RadarrClient, SonarrClient, ArrAPIError
 from core.scraper import get_discoveries, safe_fetch_feed, parse_custom_feed, is_safe_regex
 from core.enricher import enrich_tv_show, enrich_movie
+from core.scheduler import validate_time_of_day, compute_next_run, is_due
 from core.db import (
     init_db,
     clean_expired_cache,
@@ -64,6 +68,8 @@ scan_progress = {
     "total": 0
 }
 scan_progress_lock = threading.Lock()
+scheduler_job_lock = threading.Lock()
+_scheduler_startup_time = datetime.now(timezone.utc)
 
 library_cache = {
     "radarr_tmdb_ids": set(),
@@ -241,6 +247,51 @@ def manage_settings():
     """Reads or updates configuration settings."""
     if request.method == "POST":
         data = request.json or {}
+
+        # Validate scheduler_* values
+        if "scheduler_enabled" in data:
+            val = data["scheduler_enabled"]
+            if isinstance(val, bool):
+                pass
+            elif str(val).strip().lower() in ("true", "false", "1", "0", "yes", "no", "on", "off"):
+                pass
+            else:
+                return jsonify({"status": "error", "message": "Invalid value for scheduler_enabled."}), 400
+
+        if "scheduler_interval_hours" in data:
+            val = data["scheduler_interval_hours"]
+            try:
+                h = int(val)
+                if h < 1 or h > 168:
+                    return jsonify({"status": "error", "message": "scheduler_interval_hours must be between 1 and 168."}), 400
+            except (ValueError, TypeError):
+                return jsonify({"status": "error", "message": "scheduler_interval_hours must be an integer."}), 400
+
+        if "scheduler_time_of_day" in data:
+            val = data["scheduler_time_of_day"]
+            if val is not None and str(val).strip() != "":
+                if not validate_time_of_day(str(val)):
+                    return jsonify({"status": "error", "message": "scheduler_time_of_day must be in 'HH:MM' format."}), 400
+
+        if "scheduler_last_run" in data:
+            val = data["scheduler_last_run"]
+            if val is not None and str(val).strip() != "":
+                try:
+                    datetime.fromisoformat(str(val).strip().replace("Z", "+00:00"))
+                except Exception:
+                    return jsonify({"status": "error", "message": "scheduler_last_run must be a valid ISO datetime."}), 400
+
+        if "scheduler_last_result" in data:
+            val = data["scheduler_last_result"]
+            if val is not None and str(val).strip() != "":
+                if isinstance(val, dict):
+                    data["scheduler_last_result"] = json.dumps(val)
+                else:
+                    try:
+                        json.loads(str(val))
+                    except Exception:
+                        return jsonify({"status": "error", "message": "scheduler_last_result must be valid JSON."}), 400
+
         for key, val in data.items():
             set_setting(key, str(val))
         config.refresh()
@@ -456,24 +507,21 @@ def get_scan_progress():
     with scan_progress_lock:
         return jsonify(scan_progress)
 
-@app.route("/api/discover", methods=["GET"])
-def discover_releases():
-    """Scrapes, caches, enriches, and resolves releases for TV and Movies."""
-    past_months = request.args.get("past_months", default=1, type=int)
-    future_months = request.args.get("future_months", default=2, type=int)
-    skip_scrape = request.args.get("skip_scrape", default="false").lower() == "true"
-    
+def run_scan(past_months: int = 1, future_months: int = 2) -> dict:
+    """Scrapes external release feeds, enriches items, updates the SQLite cache,
+    and returns a dict with 'tv' and 'movies' lists of enriched items.
+    Works outside of Flask request context.
+    """
+    with scan_progress_lock:
+        if scan_progress["status"] != "idle":
+            raise RuntimeError("A scan is already in progress.")
+
     past_days = max(0, min(365, past_months * 30))
     future_days = max(0, min(365, future_months * 30))
-    
-    if not skip_scrape:
-        with scan_progress_lock:
-            if scan_progress["status"] != "idle":
-                return jsonify({"status": "error", "message": "A scan is already in progress."}), 409
-    
+
     ignore_year = (get_setting("default_match_ignore_year", "1") == "1")
     radarr_client, sonarr_client = get_clients()
-    
+
     if "PYTEST_CURRENT_TEST" in os.environ or library_cache.get("last_updated") is None:
         sync_library_cache()
 
@@ -485,145 +533,21 @@ def discover_releases():
         sonarr_tvdb_ids = set(library_cache["sonarr_tvdb_ids"])
         sonarr_imdb_ids = set(library_cache["sonarr_imdb_ids"])
         sonarr_titles = dict(library_cache["sonarr_titles"])
-            
+
     enriched_tv = []
     enriched_movies = []
-    
-    if skip_scrape:
-        # Load directly from database cache
-        start_date = (datetime.now() - timedelta(days=past_days)).strftime("%Y-%m-%d")
-        end_date = (datetime.now() + timedelta(days=future_days)).strftime("%Y-%m-%d")
-        
-        tv_rows, movie_rows = get_cached_discoveries(start_date, end_date)
-        
-        for row in tv_rows:
-            tvdb_id = row["tvdb_id"]
-            imdb_id = row["imdb_id"]
-            
-            in_library = False
-            if sonarr_client:
-                has_tvdb_match = (tvdb_id and int(tvdb_id) in sonarr_tvdb_ids)
-                clean_imdb = str(imdb_id).strip().lower() if imdb_id else ""
-                has_imdb_match = (clean_imdb and clean_imdb in sonarr_imdb_ids)
-                
-                has_title_match = False
-                title_norm = normalize_title(row["title"], is_tv=True)
-                if title_norm in sonarr_titles:
-                    if ignore_year:
-                        has_title_match = True
-                    else:
-                        row_year = row["year"]
-                        has_title_match = any(abs(y - row_year) <= 1 for y in sonarr_titles[title_norm])
-                        
-                in_library = has_tvdb_match or has_imdb_match or has_title_match or bool(row["is_in_library"])
-                
-                # Sync status if changed
-                if in_library and not bool(row["is_in_library"]):
-                    update_cached_library_status("tv", row["title"], row["year"], True, imdb_id)
-            else:
-                in_library = bool(row["is_in_library"])
-                
-            data = {
-                "title": row["title"],
-                "year": row["year"],
-                "plot": row["description"],
-                "cast": row["cast"],
-                "genres": json.loads(row["genres"]) if row["genres"] else [],
-                "trailer": row["trailer"],
-                "poster_url": row["poster_url"] or "",
-                "tvdbId": tvdb_id,
-                "imdbId": imdb_id,
-                "network": row["network"],
-                "is_in_library": in_library,
-                "is_archived": bool(row["is_archived"]),
-                "has_new_metadata": bool(row.get("has_new_metadata", 0)),
-                "is_returning": bool(row["is_returning"]),
-                "date_str": row["date_str"],
-                "date_obj": row["date_obj"] or "",
-                "raw_metadata": None,
-                "rating_imdb": row.get("rating_imdb", "") or "",
-                "rating_metacritic": row.get("rating_metacritic", "") or "",
-                "rating_rt": row.get("rating_rt", "") or "",
-                "country": row.get("country", "") or "",
-                "language": row.get("language", "") or ""
-            }
-            enriched_tv.append(data)
-            
-        for row in movie_rows:
-            tmdb_id = row["tmdb_id"]
-            imdb_id = row["imdb_id"]
-            
-            in_library = False
-            if radarr_client:
-                has_tmdb_match = (tmdb_id and int(tmdb_id) in radarr_tmdb_ids)
-                clean_imdb = str(imdb_id).strip().lower() if imdb_id else ""
-                has_imdb_match = (clean_imdb and clean_imdb in radarr_imdb_ids)
-                
-                has_title_match = False
-                title_norm = normalize_title(row["title"], is_tv=False)
-                if title_norm in radarr_titles:
-                    if ignore_year:
-                        has_title_match = True
-                    else:
-                        row_year = row["year"]
-                        has_title_match = any(abs(y - row_year) <= 1 for y in radarr_titles[title_norm])
-                        
-                in_library = has_tmdb_match or has_imdb_match or has_title_match or bool(row["is_in_library"])
-                
-                # Sync status if changed
-                if in_library and not bool(row["is_in_library"]):
-                    update_cached_library_status("movie", row["title"], row["year"], True, imdb_id)
-            else:
-                in_library = bool(row["is_in_library"])
-                
-            data = {
-                "title": row["title"],
-                "year": row["year"],
-                "plot": row["description"],
-                "cast": row["cast"],
-                "genres": json.loads(row["genres"]) if row["genres"] else [],
-                "trailer": row["trailer"],
-                "poster_url": row["poster_url"] or "",
-                "tmdbId": tmdb_id,
-                "imdbId": imdb_id,
-                "network": row["network"],
-                "is_in_library": in_library,
-                "is_archived": bool(row["is_archived"]),
-                "has_new_metadata": bool(row.get("has_new_metadata", 0)),
-                "date_str": row["date_str"],
-                "date_obj": row["date_obj"] or "",
-                "raw_metadata": None,
-                "rating_imdb": row.get("rating_imdb", "") or "",
-                "rating_metacritic": row.get("rating_metacritic", "") or "",
-                "rating_rt": row.get("rating_rt", "") or "",
-                "director": row.get("director", "") or "",
-                "producer": row.get("producer", "") or "",
-                "country": row.get("country", "") or "",
-                "language": row.get("language", "") or ""
-            }
-            enriched_movies.append(data)
-            
-        return jsonify({
-            "status": "success",
-            "tv": [item for item in enriched_tv if not is_incomplete_metadata(item)],
-            "movies": [item for item in enriched_movies if not is_incomplete_metadata(item)]
-        })
-        
+
     try:
         update_scan_progress("scraping", "Scraping Metacritic and DVD release calendars...", 0, 0)
-        
-        try:
-            tv_raw, movie_raw = get_discoveries(past_days, future_days)
-        except Exception as e:
-            return jsonify({"status": "error", "message": f"Failed to scrape releases: {e}"}), 500
-            
+        tv_raw, movie_raw = get_discoveries(past_days, future_days)
+
         # 2. Enrich TV shows (using database cache optimization)
         total_items = len(tv_raw) + len(movie_raw)
         for idx, item in enumerate(tv_raw):
             try:
                 update_scan_progress("enriching", f"Fetching metadata for {item['title']}", idx + 1, total_items)
                 cached = get_cached_item("tv", item["title"], item["date_obj"].year)
-                
+
                 # Check if cache is incomplete
                 is_incomplete = True
                 if cached:
@@ -635,14 +559,14 @@ def discover_releases():
                                 recently_updated = True
                         except Exception:
                             pass
-                    
+
                     has_poster = bool(cached.get("poster_url"))
                     has_ratings = bool(cached.get("rating_imdb") or cached.get("rating_metacritic") or cached.get("rating_rt"))
                     has_ids = bool(cached.get("imdb_id") and cached.get("tvdb_id"))
-                    
+
                     if (has_poster and has_ratings and has_ids) or (recently_updated and has_poster):
                         is_incomplete = False
-                
+
                 if cached and not is_incomplete:
                     # Check library
                     in_library = False
@@ -652,7 +576,7 @@ def discover_releases():
                         has_tvdb_match = (tvdb_val and int(tvdb_val) in sonarr_tvdb_ids)
                         clean_imdb = str(imdb_val).strip().lower() if imdb_val else ""
                         has_imdb_match = (clean_imdb and clean_imdb in sonarr_imdb_ids)
-                        
+
                         has_title_match = False
                         title_norm = normalize_title(cached["title"], is_tv=True)
                         if title_norm in sonarr_titles:
@@ -660,15 +584,15 @@ def discover_releases():
                                 has_title_match = True
                             else:
                                 has_title_match = any(abs(y - cached["year"]) <= 1 for y in sonarr_titles[title_norm])
-                                
+
                         in_library = has_tvdb_match or has_imdb_match or has_title_match or bool(cached["is_in_library"])
-                        
+
                         # Sync status if changed
                         if in_library and not bool(cached["is_in_library"]):
                             update_cached_library_status("tv", cached["title"], cached["year"], True, imdb_val)
                     else:
                         in_library = bool(cached["is_in_library"])
-                        
+
                     data = {
                         "title": cached["title"],
                         "year": cached["year"],
@@ -698,7 +622,7 @@ def discover_releases():
                     data["is_returning"] = item.get("is_returning", False)
                     data["country"] = data.get("country") or item.get("country", "")
                     data["language"] = data.get("language") or item.get("language", "")
-                    
+
                     # Resolve library status
                     in_library = False
                     tvdb_val = data.get("tvdbId")
@@ -707,7 +631,7 @@ def discover_releases():
                         has_tvdb_match = (tvdb_val and int(tvdb_val) in sonarr_tvdb_ids)
                         clean_imdb = str(imdb_val).strip().lower() if imdb_val else ""
                         has_imdb_match = (clean_imdb and clean_imdb in sonarr_imdb_ids)
-                        
+
                         has_title_match = False
                         title_norm = normalize_title(data["title"], is_tv=True)
                         if title_norm in sonarr_titles:
@@ -715,16 +639,16 @@ def discover_releases():
                                 has_title_match = True
                             else:
                                 has_title_match = any(abs(y - data["year"]) <= 1 for y in sonarr_titles[title_norm])
-                                
+
                         in_library = has_tvdb_match or has_imdb_match or has_title_match or (bool(cached["is_in_library"]) if cached else False)
                     else:
                         in_library = bool(cached["is_in_library"]) if cached else False
-                        
+
                     data["is_in_library"] = in_library
                     data["date_str"] = item.get("date_str", "")
                     data["date_obj"] = item.get("date_obj").strftime("%Y-%m-%d") if isinstance(item.get("date_obj"), datetime) else (str(item.get("date_obj")) if item.get("date_obj") else "")
                     data["href"] = item.get("href", "")
-                        
+
                     # Cache newly fetched details
                     add_cached_item("tv", data)
                     cached_after = get_cached_item("tv", data["title"], data.get("year", item["date_obj"].year), data.get("imdbId"))
@@ -734,13 +658,13 @@ def discover_releases():
                     else:
                         data["is_archived"] = bool(data.get("is_archived", False))
                         data["has_new_metadata"] = bool(data.get("has_new_metadata", False))
-                    
+
                 data["date_str"] = item["date_str"]
                 data["date_obj"] = data.get("date_obj") or (item.get("date_obj").strftime("%Y-%m-%d") if isinstance(item.get("date_obj"), datetime) else (str(item.get("date_obj")) if item.get("date_obj") else ""))
                 data["is_returning"] = item.get("is_returning", False)
                 enriched_tv.append(data)
             except Exception as e:
-                app.logger.error(f"Error enriching TV show '{item['title']}': {e}")
+                logger.error(f"Error enriching TV show '{item['title']}': {e}")
                 if item.get("date_obj"):
                     item["date_obj"] = item["date_obj"].strftime("%Y-%m-%d") if isinstance(item["date_obj"], datetime) else str(item["date_obj"])
                 item["plot"] = item["description"]
@@ -754,14 +678,14 @@ def discover_releases():
                 item["raw_metadata"] = None
                 item["is_returning"] = item.get("is_returning", False)
                 enriched_tv.append(item)
-                
+
         # 3. Enrich Movies (using database cache optimization)
         for idx, item in enumerate(movie_raw):
             try:
                 current_idx = len(tv_raw) + idx + 1
                 update_scan_progress("enriching", f"Getting metadata for {item['title']}", current_idx, total_items)
                 cached = get_cached_item("movie", item["title"], item["date_obj"].year, item.get("imdbId"))
-                
+
                 # Check if cache is incomplete
                 is_incomplete = True
                 if cached:
@@ -773,14 +697,14 @@ def discover_releases():
                                 recently_updated = True
                         except Exception:
                             pass
-                    
+
                     has_poster = bool(cached.get("poster_url"))
                     has_ratings = bool(cached.get("rating_imdb") or cached.get("rating_metacritic") or cached.get("rating_rt"))
                     has_ids = bool(cached.get("imdb_id") and cached.get("tmdb_id"))
-                    
+
                     if (has_poster and has_ratings and has_ids) or (recently_updated and has_poster):
                         is_incomplete = False
-                
+
                 if cached and not is_incomplete:
                     # Check library
                     in_library = False
@@ -790,7 +714,7 @@ def discover_releases():
                         has_tmdb_match = (tmdb_val and int(tmdb_val) in radarr_tmdb_ids)
                         clean_imdb = str(imdb_val).strip().lower() if imdb_val else ""
                         has_imdb_match = (clean_imdb and clean_imdb in radarr_imdb_ids)
-                        
+
                         has_title_match = False
                         title_norm = normalize_title(cached["title"], is_tv=False)
                         if title_norm in radarr_titles:
@@ -798,15 +722,15 @@ def discover_releases():
                                 has_title_match = True
                             else:
                                 has_title_match = any(abs(y - cached["year"]) <= 1 for y in radarr_titles[title_norm])
-                                
+
                         in_library = has_tmdb_match or has_imdb_match or has_title_match or bool(cached["is_in_library"])
-                        
+
                         # Sync status if changed
                         if in_library and not bool(cached["is_in_library"]):
                             update_cached_library_status("movie", cached["title"], cached["year"], True, imdb_val)
                     else:
                         in_library = bool(cached["is_in_library"])
-                        
+
                     data = {
                         "title": cached["title"],
                         "year": cached["year"],
@@ -840,7 +764,7 @@ def discover_releases():
                         data["imdbId"] = item.get("imdbId")
                     data["country"] = data.get("country") or item.get("country", "")
                     data["language"] = data.get("language") or item.get("language", "")
-                    
+
                     # Resolve library status
                     in_library = False
                     tmdb_val = data.get("tmdbId")
@@ -849,7 +773,7 @@ def discover_releases():
                         has_tmdb_match = (tmdb_val and int(tmdb_val) in radarr_tmdb_ids)
                         clean_imdb = str(imdb_val).strip().lower() if imdb_val else ""
                         has_imdb_match = (clean_imdb and clean_imdb in radarr_imdb_ids)
-                        
+
                         has_title_match = False
                         title_norm = normalize_title(data["title"], is_tv=False)
                         if title_norm in radarr_titles:
@@ -857,16 +781,16 @@ def discover_releases():
                                 has_title_match = True
                             else:
                                 has_title_match = any(abs(y - data["year"]) <= 1 for y in radarr_titles[title_norm])
-                                
+
                         in_library = has_tmdb_match or has_imdb_match or has_title_match or (bool(cached["is_in_library"]) if cached else False)
                     else:
                         in_library = bool(cached["is_in_library"]) if cached else False
-                        
+
                     data["is_in_library"] = in_library
                     data["date_str"] = item.get("date_str", "")
                     data["date_obj"] = item.get("date_obj").strftime("%Y-%m-%d") if isinstance(item.get("date_obj"), datetime) else (str(item.get("date_obj")) if item.get("date_obj") else "")
                     data["href"] = item.get("href", "")
-                        
+
                     # Cache newly fetched details
                     add_cached_item("movie", data)
                     cached_after = get_cached_item("movie", data["title"], data.get("year", item["date_obj"].year), data.get("imdbId"))
@@ -876,14 +800,14 @@ def discover_releases():
                     else:
                         data["is_archived"] = bool(data.get("is_archived", False))
                         data["has_new_metadata"] = bool(data.get("has_new_metadata", False))
-                    
+
                 data["date_str"] = item["date_str"]
                 data["date_obj"] = data.get("date_obj") or (item.get("date_obj").strftime("%Y-%m-%d") if isinstance(item.get("date_obj"), datetime) else (str(item.get("date_obj")) if item.get("date_obj") else ""))
                 if "imdbId" not in data or not data["imdbId"]:
                     data["imdbId"] = item.get("imdbId")
                 enriched_movies.append(data)
             except Exception as e:
-                app.logger.error(f"Error enriching movie '{item['title']}': {e}")
+                logger.error(f"Error enriching movie '{item['title']}': {e}")
                 if item.get("date_obj"):
                     item["date_obj"] = item["date_obj"].strftime("%Y-%m-%d") if isinstance(item["date_obj"], datetime) else str(item["date_obj"])
                 item["plot"] = item["description"]
@@ -897,14 +821,330 @@ def discover_releases():
                 if "imdbId" not in item or not item["imdbId"]:
                     item["imdbId"] = item.get("imdbId")
                 enriched_movies.append(item)
-                
+
+        return {
+            "tv": [item for item in enriched_tv if not is_incomplete_metadata(item)],
+            "movies": [item for item in enriched_movies if not is_incomplete_metadata(item)]
+        }
+    finally:
+        update_scan_progress("idle", "Idle", 0, 0)
+
+@app.route("/api/discover", methods=["GET"])
+def discover_releases():
+    """Scrapes, caches, enriches, and resolves releases for TV and Movies."""
+    past_months = request.args.get("past_months", default=1, type=int)
+    future_months = request.args.get("future_months", default=2, type=int)
+    skip_scrape = request.args.get("skip_scrape", default="false").lower() == "true"
+
+    past_days = max(0, min(365, past_months * 30))
+    future_days = max(0, min(365, future_months * 30))
+
+    if skip_scrape:
+        ignore_year = (get_setting("default_match_ignore_year", "1") == "1")
+        radarr_client, sonarr_client = get_clients()
+
+        if "PYTEST_CURRENT_TEST" in os.environ or library_cache.get("last_updated") is None:
+            sync_library_cache()
+
+        # 1. Fetch libraries (using background cache)
+        with library_cache_lock:
+            radarr_tmdb_ids = set(library_cache["radarr_tmdb_ids"])
+            radarr_imdb_ids = set(library_cache["radarr_imdb_ids"])
+            radarr_titles = dict(library_cache["radarr_titles"])
+            sonarr_tvdb_ids = set(library_cache["sonarr_tvdb_ids"])
+            sonarr_imdb_ids = set(library_cache["sonarr_imdb_ids"])
+            sonarr_titles = dict(library_cache["sonarr_titles"])
+
+        enriched_tv = []
+        enriched_movies = []
+
+        # Load directly from database cache
+        start_date = (datetime.now() - timedelta(days=past_days)).strftime("%Y-%m-%d")
+        end_date = (datetime.now() + timedelta(days=future_days)).strftime("%Y-%m-%d")
+
+        tv_rows, movie_rows = get_cached_discoveries(start_date, end_date)
+
+        for row in tv_rows:
+            tvdb_id = row["tvdb_id"]
+            imdb_id = row["imdb_id"]
+
+            in_library = False
+            if sonarr_client:
+                has_tvdb_match = (tvdb_id and int(tvdb_id) in sonarr_tvdb_ids)
+                clean_imdb = str(imdb_id).strip().lower() if imdb_id else ""
+                has_imdb_match = (clean_imdb and clean_imdb in sonarr_imdb_ids)
+
+                has_title_match = False
+                title_norm = normalize_title(row["title"], is_tv=True)
+                if title_norm in sonarr_titles:
+                    if ignore_year:
+                        has_title_match = True
+                    else:
+                        row_year = row["year"]
+                        has_title_match = any(abs(y - row_year) <= 1 for y in sonarr_titles[title_norm])
+
+                in_library = has_tvdb_match or has_imdb_match or has_title_match or bool(row["is_in_library"])
+
+                # Sync status if changed
+                if in_library and not bool(row["is_in_library"]):
+                    update_cached_library_status("tv", row["title"], row["year"], True, imdb_id)
+            else:
+                in_library = bool(row["is_in_library"])
+
+            data = {
+                "title": row["title"],
+                "year": row["year"],
+                "plot": row["description"],
+                "cast": row["cast"],
+                "genres": json.loads(row["genres"]) if row["genres"] else [],
+                "trailer": row["trailer"],
+                "poster_url": row["poster_url"] or "",
+                "tvdbId": tvdb_id,
+                "imdbId": imdb_id,
+                "network": row["network"],
+                "is_in_library": in_library,
+                "is_archived": bool(row["is_archived"]),
+                "has_new_metadata": bool(row.get("has_new_metadata", 0)),
+                "is_returning": bool(row["is_returning"]),
+                "date_str": row["date_str"],
+                "date_obj": row["date_obj"] or "",
+                "raw_metadata": None,
+                "rating_imdb": row.get("rating_imdb", "") or "",
+                "rating_metacritic": row.get("rating_metacritic", "") or "",
+                "rating_rt": row.get("rating_rt", "") or "",
+                "country": row.get("country", "") or "",
+                "language": row.get("language", "") or ""
+            }
+            enriched_tv.append(data)
+
+        for row in movie_rows:
+            tmdb_id = row["tmdb_id"]
+            imdb_id = row["imdb_id"]
+
+            in_library = False
+            if radarr_client:
+                has_tmdb_match = (tmdb_id and int(tmdb_id) in radarr_tmdb_ids)
+                clean_imdb = str(imdb_id).strip().lower() if imdb_id else ""
+                has_imdb_match = (clean_imdb and clean_imdb in radarr_imdb_ids)
+
+                has_title_match = False
+                title_norm = normalize_title(row["title"], is_tv=False)
+                if title_norm in radarr_titles:
+                    if ignore_year:
+                        has_title_match = True
+                    else:
+                        row_year = row["year"]
+                        has_title_match = any(abs(y - row_year) <= 1 for y in radarr_titles[title_norm])
+
+                in_library = has_tmdb_match or has_imdb_match or has_title_match or bool(row["is_in_library"])
+
+                # Sync status if changed
+                if in_library and not bool(row["is_in_library"]):
+                    update_cached_library_status("movie", row["title"], row["year"], True, imdb_id)
+            else:
+                in_library = bool(row["is_in_library"])
+
+            data = {
+                "title": row["title"],
+                "year": row["year"],
+                "plot": row["description"],
+                "cast": row["cast"],
+                "genres": json.loads(row["genres"]) if row["genres"] else [],
+                "trailer": row["trailer"],
+                "poster_url": row["poster_url"] or "",
+                "tmdbId": tmdb_id,
+                "imdbId": imdb_id,
+                "network": row["network"],
+                "is_in_library": in_library,
+                "is_archived": bool(row["is_archived"]),
+                "has_new_metadata": bool(row.get("has_new_metadata", 0)),
+                "date_str": row["date_str"],
+                "date_obj": row["date_obj"] or "",
+                "raw_metadata": None,
+                "rating_imdb": row.get("rating_imdb", "") or "",
+                "rating_metacritic": row.get("rating_metacritic", "") or "",
+                "rating_rt": row.get("rating_rt", "") or "",
+                "director": row.get("director", "") or "",
+                "producer": row.get("producer", "") or "",
+                "country": row.get("country", "") or "",
+                "language": row.get("language", "") or ""
+            }
+            enriched_movies.append(data)
+
         return jsonify({
             "status": "success",
             "tv": [item for item in enriched_tv if not is_incomplete_metadata(item)],
             "movies": [item for item in enriched_movies if not is_incomplete_metadata(item)]
         })
+
+    with scan_progress_lock:
+        if scan_progress["status"] != "idle":
+            return jsonify({"status": "error", "message": "A scan is already in progress."}), 409
+
+    try:
+        results = run_scan(past_months, future_months)
+        return jsonify({
+            "status": "success",
+            "tv": results["tv"],
+            "movies": results["movies"]
+        })
+    except RuntimeError as e:
+        if "already in progress" in str(e):
+            return jsonify({"status": "error", "message": str(e)}), 409
+        return jsonify({"status": "error", "message": f"Failed to scrape releases: {e}"}), 500
+    except Exception as e:
+        return jsonify({"status": "error", "message": f"Failed to scrape releases: {e}"}), 500
+
+def run_scheduler_job() -> dict:
+    """Executes a scheduled refresh scan, updates last_run and last_result in settings,
+    and catches all exceptions so it never crashes the background worker.
+    """
+    if not scheduler_job_lock.acquire(blocking=False):
+        logger.warning("Scheduler job already in progress, skipping.")
+        return {"status": "error", "error": "Scheduler job already running"}
+
+    started_at = datetime.now(timezone.utc).isoformat()
+    try:
+        with scan_progress_lock:
+            if scan_progress["status"] != "idle":
+                logger.warning("Scan already in progress, skipping scheduled job.")
+                return {"status": "error", "error": "A scan is already in progress"}
+
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT COUNT(*) FROM cache")
+        cache_before = cursor.fetchone()[0]
+        conn.close()
+
+        past_months = int(get_setting("default_past_months", "1") or 1)
+        future_months = int(get_setting("default_future_months", "2") or 2)
+
+        results = run_scan(past_months, future_months)
+
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT COUNT(*) FROM cache")
+        cache_after = cursor.fetchone()[0]
+        conn.close()
+
+        new_items = max(0, cache_after - cache_before)
+        finished_at = datetime.now(timezone.utc).isoformat()
+        tv_count = len(results.get("tv", []))
+        movie_count = len(results.get("movies", []))
+
+        result_payload = {
+            "started_at": started_at,
+            "finished_at": finished_at,
+            "status": "ok",
+            "tv_count": tv_count,
+            "movie_count": movie_count,
+            "new_items": new_items,
+            "error": None
+        }
+
+        set_setting("scheduler_last_run", finished_at)
+        set_setting("scheduler_last_result", json.dumps(result_payload))
+        config.refresh()
+        return result_payload
+    except Exception as e:
+        logger.error(f"Scheduled refresh failed: {e}", exc_info=True)
+        finished_at = datetime.now(timezone.utc).isoformat()
+        result_payload = {
+            "started_at": started_at,
+            "finished_at": finished_at,
+            "status": "error",
+            "tv_count": 0,
+            "movie_count": 0,
+            "new_items": 0,
+            "error": str(e)
+        }
+        set_setting("scheduler_last_result", json.dumps(result_payload))
+        config.refresh()
+        return result_payload
     finally:
-        update_scan_progress("idle", "Idle", 0, 0)
+        scheduler_job_lock.release()
+
+def scheduler_loop():
+    """Background daemon thread loop for scheduled refreshes."""
+    import time
+    while True:
+        try:
+            time.sleep(30)
+            config.refresh()
+            if not config.scheduler_enabled:
+                continue
+
+            last_run_str = config.scheduler_last_run
+            last_run = None
+            if last_run_str:
+                try:
+                    last_run = datetime.fromisoformat(last_run_str.replace("Z", "+00:00"))
+                except Exception:
+                    last_run = None
+
+            interval_hours = config.scheduler_interval_hours
+            time_of_day = config.scheduler_time_of_day
+            now = datetime.now(timezone.utc)
+
+            if is_due(last_run, interval_hours, time_of_day, now, startup_time=_scheduler_startup_time, startup_delay_seconds=60):
+                with scan_progress_lock:
+                    if scan_progress["status"] != "idle":
+                        continue
+                run_scheduler_job()
+        except Exception as e:
+            logger.error(f"Scheduler loop error: {e}", exc_info=True)
+
+if "PYTEST_CURRENT_TEST" not in os.environ:
+    threading.Thread(target=scheduler_loop, daemon=True).start()
+
+@app.route("/api/scheduler/status", methods=["GET"])
+def get_scheduler_status():
+    """Returns the current state and execution history of the background scheduler."""
+    enabled = config.scheduler_enabled
+    interval_hours = config.scheduler_interval_hours
+    tod_str = (config.scheduler_time_of_day or "").strip()
+    time_of_day = tod_str if tod_str else None
+    last_run_str = config.scheduler_last_run or None
+    now = datetime.now(timezone.utc)
+    try:
+        next_run = compute_next_run(last_run_str, interval_hours, time_of_day, now)
+        next_run_str = next_run.isoformat()
+    except Exception:
+        next_run_str = None
+
+    last_result_str = config.scheduler_last_result
+    last_result = None
+    if last_result_str:
+        try:
+            last_result = json.loads(last_result_str)
+        except Exception:
+            last_result = None
+
+    with scan_progress_lock:
+        is_busy = (scan_progress["status"] != "idle") or scheduler_job_lock.locked()
+
+    return jsonify({
+        "status": "success",
+        "enabled": enabled,
+        "interval_hours": interval_hours,
+        "time_of_day": time_of_day,
+        "last_run": last_run_str,
+        "next_run": next_run_str,
+        "running": is_busy,
+        "last_result": last_result
+    })
+
+@app.route("/api/scheduler/run-now", methods=["POST"])
+def scheduler_run_now():
+    """Triggers an immediate background scheduled refresh scan."""
+    with scan_progress_lock:
+        if scan_progress["status"] != "idle":
+            return jsonify({"status": "busy", "message": "A scan is already in progress."}), 409
+    if scheduler_job_lock.locked():
+        return jsonify({"status": "busy", "message": "A scheduler run is already in progress."}), 409
+
+    threading.Thread(target=run_scheduler_job, daemon=True).start()
+    return jsonify({"status": "started", "message": "Scheduled refresh triggered."})
 
 @app.route("/api/cache/refresh", methods=["POST"])
 def cache_refresh_item():

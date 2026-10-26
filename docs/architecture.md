@@ -102,6 +102,20 @@ Node-based test suites exercise compiled modules: `tests/test_frontend_filters.p
 - **Integrity & safety**: `import_full_backup` validates zip-slip/path traversal, caps entry sizes (<= 20MB) and total uncompressed size (<= 2GB), verifies manifest hashes and backup.json checksum before writing anything. Settings, custom feeds, and cache rows are restored in a single SQLite transaction with sticky manual archives and library presence preserved.
 - **Poster disk cache**: `posters/` folder next to the database (`core.posters.get_posters_dir`) storing raw bytes with `.meta` sidecars keyed by URL SHA-256. `/api/poster` (`web/server.py::proxy_poster`) checks this disk cache first to avoid network roundtrips, and writes through on successful fetch with SSRF validation (private/loopback IPs blocked, server hostnames allowed) and nosniff headers.
 
+## Background Scheduled Refreshes (`core/scheduler.py`, `web/server.py`)
+
+- **Daemon thread**: started on server boot (`scheduler_loop`, skipped when `PYTEST_CURRENT_TEST` is set) sleeping ~30s between checks.
+- **Pure scheduling math** (`core/scheduler.py`):
+  - `compute_next_run(last_run, interval_hours, time_of_day, now)`: computes the next execution time (UTC-aware), respecting the configurable interval (1-168h) and optional daily `HH:MM` target interpreted in the server's local time (DST-safe; timestamps stored in UTC).
+  - `is_due(...)`: returns whether a scan is due. Never-run scheduler enforces a 60-second initial startup delay. Service restarts do not immediately rescan unless execution is actually overdue (`now >= next_run`).
+  - `validate_time_of_day`, `parse_time_of_day`: validates and parses 24h `HH:MM` format.
+- **Scan engine** (`web/server.py::run_scan`): decoupled from Flask request context; executes discoveries scraping, metadata enrichment, library matching, and SQLite cache updates. Respects `scan_progress_lock`, raising `RuntimeError` if a scan is already in progress.
+- **Endpoints**:
+  - `GET /api/scheduler/status`: returns `{status, enabled, interval_hours, time_of_day, last_run, next_run, running, last_result}`.
+  - `POST /api/scheduler/run-now`: API key protected manual trigger; returns 409 if a scan is running, starts `run_scheduler_job` in a background thread and returns 200 `{status: "started"}`.
+- **Settings keys**: `scheduler_enabled` (0/1), `scheduler_interval_hours` (1-168), `scheduler_time_of_day` (optional `HH:MM`), `scheduler_last_run` (ISO UTC), `scheduler_last_result` (JSON string recording status, counts, new items, and errors). Validated with 400 on bad values.
+- **Frontend integration**: Settings modal dedicated Scheduler tab (`#panel-scheduler`), live polling (~60s) with toast notification and sidebar badge when `new_items > 0`.
+
 ## Tests
 
 `pytest tests -q --no-cov`. Many files are named after review "challenge" rounds; they are regular tests.

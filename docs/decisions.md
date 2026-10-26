@@ -18,3 +18,7 @@
 | Credentials only in DB/`.env` | Both git-ignored; history was audited and is clean. |
 | Frontend built with TypeScript; compiled dist/ JS is not committed | Developers can install Node; checking in generated dist JS modules would create noisy, stale diffs until CI/CD builds releases. |
 | Frontend behaviour tested via Node + DOM stub | No browser tooling available; keeps JS logic regression-tested without new dependencies. |
+| Dependency-free daemon thread for scheduler | Avoids heavy scheduling frameworks (like APScheduler); standard library threading loop is simple, portable, and transparent. |
+| Scheduler 60s startup delay on first run | Prevents heavy scrape/enrich jobs from competing with server boot and user's initial UI load. |
+| Restarts do not rescan unless overdue | Preserves previous execution schedule without spamming feeds on every server/app restart. |
+| Scheduler reuses scan progress lock & 409 status | Prevents race conditions and duplicate scans between background scheduled tasks and manual UI scans. |

@@ -232,7 +232,12 @@ def init_db():
         "default_show_archived": "0",
         "default_match_ignore_year": "1",
         "radarr_default_profile_id": "",
-        "sonarr_default_profile_id": ""
+        "sonarr_default_profile_id": "",
+        "scheduler_enabled": "0",
+        "scheduler_interval_hours": "24",
+        "scheduler_time_of_day": "",
+        "scheduler_last_run": "",
+        "scheduler_last_result": ""
     }
     for key, val in default_settings.items():
         cursor.execute("SELECT COUNT(*) FROM settings WHERE key = ?", (key,))

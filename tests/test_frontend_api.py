@@ -60,7 +60,9 @@ import {{
   saveFeed,
   deleteFeed,
   testFeed,
-  restoreDefaultFeeds
+  restoreDefaultFeeds,
+  getSchedulerStatus,
+  runSchedulerNow
 }} from {json.dumps(DIST_API.as_uri())};
 
 (async () => {{
@@ -250,3 +252,39 @@ def test_cache_maintenance_and_backup_and_feeds():
     assert res["saveF"]["feed_id"] == 2
     assert res["testF"]["parsed_items_count"] == 10
     assert res["restoreF"]["message"] == "Restored"
+
+
+def test_scheduler_api():
+    res = run_api_test("""
+      mockResponses["GET /api/scheduler/status"] = {
+        status: 200,
+        ok: true,
+        json: {
+          status: "success",
+          enabled: true,
+          interval_hours: 12,
+          time_of_day: "04:00",
+          last_run: null,
+          next_run: "2026-10-27T04:00:00Z",
+          is_running: false,
+          last_result: null
+        }
+      };
+      const statusRes = await getSchedulerStatus();
+
+      mockResponses["POST /api/scheduler/run-now"] = {
+        status: 200,
+        ok: true,
+        json: { status: "started", message: "Scan started" }
+      };
+      const runNowRes = await runSchedulerNow();
+
+      console.log(JSON.stringify({ statusRes, runNowRes, calls }));
+    """)
+    assert res["statusRes"]["enabled"] is True
+    assert res["statusRes"]["interval_hours"] == 12
+    assert res["statusRes"]["time_of_day"] == "04:00"
+    assert res["runNowRes"]["status"] == "started"
+    urls = [c["url"] for c in res["calls"]]
+    assert "/api/scheduler/status" in urls
+    assert "/api/scheduler/run-now" in urls

@@ -124,6 +124,32 @@ class Config:
     def sonarr_mru_root_folder(self) -> str:
         return self._get_setting("sonarr_mru_root_folder")
 
+    @property
+    def scheduler_enabled(self) -> bool:
+        val = self._get_setting("scheduler_enabled", "0").strip().lower()
+        return val in ("1", "true", "yes", "on")
+
+    @property
+    def scheduler_interval_hours(self) -> int:
+        val = self._get_setting("scheduler_interval_hours", "24")
+        try:
+            h = int(val)
+            return max(1, min(168, h))
+        except (ValueError, TypeError):
+            return 24
+
+    @property
+    def scheduler_time_of_day(self) -> str:
+        return self._get_setting("scheduler_time_of_day", "").strip()
+
+    @property
+    def scheduler_last_run(self) -> str:
+        return self._get_setting("scheduler_last_run", "").strip()
+
+    @property
+    def scheduler_last_result(self) -> str:
+        return self._get_setting("scheduler_last_result", "").strip()
+
     def validate_radarr(self) -> bool:
         """Returns True if Radarr config is complete, otherwise False."""
         return bool(self.radarr_url and self.radarr_api_key)

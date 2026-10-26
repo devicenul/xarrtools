@@ -7,7 +7,8 @@ import {
   fetchSettings,
   fetchConfig,
   fetchScanProgress,
-  fetchDiscoveries
+  fetchDiscoveries,
+  getSchedulerStatus
 } from "./api.js";
 import { initTheme, toggleTheme, updateThemeToggleUI } from "./theme.js";
 import { addNotification } from "./notifications.js";
@@ -42,7 +43,9 @@ import {
   deleteCustomFeed,
   testCustomFeed,
   restoreDefaultFeeds,
-  populateSettingsSelect
+  populateSettingsSelect,
+  loadSchedulerStatus,
+  triggerSchedulerRunNow
 } from "./settings-ui.js";
 import {
   openAddModal,
@@ -425,9 +428,14 @@ export function setupEventListeners(): void {
           listView.classList.remove("hidden");
         }
         loadCustomFeeds();
+      } else if (targetTab === "panel-scheduler") {
+        loadSchedulerStatus();
       }
     });
   });
+
+  const btnSchedulerRunNow = document.getElementById("btn-scheduler-run-now");
+  if (btnSchedulerRunNow) btnSchedulerRunNow.addEventListener("click", triggerSchedulerRunNow);
 
   const btnCachePrune = document.getElementById("btn-cache-prune");
   const btnCacheClear = document.getElementById("btn-cache-clear");
@@ -666,6 +674,47 @@ on("scan", (skipScrape?: boolean) => {
   scanReleases(skipScrape);
 });
 
+let lastHandledSchedulerFinishedAt: string | null = null;
+let schedulerPollInitialized = false;
+
+export async function pollSchedulerStatus(): Promise<void> {
+  try {
+    const status = await getSchedulerStatus();
+    const statusBadge = document.getElementById("status-scheduler");
+    if (statusBadge) {
+      if (status.enabled) {
+        statusBadge.classList.remove("hidden");
+        statusBadge.className = status.running
+          ? "status-badge status-active"
+          : "status-badge status-online";
+      } else {
+        statusBadge.classList.add("hidden");
+      }
+    }
+
+    if (status.last_result && status.last_result.finished_at) {
+      const finishedAt = status.last_result.finished_at;
+      if (!schedulerPollInitialized) {
+        lastHandledSchedulerFinishedAt = finishedAt;
+        schedulerPollInitialized = true;
+      } else if (finishedAt !== lastHandledSchedulerFinishedAt) {
+        lastHandledSchedulerFinishedAt = finishedAt;
+        if (status.last_result.status === "ok" && status.last_result.new_items > 0) {
+          addNotification(
+            `Scheduled refresh discovered ${status.last_result.new_items} new item(s)!`,
+            "success"
+          );
+          await scanReleases(true);
+        }
+      }
+    } else if (!schedulerPollInitialized) {
+      schedulerPollInitialized = true;
+    }
+  } catch (e) {
+    console.error("Scheduler status polling error:", e);
+  }
+}
+
 // Auto-initialize on DOM ready
 if (typeof document !== "undefined") {
   document.addEventListener("DOMContentLoaded", () => {
@@ -673,5 +722,7 @@ if (typeof document !== "undefined") {
     initTheme();
     loadSettingsAndConfig();
     setupEventListeners();
+    pollSchedulerStatus();
+    setInterval(pollSchedulerStatus, 60000);
   });
 }

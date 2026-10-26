@@ -27,7 +27,9 @@ import {
   saveFeed as apiSaveFeed,
   deleteFeed as apiDeleteFeed,
   testFeed as apiTestFeed,
-  restoreDefaultFeeds as apiRestoreDefaultFeeds
+  restoreDefaultFeeds as apiRestoreDefaultFeeds,
+  getSchedulerStatus as apiGetSchedulerStatus,
+  runSchedulerNow as apiRunSchedulerNow
 } from "./api.js";
 import { addNotification } from "./notifications.js";
 import { emit, on } from "./events.js";
@@ -127,6 +129,9 @@ export function openSettingsModal(): void {
   const inputShowLibrary = document.getElementById("input-show-library") as HTMLInputElement | null;
   const inputShowArchived = document.getElementById("input-show-archived") as HTMLInputElement | null;
   const inputMatchIgnoreYear = document.getElementById("input-match-ignore-year") as HTMLInputElement | null;
+  const checkSchedulerEnabled = document.getElementById("check-scheduler-enabled") as HTMLInputElement | null;
+  const inputSchedulerInterval = document.getElementById("input-scheduler-interval") as HTMLInputElement | null;
+  const inputSchedulerTime = document.getElementById("input-scheduler-time") as HTMLInputElement | null;
 
   if (state.appSettings) {
     const defaults = moduleResolveSettingsDefaults(state.appSettings);
@@ -141,6 +146,9 @@ export function openSettingsModal(): void {
     if (inputShowLibrary) inputShowLibrary.checked = defaults.default_show_library;
     if (inputShowArchived) inputShowArchived.checked = defaults.default_show_archived;
     if (inputMatchIgnoreYear) inputMatchIgnoreYear.checked = defaults.default_match_ignore_year;
+    if (checkSchedulerEnabled) checkSchedulerEnabled.checked = defaults.scheduler_enabled;
+    if (inputSchedulerInterval) inputSchedulerInterval.value = defaults.scheduler_interval_hours;
+    if (inputSchedulerTime) inputSchedulerTime.value = defaults.scheduler_time_of_day;
   }
 
   const selectRadarrDefaultFolder = document.getElementById(
@@ -203,6 +211,7 @@ export function openSettingsModal(): void {
   }
 
   loadCacheStats();
+  loadSchedulerStatus();
 
   const settingsOverlay = document.getElementById("settings-overlay");
   if (settingsOverlay) settingsOverlay.classList.remove("hidden");
@@ -229,6 +238,9 @@ export async function saveSettings(): Promise<void> {
   const showLibrary = (document.getElementById("input-show-library") as HTMLInputElement | null)?.checked ?? false;
   const showArchived = (document.getElementById("input-show-archived") as HTMLInputElement | null)?.checked ?? false;
   const matchIgnoreYear = (document.getElementById("input-match-ignore-year") as HTMLInputElement | null)?.checked ?? false;
+  const schedulerEnabled = (document.getElementById("check-scheduler-enabled") as HTMLInputElement | null)?.checked ?? false;
+  const schedulerInterval = (document.getElementById("input-scheduler-interval") as HTMLInputElement | null)?.value || "24";
+  const schedulerTimeOfDay = (document.getElementById("input-scheduler-time") as HTMLInputElement | null)?.value || "";
 
   const payload = moduleCollectSettingsPayload({
     radarrUrl: inputRadarrUrl,
@@ -245,7 +257,10 @@ export async function saveSettings(): Promise<void> {
     showReturning,
     showLibrary,
     showArchived,
-    matchIgnoreYear
+    matchIgnoreYear,
+    schedulerEnabled,
+    schedulerInterval,
+    schedulerTimeOfDay
   });
 
   closeSettingsModal();
@@ -688,3 +703,82 @@ export async function restoreDefaultFeeds(): Promise<void> {
 on("openSettingsModal", () => {
   openSettingsModal();
 });
+
+export async function loadSchedulerStatus(): Promise<void> {
+  if (typeof document === "undefined") return;
+  try {
+    const status = await apiGetSchedulerStatus();
+    const lastRunEl = document.getElementById("scheduler-last-run");
+    const nextRunEl = document.getElementById("scheduler-next-run");
+    const lastResultEl = document.getElementById("scheduler-last-result");
+    const runNowBtn = document.getElementById("btn-scheduler-run-now") as HTMLButtonElement | null;
+    const statusBadge = document.getElementById("status-scheduler");
+
+    if (lastRunEl) {
+      lastRunEl.textContent = status.last_run ? new Date(status.last_run).toLocaleString() : "Never";
+    }
+    if (nextRunEl) {
+      if (status.enabled && status.next_run) {
+        nextRunEl.textContent = new Date(status.next_run).toLocaleString();
+      } else if (!status.enabled) {
+        nextRunEl.textContent = "Disabled";
+      } else {
+        nextRunEl.textContent = "Pending";
+      }
+    }
+    if (lastResultEl) {
+      if (!status.last_result) {
+        lastResultEl.textContent = "None";
+        lastResultEl.style.color = "var(--text-secondary)";
+      } else if (status.last_result.status === "ok") {
+        lastResultEl.textContent = `OK (${status.last_result.tv_count} TV, ${status.last_result.movie_count} Movies, ${status.last_result.new_items} new)`;
+        lastResultEl.style.color = "var(--accent-green)";
+      } else {
+        lastResultEl.textContent = `Error: ${status.last_result.error || "Failed"}`;
+        lastResultEl.style.color = "var(--accent-magenta)";
+      }
+    }
+    if (runNowBtn) {
+      if (status.running) {
+        runNowBtn.textContent = "⏳ Refreshing...";
+        runNowBtn.disabled = true;
+      } else {
+        runNowBtn.textContent = "⚡ Run Refresh Now";
+        runNowBtn.disabled = false;
+      }
+    }
+    if (statusBadge) {
+      if (status.enabled) {
+        statusBadge.classList.remove("hidden");
+        statusBadge.className = status.running
+          ? "status-badge status-active"
+          : "status-badge status-online";
+      } else {
+        statusBadge.classList.add("hidden");
+      }
+    }
+  } catch (e) {
+    console.error("Failed to load scheduler status:", e);
+  }
+}
+
+export async function triggerSchedulerRunNow(): Promise<void> {
+  const runNowBtn = document.getElementById("btn-scheduler-run-now") as HTMLButtonElement | null;
+  if (runNowBtn) {
+    runNowBtn.textContent = "⏳ Starting...";
+    runNowBtn.disabled = true;
+  }
+  try {
+    const res = await apiRunSchedulerNow();
+    if ((res.ok ?? true) && res.status === "success") {
+      addNotification("Background scheduled refresh started.", "info");
+    } else {
+      addNotification(`Scheduler error: ${res.message || "Could not start refresh."}`, "error");
+    }
+    await loadSchedulerStatus();
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    addNotification(`Failed to start refresh: ${msg}`, "error");
+    await loadSchedulerStatus();
+  }
+}

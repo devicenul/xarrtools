@@ -60,6 +60,9 @@ export interface SettingsFormValues {
   showLibrary?: boolean | string | number | null;
   showArchived?: boolean | string | number | null;
   matchIgnoreYear?: boolean | string | number | null;
+  schedulerEnabled?: boolean | string | number | null;
+  schedulerInterval?: string | number | null;
+  schedulerTimeOfDay?: string | null;
 }
 
 /**
@@ -90,7 +93,10 @@ export function collectSettingsPayload(values: SettingsFormValues): Record<strin
     default_show_returning: isChecked(values.showReturning, false),
     default_show_library: isChecked(values.showLibrary, false),
     default_show_archived: isChecked(values.showArchived, false),
-    default_match_ignore_year: isChecked(values.matchIgnoreYear, true)
+    default_match_ignore_year: isChecked(values.matchIgnoreYear, true),
+    scheduler_enabled: isChecked(values.schedulerEnabled, false),
+    scheduler_interval_hours: values.schedulerInterval !== undefined && values.schedulerInterval !== null && String(values.schedulerInterval).trim() !== "" ? String(values.schedulerInterval) : "24",
+    scheduler_time_of_day: (values.schedulerTimeOfDay || "").trim()
   };
 }
 
@@ -110,6 +116,9 @@ export interface SettingsDefaults {
   radarr_default_quality_profile: string;
   sonarr_default_root_folder: string;
   sonarr_default_quality_profile: string;
+  scheduler_enabled: boolean;
+  scheduler_interval_hours: string;
+  scheduler_time_of_day: string;
 }
 
 /**
@@ -117,6 +126,11 @@ export interface SettingsDefaults {
  */
 export function resolveSettingsDefaults(settings?: SettingsResponse | Record<string, unknown> | null): SettingsDefaults {
   const s = settings || {};
+  const schedEnabled = s.scheduler_enabled;
+  const isSchedEnabled = typeof schedEnabled === "boolean" ? schedEnabled : (String(schedEnabled || "0").trim() === "1" || String(schedEnabled || "false").toLowerCase() === "true");
+  const schedInterval = s.scheduler_interval_hours !== undefined && s.scheduler_interval_hours !== null && String(s.scheduler_interval_hours).trim() !== "" ? String(s.scheduler_interval_hours) : "24";
+  const schedTime = typeof s.scheduler_time_of_day === "string" ? s.scheduler_time_of_day : "";
+
   return {
     radarr_url: typeof s.radarr_url === "string" ? s.radarr_url : "",
     radarr_api_key: typeof s.radarr_api_key === "string" ? s.radarr_api_key : "",
@@ -136,7 +150,10 @@ export function resolveSettingsDefaults(settings?: SettingsResponse | Record<str
     sonarr_default_root_folder: typeof s.sonarr_default_root_folder === "string" ? s.sonarr_default_root_folder : "",
     sonarr_default_quality_profile: typeof s.sonarr_default_quality_profile === "string"
       ? s.sonarr_default_quality_profile
-      : (typeof s.sonarr_default_profile_id === "string" ? s.sonarr_default_profile_id : "")
+      : (typeof s.sonarr_default_profile_id === "string" ? s.sonarr_default_profile_id : ""),
+    scheduler_enabled: isSchedEnabled,
+    scheduler_interval_hours: schedInterval,
+    scheduler_time_of_day: schedTime
   };
 }
 
