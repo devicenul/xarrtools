@@ -39,7 +39,7 @@ Read this file first, then [docs/architecture.md](docs/architecture.md) (how it 
 | `core/locales.py` | Language/country normalisation and the Unicode-aware `slug()` title key |
 | `core/client.py`, `core/config.py` | Radarr/Sonarr API clients; settings/.env access |
 | `web/server.py`, `web/templates/` | Flask API + single-page UI (`index.html`, `app.js`, `style.css`) |
-| `web/static/src/` | TypeScript frontend modules (`types.ts`, `filters.ts`, `api.ts`, `cards.ts`) |
+| `web/static/src/` | TypeScript frontend modules (`types.ts`, `filters.ts`, `api.ts`, `cards.ts`, `settings.ts`, `modals.ts`) |
 | `cli/cli.py`, `gui/gui.py` | Terminal manager and pywebview shell |
 | `build.py` (+ `build.*`), `init.*`, `run.*` | Build, environment setup and launchers (sh / ps1 / bat) |
 | `tests/` | pytest suite (~1070 tests) |

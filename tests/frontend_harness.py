@@ -16,12 +16,14 @@ DIST_DIR = REPO_ROOT / "web" / "static" / "dist"
 DIST_FILTERS = DIST_DIR / "filters.js"
 DIST_API = DIST_DIR / "api.js"
 DIST_CARDS = DIST_DIR / "cards.js"
+DIST_SETTINGS = DIST_DIR / "settings.js"
+DIST_MODALS = DIST_DIR / "modals.js"
 APP_JS_PATH = REPO_ROOT / "web" / "templates" / "app.js"
 INDEX_HTML_PATH = REPO_ROOT / "web" / "templates" / "index.html"
 APP_JS = APP_JS_PATH
 INDEX_HTML = INDEX_HTML_PATH.read_text(encoding="utf-8")
 
-REQUIRED_DIST_FILES = [DIST_FILTERS, DIST_API, DIST_CARDS]
+REQUIRED_DIST_FILES = [DIST_FILTERS, DIST_API, DIST_CARDS, DIST_SETTINGS, DIST_MODALS]
 
 
 def check_node_and_dist():
@@ -45,12 +47,24 @@ def get_module_injection_code() -> str:
       moduleTestFeed, moduleRestoreDefaultFeeds
     - moduleEscapeHtml, moduleCountryName, moduleLocaleBadge, moduleBuildRatingBadgesHtml,
       moduleGetPosterNavigationUrl, moduleBuildMediaCardHtml
+    - moduleCollectSettingsPayload, moduleResolveSettingsDefaults, moduleResolveHybridPreset,
+      moduleUpdateMRUCache, moduleValidateFeedForm, moduleValidateTestFeedInput,
+      moduleFormatTestFeedResults, moduleBuildFeedStatusBadgeHtml, moduleBuildFeedTableRowHtml,
+      moduleResolveDefaultParserConfig, moduleDefaultParserConfigs
+    - moduleBuildSelectOptionsHtml, moduleIsIndexerBestMatch, moduleGetCollectionName,
+      moduleBuildCollectionBadgeHtml, moduleBuildLookupItemHtml, moduleBuildExternalChipsHtml,
+      moduleGetLookupPosterUrl, moduleBuildRatingItemFromLookup, moduleBuildSearchCardPlotHtml,
+      moduleBuildSearchCardPosterHtml, moduleBuildSearchCardHtml, moduleBuildSearchLoadingHtml,
+      moduleBuildSearchEmptyStateHtml, moduleBuildSearchErrorHtml, moduleBuildLookupStatusHtml,
+      moduleFormatSearchResultNotification
     """
     return f"""
-    const [_distFilters, _distApi, _distCards] = await Promise.all([
+    const [_distFilters, _distApi, _distCards, _distSettings, _distModals] = await Promise.all([
         import({json.dumps(DIST_FILTERS.as_uri())}),
         import({json.dumps(DIST_API.as_uri())}),
-        import({json.dumps(DIST_CARDS.as_uri())})
+        import({json.dumps(DIST_CARDS.as_uri())}),
+        import({json.dumps(DIST_SETTINGS.as_uri())}),
+        import({json.dumps(DIST_MODALS.as_uri())})
     ]);
 
     // filters.js exports
@@ -90,6 +104,40 @@ def get_module_injection_code() -> str:
     globalThis.moduleBuildRatingBadgesHtml = _distCards.buildRatingBadgesHtml;
     globalThis.moduleGetPosterNavigationUrl = _distCards.getPosterNavigationUrl;
     globalThis.moduleBuildMediaCardHtml = _distCards.buildMediaCardHtml;
+
+    // settings.js exports
+    globalThis.moduleCollectSettingsPayload = _distSettings.collectSettingsPayload;
+    globalThis.moduleResolveSettingsDefaults = _distSettings.resolveSettingsDefaults;
+    globalThis.moduleResolveHybridPreset = _distSettings.resolveHybridPreset;
+    globalThis.moduleUpdateMRUCache = _distSettings.updateMRUCache;
+    globalThis.moduleValidateFeedForm = _distSettings.validateFeedForm;
+    globalThis.moduleValidateTestFeedInput = _distSettings.validateTestFeedInput;
+    globalThis.moduleFormatTestFeedResults = _distSettings.formatTestFeedResults;
+    globalThis.moduleBuildFeedStatusBadgeHtml = _distSettings.buildFeedStatusBadgeHtml;
+    globalThis.moduleBuildFeedTableRowHtml = _distSettings.buildFeedTableRowHtml;
+    globalThis.moduleResolveDefaultParserConfig = _distSettings.resolveDefaultParserConfig;
+    globalThis.moduleDefaultParserConfigs = _distSettings.DEFAULT_PARSER_CONFIGS;
+    globalThis.moduleGetFeedEditorFormDefaults = _distSettings.getFeedEditorFormDefaults;
+
+    // modals.js exports
+    globalThis.moduleBuildSelectOptionsHtml = _distModals.buildSelectOptionsHtml;
+    globalThis.moduleIsIndexerBestMatch = _distModals.isIndexerBestMatch;
+    globalThis.moduleGetCollectionName = _distModals.getCollectionName;
+    globalThis.moduleBuildCollectionBadgeHtml = _distModals.buildCollectionBadgeHtml;
+    globalThis.moduleBuildLookupItemHtml = _distModals.buildLookupItemHtml;
+    globalThis.moduleBuildExternalChipsHtml = _distModals.buildExternalChipsHtml;
+    globalThis.moduleGetLookupPosterUrl = _distModals.getLookupPosterUrl;
+    globalThis.moduleBuildRatingItemFromLookup = _distModals.buildRatingItemFromLookup;
+    globalThis.moduleBuildSearchCardPlotHtml = _distModals.buildSearchCardPlotHtml;
+    globalThis.moduleBuildSearchCardPosterHtml = _distModals.buildSearchCardPosterHtml;
+    globalThis.moduleBuildSearchCardHtml = _distModals.buildSearchCardHtml;
+    globalThis.moduleBuildSearchLoadingHtml = _distModals.buildSearchLoadingHtml;
+    globalThis.moduleBuildSearchEmptyStateHtml = _distModals.buildSearchEmptyStateHtml;
+    globalThis.moduleBuildSearchErrorHtml = _distModals.buildSearchErrorHtml;
+    globalThis.moduleBuildLookupStatusHtml = _distModals.buildLookupStatusHtml;
+    globalThis.moduleFormatSearchResultNotification = _distModals.formatSearchResultNotification;
+    globalThis.moduleGetDemoSearchResults = _distModals.getDemoSearchResults;
+    globalThis.moduleBuildAddMediaPayload = _distModals.buildAddMediaPayload;
 """
 
 

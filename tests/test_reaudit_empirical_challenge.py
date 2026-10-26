@@ -32,6 +32,7 @@ with patch("threading.Thread"):
 from core.client import RadarrClient, SonarrClient, ArrAPIError
 from core.config import config
 import cli.cli as cli_mod
+from tests.frontend_harness import check_node_and_dist, get_module_injection_code
 
 
 @pytest.fixture(autouse=True)
@@ -498,102 +499,109 @@ class TestFrontendJavaScriptResolutionViaNode:
 
     def test_node_resolve_hybrid_preset_execution(self):
         """Execute app.js functions directly in a mock browser environment via Node.js."""
+        check_node_and_dist()
         app_js_path = Path(__file__).resolve().parent.parent / "web" / "templates" / "app.js"
         assert app_js_path.exists(), "app.js not found!"
 
         runner_code = f"""
         const fs = require('fs');
-        const code = fs.readFileSync({json.dumps(str(app_js_path))}, 'utf8').split('\\n').filter(l => !l.startsWith('import ')).join('\\n');
+        (async () => {{
+            {get_module_injection_code()}
+            const code = fs.readFileSync({json.dumps(str(app_js_path))}, 'utf8').split('\\n').filter(l => !l.startsWith('import ')).join('\\n');
 
-        // Mock browser globals
-        global.window = {{}};
-        global.document = {{
-            addEventListener: () => {{}},
-            getElementById: () => ({{ classList: {{ add: () => {{}}, remove: () => {{}} }} }}),
-            querySelector: () => null,
-            querySelectorAll: () => []
-        }};
-        global.localStorage = {{
-            store: {{}},
-            getItem(key) {{ return this.store[key] || null; }},
-            setItem(key, val) {{ this.store[key] = String(val); }},
-            clear() {{ this.store = {{}}; }}
-        }};
-        global.appSettings = {{}};
-        global.console = {{ log: () => {{}}, warn: () => {{}}, error: () => {{}} }};
+            // Mock browser globals
+            global.window = {{}};
+            global.document = {{
+                addEventListener: () => {{}},
+                getElementById: () => ({{ classList: {{ add: () => {{}}, remove: () => {{}} }} }}),
+                querySelector: () => null,
+                querySelectorAll: () => []
+            }};
+            global.localStorage = {{
+                store: {{}},
+                getItem(key) {{ return this.store[key] || null; }},
+                setItem(key, val) {{ this.store[key] = String(val); }},
+                clear() {{ this.store = {{}}; }}
+            }};
+            global.appSettings = {{}};
+            global.console = {{ log: () => {{}}, warn: () => {{}}, error: () => {{}} }};
 
-        // Evaluate app.js
-        eval(code);
+            // Evaluate app.js
+            eval(code);
 
-        const resolve = window.resolveHybridPreset;
-        const updateMRU = window.updateMRUCache;
+            const resolve = window.resolveHybridPreset;
+            const updateMRU = window.updateMRUCache;
 
-        if (typeof resolve !== 'function') {{
-            throw new Error("resolveHybridPreset is not exported to window!");
-        }}
-        if (typeof updateMRU !== 'function') {{
-            throw new Error("updateMRUCache is not exported to window!");
-        }}
+            if (typeof resolve !== 'function') {{
+                throw new Error("resolveHybridPreset is not exported to window!");
+            }}
+            if (typeof updateMRU !== 'function') {{
+                throw new Error("updateMRUCache is not exported to window!");
+            }}
 
-        const testFolders = [
-            {{ path: "/data/movies1" }},
-            {{ path: "/data/movies2" }},
-            {{ path: "/data/movies3" }}
-        ];
+            const testFolders = [
+                {{ path: "/data/movies1" }},
+                {{ path: "/data/movies2" }},
+                {{ path: "/data/movies3" }}
+            ];
 
-        const testProfiles = [
-            {{ id: 1, name: "SD" }},
-            {{ id: 2, name: "HD-1080p" }},
-            {{ id: 3, name: "UHD-4K" }}
-        ];
+            const testProfiles = [
+                {{ id: 1, name: "SD" }},
+                {{ id: 2, name: "HD-1080p" }},
+                {{ id: 3, name: "UHD-4K" }}
+            ];
 
-        // 1. Tier 1 Test: Explicit setting match
-        let res1 = resolve(testFolders, "path", "/data/movies2", "xarrtools_mru_radarr_folder");
-        if (res1 !== "/data/movies2") throw new Error("Tier 1 Explicit failed: expected /data/movies2, got " + res1);
+            // 1. Tier 1 Test: Explicit setting match
+            let res1 = resolve(testFolders, "path", "/data/movies2", "xarrtools_mru_radarr_folder");
+            if (res1 !== "/data/movies2") throw new Error("Tier 1 Explicit failed: expected /data/movies2, got " + res1);
 
-        // 2. Tier 2 Test: MRU in localStorage
-        localStorage.setItem("xarrtools_mru_radarr_folder", "/data/movies3");
-        let res2 = resolve(testFolders, "path", null, "xarrtools_mru_radarr_folder");
-        if (res2 !== "/data/movies3") throw new Error("Tier 2 MRU localStorage failed: expected /data/movies3, got " + res2);
+            // 2. Tier 2 Test: MRU in localStorage
+            localStorage.setItem("xarrtools_mru_radarr_folder", "/data/movies3");
+            let res2 = resolve(testFolders, "path", null, "xarrtools_mru_radarr_folder");
+            if (res2 !== "/data/movies3") throw new Error("Tier 2 MRU localStorage failed: expected /data/movies3, got " + res2);
 
-        // 3. Tier 2 Test: MRU in appSettings backend key map
-        localStorage.clear();
-        global.appSettings = {{ "radarr_mru_root_folder": "/data/movies1" }};
-        let res3 = resolve(testFolders, "path", "", "xarrtools_mru_radarr_folder");
-        if (res3 !== "/data/movies1") throw new Error("Tier 2 MRU appSettings failed: expected /data/movies1, got " + res3);
+            // 3. Tier 2 Test: MRU in appSettings backend key map
+            localStorage.clear();
+            global.appSettings = {{ "radarr_mru_root_folder": "/data/movies1" }};
+            let res3 = resolve(testFolders, "path", "", "xarrtools_mru_radarr_folder");
+            if (res3 !== "/data/movies1") throw new Error("Tier 2 MRU appSettings failed: expected /data/movies1, got " + res3);
 
-        // 4. Tier 3 Test: Safety Fallback to first available option
-        global.appSettings = {{}};
-        let res4 = resolve(testFolders, "path", "/nonexistent", "xarrtools_mru_radarr_folder");
-        if (res4 !== "/data/movies1") throw new Error("Tier 3 Safety fallback failed: expected /data/movies1, got " + res4);
+            // 4. Tier 3 Test: Safety Fallback to first available option
+            global.appSettings = {{}};
+            let res4 = resolve(testFolders, "path", "/nonexistent", "xarrtools_mru_radarr_folder");
+            if (res4 !== "/data/movies1") throw new Error("Tier 3 Safety fallback failed: expected /data/movies1, got " + res4);
 
-        // 5. Profile ID String/Number Coercion Test
-        let resProfile = resolve(testProfiles, "id", 3, "xarrtools_mru_radarr_profile");
-        if (resProfile !== "3") throw new Error("Profile ID match failed: expected '3', got " + resProfile);
+            // 5. Profile ID String/Number Coercion Test
+            let resProfile = resolve(testProfiles, "id", 3, "xarrtools_mru_radarr_profile");
+            if (resProfile !== "3") throw new Error("Profile ID match failed: expected '3', got " + resProfile);
 
-        // 6. updateMRUCache test
-        updateMRU("movie", "/data/movies_updated", 2);
-        if (localStorage.getItem("xarrtools_mru_radarr_folder") !== "/data/movies_updated") {{
-            throw new Error("updateMRUCache failed for folder");
-        }}
-        if (localStorage.getItem("xarrtools_mru_radarr_profile") !== "2") {{
-            throw new Error("updateMRUCache failed for profile");
-        }}
+            // 6. updateMRUCache test
+            updateMRU("movie", "/data/movies_updated", 2);
+            if (localStorage.getItem("xarrtools_mru_radarr_folder") !== "/data/movies_updated") {{
+                throw new Error("updateMRUCache failed for folder");
+            }}
+            if (localStorage.getItem("xarrtools_mru_radarr_profile") !== "2") {{
+                throw new Error("updateMRUCache failed for profile");
+            }}
 
-        // 7. TV updateMRUCache test
-        updateMRU("tv", "/data/tv_updated", 1);
-        if (localStorage.getItem("xarrtools_mru_sonarr_folder") !== "/data/tv_updated") {{
-            throw new Error("updateMRUCache failed for TV folder");
-        }}
-        if (localStorage.getItem("xarrtools_mru_sonarr_profile") !== "1") {{
-            throw new Error("updateMRUCache failed for TV profile");
-        }}
+            // 7. TV updateMRUCache test
+            updateMRU("tv", "/data/tv_updated", 1);
+            if (localStorage.getItem("xarrtools_mru_sonarr_folder") !== "/data/tv_updated") {{
+                throw new Error("updateMRUCache failed for TV folder");
+            }}
+            if (localStorage.getItem("xarrtools_mru_sonarr_profile") !== "1") {{
+                throw new Error("updateMRUCache failed for TV profile");
+            }}
 
-        // 8. Empty list resilience
-        let resEmpty = resolve([], "path", "/data/movies1", "mru_key");
-        if (resEmpty !== "") throw new Error("Empty list failed: expected '', got " + resEmpty);
+            // 8. Empty list resilience
+            let resEmpty = resolve([], "path", "/data/movies1", "mru_key");
+            if (resEmpty !== "") throw new Error("Empty list failed: expected '', got " + resEmpty);
 
-        process.stdout.write("JS_TESTS_ALL_PASSED\\n");
+            process.stdout.write("JS_TESTS_ALL_PASSED\\n");
+        }})().catch(err => {{
+            console.error(err);
+            process.exit(1);
+        }});
         """
 
         result = subprocess.run(

@@ -24,6 +24,7 @@ from core.config import config, Config
 from core.client import RadarrClient, SonarrClient, ArrAPIError, BaseArrClient
 from cli.cli import resolve_preset_index, select_from_list, parse_indices
 from web.server import app, get_clients
+from tests.frontend_harness import check_node_and_dist, get_module_injection_code
 
 
 @pytest.fixture(autouse=True)
@@ -462,71 +463,78 @@ class TestJavaScriptHybridPresetHarness:
 
     def test_app_js_hybrid_preset_exhaustive_node_harness(self):
         """Executes Node.js test harness loading web/templates/app.js directly."""
+        check_node_and_dist()
         app_js_path = os.path.abspath("web/templates/app.js")
         assert os.path.exists(app_js_path)
 
         script = f"""
         const fs = require('fs');
-        const code = fs.readFileSync('{app_js_path}', 'utf8').split('\\n').filter(l => !l.startsWith('import ')).join('\\n');
+        (async () => {{
+            {get_module_injection_code()}
+            const code = fs.readFileSync('{app_js_path}', 'utf8').split('\\n').filter(l => !l.startsWith('import ')).join('\\n');
 
-        // Mock browser DOM & Storage environment
-        const store = {{}};
-        global.window = {{}};
-        global.localStorage = {{
-            getItem: (k) => store[k] || null,
-            setItem: (k, v) => {{ store[k] = String(v); }},
-            removeItem: (k) => {{ delete store[k]; }}
-        }};
-        global.document = {{
-            querySelector: () => null,
-            getElementById: () => null,
-            querySelectorAll: () => [],
-            addEventListener: () => {{}}
-        }};
+            // Mock browser DOM & Storage environment
+            const store = {{}};
+            global.window = {{}};
+            global.localStorage = {{
+                getItem: (k) => store[k] || null,
+                setItem: (k, v) => {{ store[k] = String(v); }},
+                removeItem: (k) => {{ delete store[k]; }}
+            }};
+            global.document = {{
+                querySelector: () => null,
+                getElementById: () => null,
+                querySelectorAll: () => [],
+                addEventListener: () => {{}}
+            }};
 
-        // Execute app.js in global context
-        eval(code);
+            // Execute app.js in global context
+            eval(code);
 
-        const resolve = window.resolveHybridPreset;
-        const updateMRU = window.updateMRUCache;
+            const resolve = window.resolveHybridPreset;
+            const updateMRU = window.updateMRUCache;
 
-        if (typeof resolve !== 'function') throw new Error('resolveHybridPreset not defined on window');
-        if (typeof updateMRU !== 'function') throw new Error('updateMRUCache not defined on window');
+            if (typeof resolve !== 'function') throw new Error('resolveHybridPreset not defined on window');
+            if (typeof updateMRU !== 'function') throw new Error('updateMRUCache not defined on window');
 
-        const profiles = [
-            {{ id: 1, name: 'SD' }},
-            {{ id: 2, name: 'HD' }},
-            {{ id: 3, name: '4K' }}
-        ];
+            const profiles = [
+                {{ id: 1, name: 'SD' }},
+                {{ id: 2, name: 'HD' }},
+                {{ id: 3, name: '4K' }}
+            ];
 
-        // 1. Tier 1: Explicit match wins over MRU
-        global.localStorage.setItem('xarrtools_mru_radarr_profile', '2');
-        let res = resolve(profiles, 'id', 3, 'xarrtools_mru_radarr_profile');
-        if (res !== '3') throw new Error('Tier 1 explicit match failed, got: ' + res);
+            // 1. Tier 1: Explicit match wins over MRU
+            global.localStorage.setItem('xarrtools_mru_radarr_profile', '2');
+            let res = resolve(profiles, 'id', 3, 'xarrtools_mru_radarr_profile');
+            if (res !== '3') throw new Error('Tier 1 explicit match failed, got: ' + res);
 
-        // 2. Tier 2: MRU wins when explicit is null/empty
-        res = resolve(profiles, 'id', null, 'xarrtools_mru_radarr_profile');
-        if (res !== '2') throw new Error('Tier 2 MRU match failed, got: ' + res);
+            // 2. Tier 2: MRU wins when explicit is null/empty
+            res = resolve(profiles, 'id', null, 'xarrtools_mru_radarr_profile');
+            if (res !== '2') throw new Error('Tier 2 MRU match failed, got: ' + res);
 
-        // 3. Tier 2: MRU wins when explicit is invalid/stale
-        res = resolve(profiles, 'id', '999', 'xarrtools_mru_radarr_profile');
-        if (res !== '2') throw new Error('Tier 2 fallback on stale explicit failed, got: ' + res);
+            // 3. Tier 2: MRU wins when explicit is invalid/stale
+            res = resolve(profiles, 'id', '999', 'xarrtools_mru_radarr_profile');
+            if (res !== '2') throw new Error('Tier 2 fallback on stale explicit failed, got: ' + res);
 
-        // 4. Tier 3: First available wins when explicit & MRU are both stale
-        global.localStorage.setItem('xarrtools_mru_radarr_profile', '888');
-        res = resolve(profiles, 'id', '999', 'xarrtools_mru_radarr_profile');
-        if (res !== '1') throw new Error('Tier 3 safety fallback failed, got: ' + res);
+            // 4. Tier 3: First available wins when explicit & MRU are both stale
+            global.localStorage.setItem('xarrtools_mru_radarr_profile', '888');
+            res = resolve(profiles, 'id', '999', 'xarrtools_mru_radarr_profile');
+            if (res !== '1') throw new Error('Tier 3 safety fallback failed, got: ' + res);
 
-        // 5. updateMRUCache test
-        updateMRU('tv', '/storage/tv', 5);
-        if (global.localStorage.getItem('xarrtools_mru_sonarr_folder') !== '/storage/tv') throw new Error('updateMRUCache TV folder failed');
-        if (global.localStorage.getItem('xarrtools_mru_sonarr_profile') !== '5') throw new Error('updateMRUCache TV profile failed');
+            // 5. updateMRUCache test
+            updateMRU('tv', '/storage/tv', 5);
+            if (global.localStorage.getItem('xarrtools_mru_sonarr_folder') !== '/storage/tv') throw new Error('updateMRUCache TV folder failed');
+            if (global.localStorage.getItem('xarrtools_mru_sonarr_profile') !== '5') throw new Error('updateMRUCache TV profile failed');
 
-        updateMRU('movie', '/storage/movies', 10);
-        if (global.localStorage.getItem('xarrtools_mru_radarr_folder') !== '/storage/movies') throw new Error('updateMRUCache Movie folder failed');
-        if (global.localStorage.getItem('xarrtools_mru_radarr_profile') !== '10') throw new Error('updateMRUCache Movie profile failed');
+            updateMRU('movie', '/storage/movies', 10);
+            if (global.localStorage.getItem('xarrtools_mru_radarr_folder') !== '/storage/movies') throw new Error('updateMRUCache Movie folder failed');
+            if (global.localStorage.getItem('xarrtools_mru_radarr_profile') !== '10') throw new Error('updateMRUCache Movie profile failed');
 
-        console.log("NODE_JS_HARNESS_SUCCESS");
+            console.log("NODE_JS_HARNESS_SUCCESS");
+        }})().catch(err => {{
+            console.error(err);
+            process.exit(1);
+        }});
         """
 
         result = subprocess.run(["node", "-e", script], capture_output=True, text=True, check=True)

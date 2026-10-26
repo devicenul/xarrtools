@@ -73,11 +73,13 @@ filled at enrichment time for Metacritic items. Filtering is a multi-select in t
 
 ## Frontend (`web/templates/app.js`, `web/static/src/`)
 
-Modular frontend architecture. Pure filter logic, typed API calls, and card HTML generation reside in TypeScript modules
-under `web/static/src/` (`web/static/src/types.ts`, `web/static/src/filters.ts`, `web/static/src/api.ts`, `web/static/src/cards.ts`)
+Modular frontend architecture. Pure filter logic, typed API calls, card HTML generation, settings/feed management, and modal/search builders reside in TypeScript modules
+under `web/static/src/` (`web/static/src/types.ts`, `web/static/src/filters.ts`, `web/static/src/api.ts`, `web/static/src/cards.ts`, `web/static/src/settings.ts`, `web/static/src/modals.ts`)
 compiled via `tsc` to ES2020 native modules in `web/static/dist/` (git-ignored, served at `/static/dist/*.js`).
 Card HTML generation helpers (`escapeHtml`, `countryName`, `localeBadge`, `buildRatingBadgesHtml`, `buildMediaCardHtml`)
 reside in `web/static/src/cards.ts` producing byte-identical markup, while DOM event wiring and button clicks remain in `app.js`.
+Settings form collection, preset resolution, MRU management, and feed table row HTML helpers reside in `web/static/src/settings.ts`.
+Add modal builders, indexer candidate rows, global search cards, and dropdown options helpers reside in `web/static/src/modals.ts`.
 Typed API functions covering all endpoints (`/api/discover`, `/api/add`, `/api/archive`, `/api/settings`, `/api/feeds`, etc.)
 reside in `web/static/src/api.ts`.
 Single-page application state: `currentDiscoveries {tv, movies}` and sets `selectedGenres/Networks/Countries/
@@ -85,9 +87,9 @@ Languages`. `itemPassesFilters(item, type)` is the single predicate used by `ren
 "Archive all filtered" (`getFilteredUnarchived` -> `POST /api/archive/batch`). Multi-selects share markup
 (`btn-/content-/options-/clear-/invert-<name>-filter` ids, where `<name>` is `genres`, `networks`, `country`,
 `language`). `web/templates/app.js` runs as an ES module (`<script type="module" src="/static/app.js">`) and imports
-from `/static/dist/filters.js`, `/static/dist/api.js`, and `/static/dist/cards.js` while maintaining thin DOM wrappers.
+from `/static/dist/filters.js`, `/static/dist/api.js`, `/static/dist/cards.js`, `/static/dist/settings.js`, and `/static/dist/modals.js` while maintaining thin DOM wrappers.
 Node-based test suites exercise compiled modules: `tests/test_frontend_filters.py`, `tests/test_frontend_api.py`,
-and `tests/test_frontend_cards.py`; `tests/test_m3_static_template_challenge.py` checks HTML/JS id parity.
+`tests/test_frontend_cards.py`, `tests/test_frontend_settings.py`, and `tests/test_frontend_modals.py`; `tests/test_m3_static_template_challenge.py` checks HTML/JS id parity.
 Build tooling for the TypeScript migration is defined in `package.json` and `tsconfig.json`.
 
 ## Tests

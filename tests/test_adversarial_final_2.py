@@ -11,6 +11,7 @@ import core.db
 from core.config import config
 from core.db import get_setting, set_setting, init_db, get_db_connection
 from cli.cli import resolve_preset_index, select_from_list
+from tests.frontend_harness import check_node_and_dist, get_module_injection_code
 
 
 @pytest.fixture
@@ -200,65 +201,72 @@ class TestChallenge2EmptyOptionsLists:
 
     def test_web_resolve_hybrid_preset_via_node_harness(self):
         """Run Node.js execution to stress-test resolveHybridPreset directly from app.js."""
+        check_node_and_dist()
         app_js_path = os.path.abspath("web/templates/app.js")
         
         js_code = f"""
         const fs = require('fs');
-        let code = fs.readFileSync('{app_js_path}', 'utf8').split('\\n').filter(l => !l.startsWith('import ')).join('\\n');
+        (async () => {{
+            {get_module_injection_code()}
+            let code = fs.readFileSync('{app_js_path}', 'utf8').split('\\n').filter(l => !l.startsWith('import ')).join('\\n');
 
-        // Mock window, localStorage, and DOM environment
-        const localStorageStore = {{}};
-        global.window = {{}};
-        global.localStorage = {{
-            getItem: (k) => localStorageStore[k] || null,
-            setItem: (k, v) => {{ localStorageStore[k] = String(v); }},
-            removeItem: (k) => {{ delete localStorageStore[k]; }}
-        }};
-        global.document = {{
-            querySelector: () => null,
-            getElementById: () => null,
-            querySelectorAll: () => [],
-            addEventListener: () => {{}}
-        }};
+            // Mock window, localStorage, and DOM environment
+            const localStorageStore = {{}};
+            global.window = {{}};
+            global.localStorage = {{
+                getItem: (k) => localStorageStore[k] || null,
+                setItem: (k, v) => {{ localStorageStore[k] = String(v); }},
+                removeItem: (k) => {{ delete localStorageStore[k]; }}
+            }};
+            global.document = {{
+                querySelector: () => null,
+                getElementById: () => null,
+                querySelectorAll: () => [],
+                addEventListener: () => {{}}
+            }};
 
-        const harness = `
-            ${{code}}
+            const harness = `
+                ${{code}}
 
-            const fn = window.resolveHybridPreset;
-            if (typeof fn !== 'function') throw new Error('resolveHybridPreset not found');
+                const fn = window.resolveHybridPreset;
+                if (typeof fn !== 'function') throw new Error('resolveHybridPreset not found');
 
-            // 1. Empty options list edge cases
-            if (fn([], 'id', 1, 'mru') !== '') throw new Error('Empty array failed');
-            if (fn(null, 'id', 1, 'mru') !== '') throw new Error('Null options failed');
-            if (fn(undefined, 'id', 1, 'mru') !== '') throw new Error('Undefined options failed');
-            if (fn('not an array', 'id', 1, 'mru') !== '') throw new Error('String options failed');
-            if (fn([{{}}], 'id', 1, 'mru') !== '') throw new Error('Empty dict options failed');
+                // 1. Empty options list edge cases
+                if (fn([], 'id', 1, 'mru') !== '') throw new Error('Empty array failed');
+                if (fn(null, 'id', 1, 'mru') !== '') throw new Error('Null options failed');
+                if (fn(undefined, 'id', 1, 'mru') !== '') throw new Error('Undefined options failed');
+                if (fn('not an array', 'id', 1, 'mru') !== '') throw new Error('String options failed');
+                if (fn([{{}}], 'id', 1, 'mru') !== '') throw new Error('Empty dict options failed');
 
-            // 2. Explicit match
-            const profiles = [{{ id: 1, name: 'SD' }}, {{ id: 2, name: 'HD' }}, {{ id: 3, name: '4K' }}];
-            if (fn(profiles, 'id', 2, 'mru') !== '2') throw new Error('Explicit match failed');
-            if (fn(profiles, 'id', '3', 'mru') !== '3') throw new Error('Explicit string match failed');
+                // 2. Explicit match
+                const profiles = [{{ id: 1, name: 'SD' }}, {{ id: 2, name: 'HD' }}, {{ id: 3, name: '4K' }}];
+                if (fn(profiles, 'id', 2, 'mru') !== '2') throw new Error('Explicit match failed');
+                if (fn(profiles, 'id', '3', 'mru') !== '3') throw new Error('Explicit string match failed');
 
-            // 3. Deleted explicit -> MRU fallback
-            localStorageStore['mru_key'] = '2';
-            if (fn(profiles, 'id', 999, 'mru_key') !== '2') throw new Error('MRU fallback failed');
+                // 3. Deleted explicit -> MRU fallback
+                localStorageStore['mru_key'] = '2';
+                if (fn(profiles, 'id', 999, 'mru_key') !== '2') throw new Error('MRU fallback failed');
 
-            // 4. Deleted explicit & deleted MRU -> Safety fallback to index 0
-            localStorageStore['mru_key'] = '888';
-            if (fn(profiles, 'id', 999, 'mru_key') !== '1') throw new Error('Safety fallback failed');
+                // 4. Deleted explicit & deleted MRU -> Safety fallback to index 0
+                localStorageStore['mru_key'] = '888';
+                if (fn(profiles, 'id', 999, 'mru_key') !== '1') throw new Error('Safety fallback failed');
 
-            // 5. Backend appSettings fallback (via mapped altKey)
-            delete localStorageStore['xarrtools_mru_radarr_profile'];
-            appSettings = {{ 'radarr_mru_quality_profile': '3' }};
-            if (fn(profiles, 'id', null, 'xarrtools_mru_radarr_profile') !== '3') throw new Error('appSettings backend fallback failed');
+                // 5. Backend appSettings fallback (via mapped altKey)
+                delete localStorageStore['xarrtools_mru_radarr_profile'];
+                appSettings = {{ 'radarr_mru_quality_profile': '3' }};
+                if (fn(profiles, 'id', null, 'xarrtools_mru_radarr_profile') !== '3') throw new Error('appSettings backend fallback failed');
 
-            // 6. Direct appSettings key fallback
-            appSettings = {{ 'custom_mru_key': '2' }};
-            if (fn(profiles, 'id', null, 'custom_mru_key') !== '2') throw new Error('appSettings direct fallback failed');
-        `;
+                // 6. Direct appSettings key fallback
+                appSettings = {{ 'custom_mru_key': '2' }};
+                if (fn(profiles, 'id', null, 'custom_mru_key') !== '2') throw new Error('appSettings direct fallback failed');
+            `;
 
-        eval(harness);
-        console.log('ALL_NODE_TESTS_PASSED');
+            eval(harness);
+            console.log('ALL_NODE_TESTS_PASSED');
+        }})().catch(err => {{
+            console.error(err);
+            process.exit(1);
+        }});
         """
 
         res = subprocess.run(

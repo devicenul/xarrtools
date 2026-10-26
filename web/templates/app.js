@@ -1,6 +1,9 @@
 import { matchLocale as moduleMatchLocale, matchFilter as moduleMatchFilter, itemPassesFilters as moduleItemPassesFilters, getFilteredUnarchived as moduleGetFilteredUnarchived } from '/static/dist/filters.js';
 import { archiveBatch as moduleArchiveBatch, archiveItem as moduleArchiveItem, fetchConfig as moduleFetchConfig, fetchSettings as moduleFetchSettings, saveSettings as moduleSaveSettings, fetchScanProgress as moduleFetchScanProgress, fetchDiscoveries as moduleFetchDiscoveries, refreshCacheItem as moduleRefreshCacheItem, lookupMedia as moduleLookupMedia, addMedia as moduleAddMedia, linkLibrary as moduleLinkLibrary, fetchCacheStats as moduleFetchCacheStats, pruneCache as modulePruneCache, clearCache as moduleClearCache, getBackupExportUrl as moduleGetBackupExportUrl, importBackup as moduleImportBackup, fetchFeeds as moduleFetchFeeds, saveFeed as moduleSaveFeed, deleteFeed as moduleDeleteFeed, testFeed as moduleTestFeed, restoreDefaultFeeds as moduleRestoreDefaultFeeds } from '/static/dist/api.js';
 import { escapeHtml as moduleEscapeHtml, safeUrl as moduleSafeUrl, countryName as moduleCountryName, localeBadge as moduleLocaleBadge, buildRatingBadgesHtml as moduleBuildRatingBadgesHtml, getPosterNavigationUrl as moduleGetPosterNavigationUrl, buildMediaCardHtml as moduleBuildMediaCardHtml } from '/static/dist/cards.js';
+import { collectSettingsPayload as moduleCollectSettingsPayload, resolveSettingsDefaults as moduleResolveSettingsDefaults, resolveHybridPreset as moduleResolveHybridPreset, updateMRUCache as moduleUpdateMRUCache, validateFeedForm as moduleValidateFeedForm, validateTestFeedInput as moduleValidateTestFeedInput, formatTestFeedResults as moduleFormatTestFeedResults, buildFeedStatusBadgeHtml as moduleBuildFeedStatusBadgeHtml, buildFeedTableRowHtml as moduleBuildFeedTableRowHtml, resolveDefaultParserConfig as moduleResolveDefaultParserConfig, DEFAULT_PARSER_CONFIGS as moduleDefaultParserConfigs, getFeedEditorFormDefaults as moduleGetFeedEditorFormDefaults } from '/static/dist/settings.js';
+import { buildSelectOptionsHtml as moduleBuildSelectOptionsHtml, isIndexerBestMatch as moduleIsIndexerBestMatch, getCollectionName as moduleGetCollectionName, buildCollectionBadgeHtml as moduleBuildCollectionBadgeHtml, buildLookupItemHtml as moduleBuildLookupItemHtml, buildExternalChipsHtml as moduleBuildExternalChipsHtml, getLookupPosterUrl as moduleGetLookupPosterUrl, buildRatingItemFromLookup as moduleBuildRatingItemFromLookup, buildSearchCardPlotHtml as moduleBuildSearchCardPlotHtml, buildSearchCardPosterHtml as moduleBuildSearchCardPosterHtml, buildSearchCardHtml as moduleBuildSearchCardHtml, buildSearchLoadingHtml as moduleBuildSearchLoadingHtml, buildSearchEmptyStateHtml as moduleBuildSearchEmptyStateHtml, buildSearchErrorHtml as moduleBuildSearchErrorHtml, buildLookupStatusHtml as moduleBuildLookupStatusHtml, formatSearchResultNotification as moduleFormatSearchResultNotification, getDemoSearchResults as moduleGetDemoSearchResults, buildAddMediaPayload as moduleBuildAddMediaPayload } from '/static/dist/modals.js';
+
 
 // Global Application State
 let appConfig = null;
@@ -208,24 +211,23 @@ async function loadSettingsAndConfig(isInitialLoad = true) {
 
 function initializeSettingsDefaults() {
     if (!appSettings) return;
+    const defaults = moduleResolveSettingsDefaults(appSettings);
     
     // Sliders Past / Future
     const sliderPast = document.getElementById("slider-past");
     const valPast = document.getElementById("val-past");
-    const pastVal = appSettings.default_past_months || "1";
-    sliderPast.value = pastVal;
-    valPast.textContent = pastVal;
+    sliderPast.value = defaults.default_past_months;
+    valPast.textContent = defaults.default_past_months;
     
     const sliderFuture = document.getElementById("slider-future");
     const valFuture = document.getElementById("val-future");
-    const futureVal = appSettings.default_future_months || "2";
-    sliderFuture.value = futureVal;
-    valFuture.textContent = futureVal;
+    sliderFuture.value = defaults.default_future_months;
+    valFuture.textContent = defaults.default_future_months;
     
     // Filter Checkboxes
-    document.getElementById("check-show-returning").checked = appSettings.default_show_returning === "1";
-    document.getElementById("check-show-library").checked = appSettings.default_show_library === "1";
-    document.getElementById("check-show-archived").checked = appSettings.default_show_archived === "1";
+    document.getElementById("check-show-returning").checked = defaults.default_show_returning;
+    document.getElementById("check-show-library").checked = defaults.default_show_library;
+    document.getElementById("check-show-archived").checked = defaults.default_show_archived;
 }
 
 function updateStatusBadges() {
@@ -368,91 +370,15 @@ async function scanReleases(skipScrape = false) {
 
 // --- Hybrid Preset Resolution & MRU Engine ---
 
-/**
- * Resolves the quality profile or root folder selection using a 3-tier hybrid strategy:
- * Tier 1: Explicit Settings Default (appSettings[explicitSettingKey])
- * Tier 2: Most-Recently-Used Fallback (localStorage[mruKey] or appSettings[mruKey])
- * Tier 3: Safety Fallback (First available option)
- */
-function resolveHybridPreset(optionsList, valueKey, explicitSettingValue, mruKey) {
-    if (!optionsList || !Array.isArray(optionsList) || optionsList.length === 0) {
-        return "";
-    }
-
-    const findOption = (val) => {
-        if (val === undefined || val === null) return null;
-        const valStr = String(val).trim();
-        if (valStr === "") return null;
-        return optionsList.find(opt => opt && String(opt[valueKey]).trim() === valStr) || null;
-    };
-
-    // Tier 1: Explicit Server Setting
-    const explicitMatch = findOption(explicitSettingValue);
-    if (explicitMatch) {
-        return String(explicitMatch[valueKey]);
-    }
-
-    // Tier 2: Most-Recently-Used (MRU) Fallback
-    let mruVal = null;
-    if (mruKey) {
-        try {
-            mruVal = localStorage.getItem(mruKey);
-        } catch (e) {
-            // ignore localStorage error
-        }
-    }
-    let mruMatch = findOption(mruVal);
-    if (mruMatch) {
-        return String(mruMatch[valueKey]);
-    }
-
-    if (mruKey && typeof appSettings !== "undefined" && appSettings) {
-        mruMatch = findOption(appSettings[mruKey]);
-        if (mruMatch) {
-            return String(mruMatch[valueKey]);
-        }
-        const backendKeyMap = {
-            "xarrtools_mru_radarr_folder": "radarr_mru_root_folder",
-            "xarrtools_mru_radarr_profile": "radarr_mru_quality_profile",
-            "xarrtools_mru_sonarr_folder": "sonarr_mru_root_folder",
-            "xarrtools_mru_sonarr_profile": "sonarr_mru_quality_profile"
-        };
-        const altKey = backendKeyMap[mruKey];
-        if (altKey) {
-            mruMatch = findOption(appSettings[altKey]);
-            if (mruMatch) {
-                return String(mruMatch[valueKey]);
-            }
-        }
-    }
-
-    // Tier 3: Safety Fallback (First Available Option)
-    if (optionsList[0] && optionsList[0][valueKey] !== undefined) {
-        return String(optionsList[0][valueKey]);
-    }
-
-    return "";
+function resolveHybridPreset(optionsList, valueKey, explicitSettingValue, mruKey, storage = null, settings = null) {
+    const s = storage || (typeof localStorage !== 'undefined' ? localStorage : null);
+    const cfg = settings || (typeof appSettings !== 'undefined' ? appSettings : ((typeof window !== 'undefined' && window.appSettings) ? window.appSettings : null));
+    return moduleResolveHybridPreset(optionsList, valueKey, explicitSettingValue, mruKey, s, cfg);
 }
-
-/**
- * Immediately updates the localStorage MRU cache upon media addition.
- */
-function updateMRUCache(type, folder, profileId) {
-    const prefix = type === "tv" ? "xarrtools_mru_sonarr" : "xarrtools_mru_radarr";
-    try {
-        if (folder !== undefined && folder !== null && String(folder).trim() !== "") {
-            localStorage.setItem(`${prefix}_folder`, String(folder).trim());
-        }
-        if (profileId !== undefined && profileId !== null && String(profileId).trim() !== "") {
-            localStorage.setItem(`${prefix}_profile`, String(profileId).trim());
-        }
-    } catch (e) {
-        console.warn("Failed to update localStorage MRU cache:", e);
-    }
-}
-
+const updateMRUCache = moduleUpdateMRUCache;
 window.resolveHybridPreset = resolveHybridPreset;
 window.updateMRUCache = updateMRUCache;
+
 
 // 3. Add item to *Arr
 async function addMediaItem(searchNow = null) {
@@ -516,15 +442,15 @@ async function addMediaItem(searchNow = null) {
 
 
     const checkTrackCollection = document.getElementById("check-track-collection");
-    const payload = {
-        type: type,
-        raw_metadata: rawMeta,
+    const payload = moduleBuildAddMediaPayload({
+        type,
+        rawMetadata: rawMeta,
         folder: selectFolder.value,
-        profile_id: selectProfile.value,
+        profileId: selectProfile.value,
         monitored: checkMonitored.checked,
-        search_now: (searchNow !== null) ? searchNow : checkSearch.checked,
-        add_collection: (type === "movie" && checkTrackCollection && checkTrackCollection.checked)
-    };
+        searchNow: (searchNow !== null) ? searchNow : checkSearch.checked,
+        addCollection: Boolean(type === "movie" && checkTrackCollection && checkTrackCollection.checked)
+    });
 
     // Close options modal and show spinner
     closeModal();
@@ -640,23 +566,23 @@ async function refreshMetadata(type, item, refreshBtn, card) {
 
 // 6. Save settings to server
 async function saveSettings() {
-    const payload = {
-        radarr_url: inputRadarrUrl.value.trim(),
-        radarr_api_key: inputRadarrKey.value.trim(),
-        radarr_default_root_folder: selectRadarrDefaultFolder ? selectRadarrDefaultFolder.value : "",
-        radarr_default_quality_profile: selectRadarrDefaultProfile ? selectRadarrDefaultProfile.value : "",
-        sonarr_url: inputSonarrUrl.value.trim(),
-        sonarr_api_key: inputSonarrKey.value.trim(),
-        tmdb_api_key: inputTmdbKey ? inputTmdbKey.value.trim() : "",
-        sonarr_default_root_folder: selectSonarrDefaultFolder ? selectSonarrDefaultFolder.value : "",
-        sonarr_default_quality_profile: selectSonarrDefaultProfile ? selectSonarrDefaultProfile.value : "",
-        default_past_months: inputPastMonths.value,
-        default_future_months: inputFutureMonths.value,
-        default_show_returning: document.getElementById("input-show-returning").checked ? "1" : "0",
-        default_show_library: document.getElementById("input-show-library").checked ? "1" : "0",
-        default_show_archived: document.getElementById("input-show-archived").checked ? "1" : "0",
-        default_match_ignore_year: document.getElementById("input-match-ignore-year").checked ? "1" : "0"
-    };
+    const payload = moduleCollectSettingsPayload({
+        radarrUrl: inputRadarrUrl.value,
+        radarrKey: inputRadarrKey.value,
+        radarrDefaultFolder: selectRadarrDefaultFolder ? selectRadarrDefaultFolder.value : "",
+        radarrDefaultProfile: selectRadarrDefaultProfile ? selectRadarrDefaultProfile.value : "",
+        sonarrUrl: inputSonarrUrl.value,
+        sonarrKey: inputSonarrKey.value,
+        tmdbKey: inputTmdbKey ? inputTmdbKey.value : "",
+        sonarrDefaultFolder: selectSonarrDefaultFolder ? selectSonarrDefaultFolder.value : "",
+        sonarrDefaultProfile: selectSonarrDefaultProfile ? selectSonarrDefaultProfile.value : "",
+        pastMonths: inputPastMonths.value,
+        futureMonths: inputFutureMonths.value,
+        showReturning: document.getElementById("input-show-returning").checked,
+        showLibrary: document.getElementById("input-show-library").checked,
+        showArchived: document.getElementById("input-show-archived").checked,
+        matchIgnoreYear: document.getElementById("input-match-ignore-year").checked
+    });
     
     closeSettingsModal();
     loadingOverlay.classList.remove("hidden");
@@ -932,11 +858,11 @@ async function openAddModal(type, index) {
         if ((data.ok ?? true) && data.status === "success" && data.results && data.results.length > 0) {
             renderLookupResults(data.results, type, item);
         } else {
-            lookupResultsList.innerHTML = `<div class="lookup-status">No results found on indexers. Please check title manually.</div>`;
+            lookupResultsList.innerHTML = moduleBuildLookupStatusHtml("No results found on indexers. Please check title manually.");
         }
     } catch (error) {
         lookupLoading.classList.add("hidden");
-        lookupResultsList.innerHTML = `<div class="lookup-status">Error loading indexers: ${escapeHtml(error.message)}</div>`;
+        lookupResultsList.innerHTML = moduleBuildLookupStatusHtml(`Error loading indexers: ${error.message}`);
     }
 }
 
@@ -947,60 +873,14 @@ function renderLookupResults(results, type, discoveryItem) {
         const itemRow = document.createElement("div");
         itemRow.className = "lookup-item";
         
-        // 1. Library Status check
-        const inLibrary = res.id ? true : false;
-        const statusBadge = inLibrary 
-            ? `<span class="lookup-item-status status-exists">In Library</span>` 
-            : `<span class="lookup-item-status status-not-exists">Not Added</span>`;
-            
-        // 2. Best Match Logic
-        let isBestMatch = false;
-        const resId = type === "tv" ? res.tvdbId : res.tmdbId;
-        const discoveryId = type === "tv" ? discoveryItem.tvdbId : discoveryItem.tmdbId;
-        
-        const resImdbId = res.imdbId;
-        const discoveryImdbId = discoveryItem.imdbId;
-        
-        const stripYearSuffix = (t) => (t || "").replace(/\s*[\(\[]\d{4}[\)\]]?$/, "").trim().toLowerCase();
-        if (discoveryId && resId && String(discoveryId) === String(resId)) {
-            isBestMatch = true;
-        } else if (discoveryImdbId && resImdbId && String(discoveryImdbId).toLowerCase() === String(resImdbId).toLowerCase()) {
-            isBestMatch = true;
-        } else if (
-            (res.title.toLowerCase() === discoveryItem.title.toLowerCase() ||
-             stripYearSuffix(res.title) === stripYearSuffix(discoveryItem.title)) &&
-            Math.abs(res.year - discoveryItem.year) <= 1
-        ) {
-            isBestMatch = true;
-        }
-
+        const inLibrary = Boolean(res.id);
+        const isBestMatch = moduleIsIndexerBestMatch(discoveryItem, res, type);
         if (isBestMatch) {
             itemRow.classList.add("best-match");
         }
 
-        const idLabel = type === "tv" ? `TVDB ID: ${res.tvdbId || 'N/A'}` : `TMDB ID: ${res.tmdbId || 'N/A'}`;
-        const collectionName = res.collection ? (res.collection.title || res.collection.name) : null;
-        const collectionBadge = (type === "movie" && collectionName)
-            ? `<span class="badge" style="background: rgba(0, 210, 255, 0.08); color: var(--accent-blue); border: 1px solid rgba(0, 210, 255, 0.2); font-size: 10px; padding: 2px 6px; border-radius: 4px; display: inline-flex; align-items: center; text-transform: none; margin: 0;">📦 ${escapeHtml(collectionName)}</span>`
-            : '';
-
-        itemRow.innerHTML = `
-            <div class="lookup-item-details">
-                <div class="lookup-item-title">
-                    ${escapeHtml(res.title)}
-                    ${isBestMatch ? '<span class="auto-match-tag">Auto Match</span>' : ''}
-                </div>
-                <div class="lookup-item-meta" style="display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin-top: 4px;">
-                    <span class="year-badge">${escapeHtml(res.year || 'N/A')}</span>
-                    <span class="id-badge">${escapeHtml(idLabel)}</span>
-                    ${collectionBadge}
-                </div>
-            </div>
-            ${statusBadge}
-        `;
+        itemRow.innerHTML = moduleBuildLookupItemHtml(res, type, isBestMatch, inLibrary);
         
-        // Bind Click handler to select and transition to Step 2
-        // Bind Click handler to select and transition to Step 2
         itemRow.addEventListener("click", () => {
             if (isMarkInLibraryMode) {
                 linkDiscoveryToLibrary(res, discoveryItem);
@@ -1072,27 +952,9 @@ function goToOptionsStep(metadataItem) {
     modalTitle.textContent = `${selectedItemForAdd.isDemo ? '[Demo Sandbox] ' : ''}Configure Download: ${metadataItem.title}`;
     
     // Clear selects
-    selectFolder.innerHTML = "";
-    selectProfile.innerHTML = "";
-
-    // Populate Folder Paths
-    if (targetConfig && targetConfig.folders) {
-        targetConfig.folders.forEach(f => {
-            const opt = document.createElement("option");
-            opt.value = f.path;
-            opt.textContent = f.path;
-            selectFolder.appendChild(opt);
-        });
-    }
-
-    if (targetConfig && targetConfig.profiles) {
-        targetConfig.profiles.forEach(p => {
-            const opt = document.createElement("option");
-            opt.value = p.id;
-            opt.textContent = p.name;
-            selectProfile.appendChild(opt);
-        });
-    }
+    // Populate Folder Paths and Quality Profiles
+    selectFolder.innerHTML = moduleBuildSelectOptionsHtml(targetConfig ? targetConfig.folders : [], "path", "path");
+    selectProfile.innerHTML = moduleBuildSelectOptionsHtml(targetConfig ? targetConfig.profiles : [], "id", "name");
 
     // Pre-select Quality Profile and Root Folder using 3-tier Hybrid Preset Algorithm
     const prefix = type === "tv" ? "sonarr" : "radarr";
@@ -1124,7 +986,7 @@ function goToOptionsStep(metadataItem) {
     const checkTrackCollection = document.getElementById("check-track-collection");
     const lblCollectionName = document.getElementById("lbl-collection-name");
     
-    const collectionName = metadataItem.collection ? (metadataItem.collection.title || metadataItem.collection.name) : null;
+    const collectionName = moduleGetCollectionName(metadataItem);
     if (type === "movie" && collectionName) {
         if (groupTrackCollection && checkTrackCollection && lblCollectionName) {
             lblCollectionName.textContent = collectionName;
@@ -1169,27 +1031,10 @@ function closeModal() {
 // Helper to populate settings select elements
 function populateSettingsSelect(selectEl, items, valueProp, textProp, currentValue) {
     if (!selectEl) return;
-    selectEl.innerHTML = "";
-    const defaultOpt = document.createElement("option");
-    defaultOpt.value = "";
-    defaultOpt.textContent = "None (Use Most-Recently-Used)";
-    selectEl.appendChild(defaultOpt);
-
-    let matchFound = false;
-    if (items && Array.isArray(items)) {
-        items.forEach(item => {
-            const opt = document.createElement("option");
-            opt.value = item[valueProp];
-            opt.textContent = item[textProp];
-            selectEl.appendChild(opt);
-            if (currentValue !== undefined && currentValue !== null && String(item[valueProp]).trim() === String(currentValue).trim()) {
-                matchFound = true;
-            }
-        });
-    }
-
-    if (matchFound && currentValue !== undefined && currentValue !== null && String(currentValue).trim() !== "") {
-        selectEl.value = String(currentValue);
+    selectEl.innerHTML = moduleBuildSelectOptionsHtml(items, valueProp, textProp, currentValue, "None (Use Most-Recently-Used)");
+    if (currentValue !== undefined && currentValue !== null && String(currentValue).trim() !== "") {
+        const matchFound = items && Array.isArray(items) && items.some(item => item && String(item[valueProp]).trim() === String(currentValue).trim());
+        selectEl.value = matchFound ? String(currentValue) : "";
     } else {
         selectEl.value = "";
     }
@@ -1200,17 +1045,18 @@ window.populateSettingsSelect = populateSettingsSelect;
 // Settings Modal controls
 function openSettingsModal() {
     if (appSettings) {
-        inputRadarrUrl.value = appSettings.radarr_url || "";
-        inputRadarrKey.value = appSettings.radarr_api_key || "";
-        inputSonarrUrl.value = appSettings.sonarr_url || "";
-        inputSonarrKey.value = appSettings.sonarr_api_key || "";
-        if (inputTmdbKey) inputTmdbKey.value = appSettings.tmdb_api_key || "";
-        inputPastMonths.value = appSettings.default_past_months || "1";
-        inputFutureMonths.value = appSettings.default_future_months || "2";
-        document.getElementById("input-show-returning").checked = appSettings.default_show_returning === "1";
-        document.getElementById("input-show-library").checked = appSettings.default_show_library === "1";
-        document.getElementById("input-show-archived").checked = appSettings.default_show_archived === "1";
-        document.getElementById("input-match-ignore-year").checked = appSettings.default_match_ignore_year !== "0";
+        const defaults = moduleResolveSettingsDefaults(appSettings);
+        inputRadarrUrl.value = defaults.radarr_url;
+        inputRadarrKey.value = defaults.radarr_api_key;
+        inputSonarrUrl.value = defaults.sonarr_url;
+        inputSonarrKey.value = defaults.sonarr_api_key;
+        if (inputTmdbKey) inputTmdbKey.value = defaults.tmdb_api_key;
+        inputPastMonths.value = defaults.default_past_months;
+        inputFutureMonths.value = defaults.default_future_months;
+        document.getElementById("input-show-returning").checked = defaults.default_show_returning;
+        document.getElementById("input-show-library").checked = defaults.default_show_library;
+        document.getElementById("input-show-archived").checked = defaults.default_show_archived;
+        document.getElementById("input-match-ignore-year").checked = defaults.default_match_ignore_year;
     }
 
     // Populate Radarr & Sonarr default folder and quality profile dropdowns
@@ -1366,33 +1212,7 @@ async function importBackup(e) {
 
 // --- Custom Feeds Management ---
 
-const DEFAULT_PARSER_CONFIGS = {
-    rss: {
-        item_selector: "item",
-        mappings: {
-            title: { selector: "title" },
-            year: { selector: "filmYear", transforms: [{ type: "regex_search", pattern: "\\d{4}" }] },
-            date_str: { selector: "pubDate" },
-            href: { selector: "link" }
-        }
-    },
-    json: {
-        item_selector: "$",
-        mappings: {
-            title: { selector: "title" },
-            year: { selector: "year" },
-            href: { selector: "url" }
-        }
-    },
-    html: {
-        item_selector: "table.wikitable tbody tr",
-        mappings: {
-            title: { selector: "td i a", extract: "text" },
-            year: { selector: "td", extract: "text", transforms: [{ type: "regex_search", pattern: "\\d{4}" }] },
-            href: { selector: "td i a", extract: "attribute", attribute_name: "href" }
-        }
-    }
-};
+const DEFAULT_PARSER_CONFIGS = moduleDefaultParserConfigs;
 
 let customFeedsList = [];
 
@@ -1416,31 +1236,7 @@ async function loadCustomFeeds() {
             customFeedsList.forEach(feed => {
                 const tr = document.createElement("tr");
                 tr.style.borderBottom = "1px solid var(--border-color)";
-                
-                // Status Badge
-                let statusBadge = "";
-                let errorTooltip = "";
-                if (feed.last_status === "success") {
-                    statusBadge = `<span class="badge" style="background: rgba(0, 255, 135, 0.1); color: var(--accent-green); border: 1px solid rgba(0, 255, 135, 0.25); font-size:10px; padding:2px 6px;">Success</span>`;
-                } else if (feed.last_status === "error") {
-                    errorTooltip = feed.last_error_message ? `title="${escapeHtml(feed.last_error_message)}"` : "";
-                    statusBadge = `<span class="badge" style="background: rgba(255, 0, 80, 0.1); color: #ff0050; border: 1px solid rgba(255, 0, 80, 0.25); font-size:10px; padding:2px 6px; cursor:help;" ${errorTooltip}>Error ⚠️</span>`;
-                } else {
-                    statusBadge = `<span class="badge" style="background: rgba(255, 255, 255, 0.05); color: var(--text-secondary); border: 1px solid var(--border-color); font-size:10px; padding:2px 6px;">Never</span>`;
-                }
-                
-                // Enabled style indicator
-                const enabledStyle = feed.enabled === 1 ? "" : "opacity: 0.5; text-decoration: line-through;";
-                
-                tr.innerHTML = `
-                    <td style="padding: 8px; font-weight: 500; color: var(--text-primary); max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; ${enabledStyle}">${escapeHtml(feed.name)}</td>
-                    <td style="padding: 8px; text-transform: uppercase; font-size: 11px; color: var(--text-secondary);">${escapeHtml(feed.feed_type)}</td>
-                    <td style="padding: 8px;">${statusBadge}</td>
-                    <td style="padding: 8px; text-align: right; white-space: nowrap;">
-                        <button type="button" class="btn btn-secondary btn-feed-row-edit" data-feed-id="${escapeHtml(feed.id)}" style="font-size:11px; padding:2px 6px; margin:0 4px 0 0; width:auto; display:inline-block;">Edit</button>
-                        <button type="button" class="btn btn-feed-row-delete" data-feed-id="${escapeHtml(feed.id)}" data-feed-name="${escapeHtml(feed.name)}" style="background: rgba(255, 42, 133, 0.1); border: 1px solid rgba(255, 42, 133, 0.3); color: var(--accent-magenta); font-size:11px; padding:2px 6px; margin:0; width:auto; display:inline-block;">&times;</button>
-                    </td>
-                `;
+                tr.innerHTML = moduleBuildFeedTableRowHtml(feed);
                 
                 tr.querySelector(".btn-feed-row-edit").addEventListener("click", () => {
                     openFeedEditor(feed);
@@ -1467,55 +1263,18 @@ function openFeedEditor(feed) {
     
     listView.classList.add("hidden");
     editorView.classList.remove("hidden");
-    
-    const feedId = document.getElementById("feed-id");
-    const feedName = document.getElementById("feed-name");
-    const feedUrl = document.getElementById("feed-url");
-    const feedType = document.getElementById("feed-type");
-    const feedMediaType = document.getElementById("feed-media-type");
-    const feedEnabled = document.getElementById("feed-enabled");
-    const feedHeaders = document.getElementById("feed-headers");
-    const feedParserConfig = document.getElementById("feed-parser-config");
-    const editorTitle = document.getElementById("feed-editor-title");
-    
-    // Hide diagnostics preview card
     document.getElementById("feed-test-preview").classList.add("hidden");
     
-    if (feed) {
-        editorTitle.textContent = "Edit Custom Feed";
-        feedId.value = feed.id;
-        feedName.value = feed.name || "";
-        feedUrl.value = feed.url || "";
-        feedType.value = feed.feed_type || "rss";
-        feedMediaType.value = feed.default_media_type || "movie";
-        feedEnabled.checked = feed.enabled === 1;
-        
-        let headersObj = {};
-        try {
-            headersObj = typeof feed.http_headers === 'string' ? JSON.parse(feed.http_headers) : (feed.http_headers || {});
-        } catch (e) {
-            headersObj = {};
-        }
-        feedHeaders.value = JSON.stringify(headersObj, null, 2);
-        
-        let configObj = {};
-        try {
-            configObj = typeof feed.parser_config === 'string' ? JSON.parse(feed.parser_config) : (feed.parser_config || {});
-        } catch (e) {
-            configObj = {};
-        }
-        feedParserConfig.value = JSON.stringify(configObj, null, 2);
-    } else {
-        editorTitle.textContent = "Add Custom Feed";
-        feedId.value = "";
-        feedName.value = "";
-        feedUrl.value = "";
-        feedType.value = "rss";
-        feedMediaType.value = "movie";
-        feedEnabled.checked = true;
-        feedHeaders.value = "{}";
-        feedParserConfig.value = JSON.stringify(DEFAULT_PARSER_CONFIGS.rss, null, 2);
-    }
+    const defaults = moduleGetFeedEditorFormDefaults(feed);
+    document.getElementById("feed-editor-title").textContent = defaults.title;
+    document.getElementById("feed-id").value = defaults.id;
+    document.getElementById("feed-name").value = defaults.name;
+    document.getElementById("feed-url").value = defaults.url;
+    document.getElementById("feed-type").value = defaults.feed_type;
+    document.getElementById("feed-media-type").value = defaults.default_media_type;
+    document.getElementById("feed-enabled").checked = defaults.enabled;
+    document.getElementById("feed-headers").value = defaults.headers_json;
+    document.getElementById("feed-parser-config").value = defaults.parser_config_json;
     
     switchEditorTab("feed-tab-general");
 }
@@ -1562,84 +1321,39 @@ function switchEditorTab(tabId) {
 function handleFeedTypeChange() {
     const feedType = document.getElementById("feed-type").value;
     const parserConfigField = document.getElementById("feed-parser-config");
-    
-    // Clear parser config for built-in types
-    if (["metacritic_tv", "metacritic_movie", "dvds_releases", "tvmaze_schedule", "tmdb_movies"].includes(feedType)) {
-        parserConfigField.value = "{}";
-        return;
-    }
-    
-    const currentValue = parserConfigField.value.trim();
-    let matchesDefault = false;
-    
-    try {
-        const parsedCurrent = JSON.parse(currentValue);
-        if (Object.keys(parsedCurrent).length === 0 || 
-            (currentValue.includes("filmYear") && feedType !== "rss") ||
-            (currentValue.includes("tbody tr") && feedType !== "html") ||
-            (currentValue.includes("item_selector\": \"$\"") && feedType !== "json")
-        ) {
-            matchesDefault = true;
-        }
-    } catch (e) {
-        matchesDefault = true;
-    }
-    
-    if (matchesDefault && DEFAULT_PARSER_CONFIGS[feedType]) {
-        parserConfigField.value = JSON.stringify(DEFAULT_PARSER_CONFIGS[feedType], null, 2);
+    const nextConfig = moduleResolveDefaultParserConfig(feedType, parserConfigField.value);
+    if (nextConfig !== null) {
+        parserConfigField.value = nextConfig;
     }
 }
 
 async function saveCustomFeed() {
     const feedId = document.getElementById("feed-id").value;
-    const name = document.getElementById("feed-name").value.trim();
-    const url = document.getElementById("feed-url").value.trim();
+    const name = document.getElementById("feed-name").value;
+    const url = document.getElementById("feed-url").value;
     const feedType = document.getElementById("feed-type").value;
     const defaultMediaType = document.getElementById("feed-media-type").value;
-    const enabled = document.getElementById("feed-enabled").checked ? 1 : 0;
-    const headersRaw = document.getElementById("feed-headers").value.trim();
-    const configRaw = document.getElementById("feed-parser-config").value.trim();
+    const enabled = document.getElementById("feed-enabled").checked;
+    const headersRaw = document.getElementById("feed-headers").value;
+    const configRaw = document.getElementById("feed-parser-config").value;
     
-    if (!name || !url) {
-        alert("Please enter a feed name and URL.");
-        return;
-    }
-    
-    let httpHeaders = {};
-    if (headersRaw) {
-        try {
-            httpHeaders = JSON.parse(headersRaw);
-        } catch (e) {
-            alert("HTTP Headers must be valid JSON object. Error: " + e.message);
-            return;
-        }
-    }
-    
-    let parserConfig = {};
-    try {
-        parserConfig = JSON.parse(configRaw);
-    } catch (e) {
-        alert("Parser Config must be valid JSON object. Error: " + e.message);
-        return;
-    }
-    
-    if (!["metacritic_tv", "metacritic_movie", "dvds_releases", "tvmaze_schedule", "tmdb_movies"].includes(feedType)) {
-        if (!parserConfig.mappings || !parserConfig.mappings.title) {
-            alert("Parser config mappings must contain at least a 'title' selector rule.");
-            return;
-        }
-    }
-    
-    const payload = {
-        id: feedId ? parseInt(feedId) : null,
-        name: name,
-        url: url,
+    const validated = moduleValidateFeedForm({
+        id: feedId,
+        name,
+        url,
         feed_type: feedType,
         default_media_type: defaultMediaType,
-        enabled: enabled,
-        http_headers: httpHeaders,
-        parser_config: parserConfig
-    };
+        enabled,
+        headers_raw: headersRaw,
+        parser_config_raw: configRaw
+    });
+    
+    if (!validated.valid || !validated.payload) {
+        alert(validated.error || "Please enter a feed name and URL.");
+        return;
+    }
+    
+    const payload = validated.payload;
     
     try {
         const saveBtn = document.getElementById("btn-feed-save");
@@ -1681,32 +1395,22 @@ async function deleteCustomFeed(feedId, feedName) {
 }
 
 async function testCustomFeed() {
-    const url = document.getElementById("feed-url").value.trim();
+    const url = document.getElementById("feed-url").value;
     const feedType = document.getElementById("feed-type").value;
     const defaultMediaType = document.getElementById("feed-media-type").value;
-    const headersRaw = document.getElementById("feed-headers").value.trim();
-    const configRaw = document.getElementById("feed-parser-config").value.trim();
+    const headersRaw = document.getElementById("feed-headers").value;
+    const configRaw = document.getElementById("feed-parser-config").value;
     
-    if (!url) {
-        alert("Please enter a feed URL to test.");
-        return;
-    }
+    const validated = moduleValidateTestFeedInput({
+        url,
+        feed_type: feedType,
+        default_media_type: defaultMediaType,
+        headers_raw: headersRaw,
+        parser_config_raw: configRaw
+    });
     
-    let httpHeaders = {};
-    if (headersRaw) {
-        try {
-            httpHeaders = JSON.parse(headersRaw);
-        } catch (e) {
-            alert("HTTP Headers must be valid JSON object. Error: " + e.message);
-            return;
-        }
-    }
-    
-    let parserConfig = {};
-    try {
-        parserConfig = JSON.parse(configRaw);
-    } catch (e) {
-        alert("Parser Config must be valid JSON object. Error: " + e.message);
+    if (!validated.valid || !validated.payload) {
+        alert(validated.error || "Please enter a feed URL to test.");
         return;
     }
     
@@ -1722,36 +1426,14 @@ async function testCustomFeed() {
     if (testBtn) testBtn.disabled = true;
     
     try {
-        const data = await moduleTestFeed({
-            url: url,
-            feed_type: feedType,
-            default_media_type: defaultMediaType,
-            http_headers: httpHeaders,
-            parser_config: parserConfig
-        });
+        const data = await moduleTestFeed(validated.payload);
         if (testBtn) testBtn.disabled = false;
         
         if ((data.ok ?? true) && data.status === "success") {
             const timeMs = data.fetch_time_ms;
             const itemsCount = data.parsed_items_count;
             previewStats.textContent = `Success (${timeMs}ms)`;
-            
-            if (data.results && data.results.length > 0) {
-                let text = `Total parsed: ${itemsCount} items. Showing first ${data.results.length}:\n\n`;
-                data.results.forEach((item, idx) => {
-                    const yearStr = item.year ? ` (${item.year})` : "";
-                    const imdbStr = item.imdb_id ? ` [IMDb: ${item.imdb_id}]` : "";
-                    text += `${idx + 1}. Title: "${item.title}"${yearStr}${imdbStr}\n`;
-                    text += `   Link:  ${item.href || "N/A"}\n`;
-                    if (item.description) {
-                        text += `   Plot:  ${item.description}\n`;
-                    }
-                    text += `\n`;
-                });
-                previewResults.textContent = text;
-            } else {
-                previewResults.textContent = "Fetched successfully, but 0 items matched your mapping selectors.";
-            }
+            previewResults.textContent = moduleFormatTestFeedResults(data.results, itemsCount, timeMs);
         } else {
             previewStats.textContent = "Error";
             previewResults.textContent = `Dry-run test failed:\n${data.message || "Unknown error occurred"}`;
@@ -1873,12 +1555,7 @@ async function runGlobalSearch() {
     const type = typeSelect.value; // "movie" or "tv"
     
     // Show loading state
-    resultsGrid.innerHTML = `
-        <div class="empty-state" style="height: 30vh; margin: 0 auto; grid-column: 1 / -1;">
-            <div class="spinner-small" style="margin: 0 auto 12px;"></div>
-            <p>Searching ${type === 'tv' ? 'Sonarr' : 'Radarr'} for "${escapeHtml(query)}"...</p>
-        </div>
-    `;
+    resultsGrid.innerHTML = moduleBuildSearchLoadingHtml(query, type);
     
     // Intercept if unconfigured to return demo search results
     const isConfigured = type === "tv" ? (appConfig && appConfig.sonarr.configured) : (appConfig && appConfig.radarr.configured);
@@ -1890,7 +1567,7 @@ async function runGlobalSearch() {
                 const card = createSearchCard(res, type);
                 resultsGrid.appendChild(card);
             });
-            addNotification(`[Demo Mode] Found ${demoResults.length} simulated result(s) for "${query}".`, "info");
+            addNotification(moduleFormatSearchResultNotification(demoResults.length, query, true), "info");
         }, 600);
         return;
     }
@@ -1904,166 +1581,21 @@ async function runGlobalSearch() {
                 const card = createSearchCard(res, type);
                 resultsGrid.appendChild(card);
             });
-            addNotification(`Found ${data.results.length} result(s) for "${query}".`, "info");
+            addNotification(moduleFormatSearchResultNotification(data.results.length, query, false), "info");
         } else {
-            resultsGrid.innerHTML = `
-                <div class="empty-state" style="height: 30vh; margin: 0 auto; grid-column: 1 / -1;">
-                    <div class="empty-icon" style="font-size: 40px; margin-bottom: 12px;">🤷</div>
-                    <p>No results found for "${escapeHtml(query)}". Try a different title or media type.</p>
-                </div>
-            `;
-            addNotification(`No results found for "${query}".`, "info");
+            resultsGrid.innerHTML = moduleBuildSearchEmptyStateHtml(query);
+            addNotification(moduleFormatSearchResultNotification(0, query, false), "info");
         }
     } catch (error) {
-        resultsGrid.innerHTML = `
-            <div class="empty-state" style="height: 30vh; margin: 0 auto; grid-column: 1 / -1;">
-                <div class="empty-icon" style="font-size: 40px; margin-bottom: 12px;">⚠️</div>
-                <p>Search error: ${escapeHtml(error.message)}</p>
-            </div>
-        `;
+        resultsGrid.innerHTML = moduleBuildSearchErrorHtml(error.message);
         addNotification(`Global search error: ${error.message}`, "error");
     }
-}
-
-function getLookupPosterUrl(res) {
-    // 1. Check the convenience remotePoster field
-    if (res.remotePoster) return res.remotePoster;
-    
-    // 2. Search the images array for a poster with a remoteUrl
-    if (res.images && res.images.length > 0) {
-        const poster = res.images.find(img => img.coverType === "poster");
-        if (poster && poster.remoteUrl) return poster.remoteUrl;
-    }
-    
-    return null;
 }
 
 function createSearchCard(res, type) {
     const card = document.createElement("div");
     card.className = "media-card";
-    
-    const inLibrary = (res.id != null && res.id !== 0);
-    const posterUrl = getLookupPosterUrl(res);
-    const overview = res.overview || "No overview available.";
-    const year = res.year || "N/A";
-    const title = res.title || "Unknown Title";
-    const network = type === "tv" ? (res.network || "Unknown Network") : (res.studio || "Unknown Studio");
-    const runtime = res.runtime ? `${res.runtime} min` : "";
-    const genres = (res.genres || []).map(g => `<span class="genre-pill">${escapeHtml(g)}</span>`).join("");
-    const certification = res.certification ? `<span class="badge badge-network">${escapeHtml(res.certification)}</span>` : "";
-    
-    // Extract ratings for badge helper
-    const ratingItem = {
-        rating_imdb: "",
-        rating_metacritic: "",
-        rating_rt: ""
-    };
-    if (type === "movie" && res.ratings) {
-        if (res.ratings.imdb && res.ratings.imdb.value) {
-            ratingItem.rating_imdb = String(res.ratings.imdb.value);
-        }
-        if (res.ratings.metacritic && res.ratings.metacritic.value) {
-            ratingItem.rating_metacritic = String(Math.round(res.ratings.metacritic.value));
-        }
-        if (res.ratings.rottenTomatoes && res.ratings.rottenTomatoes.value) {
-            ratingItem.rating_rt = String(Math.round(res.ratings.rottenTomatoes.value));
-        }
-    } else if (type === "tv" && res.ratings) {
-        if (res.ratings.value) {
-            ratingItem.rating_imdb = String(res.ratings.value);
-        }
-    }
-    
-    // Setup expandable plot
-    const maxChars = 140;
-    const needsTruncation = overview.length > maxChars;
-    let plotHtml = "";
-    if (needsTruncation) {
-        const visibleText = overview.slice(0, maxChars);
-        const hiddenText = overview.slice(maxChars);
-        plotHtml = `
-            <span class="plot-visible">${escapeHtml(visibleText)}</span><span class="plot-ellipsis">...</span><span class="plot-hidden hidden">${escapeHtml(hiddenText)}</span><button class="plot-more-btn">more</button>
-        `;
-    } else {
-        plotHtml = escapeHtml(overview);
-    }
-    
-    // Poster HTML
-    const navUrl = safeUrl(getPosterNavigationUrl(res, type));
-    let posterHtml = "";
-    if (posterUrl) {
-        posterHtml = `
-            <a href="${escapeHtml(navUrl)}" target="_blank" class="card-poster-link" title="Click to view external page">
-                <div class="card-poster">
-                    <img src="${escapeHtml(safeUrl(posterUrl))}" alt="${escapeHtml(title)} poster" class="poster-img" data-fallback-title="${escapeHtml(title)}" data-fallback-icon="${type === 'tv' ? 'tv' : 'movie'}" onerror="xarrtoolsPosterFallback(this)">
-                </div>
-            </a>
-        `;
-    } else {
-        posterHtml = `
-            <a href="${escapeHtml(navUrl)}" target="_blank" class="card-poster-link" title="Click to view external page">
-                <div class="card-poster">
-                    <div class="poster-fallback">
-                        <span>${type === 'tv' ? '📺' : '🎬'}</span>
-                        <p style="font-size: 11px; padding: 0 8px; font-weight: 500; color: var(--text-primary); text-transform: uppercase; letter-spacing: 0.5px;">${escapeHtml(title)}</p>
-                    </div>
-                </div>
-            </a>
-        `;
-    }
-    
-    // External source chips
-    let chipsHtml = "";
-    if (res.imdbId) {
-        chipsHtml += `<a href="https://www.imdb.com/title/${encodeURIComponent(String(res.imdbId))}/" target="_blank" class="chip chip-imdb">IMDb</a>`;
-    }
-    if (type === "movie" && res.tmdbId) {
-        chipsHtml += `<a href="https://www.themoviedb.org/movie/${encodeURIComponent(String(res.tmdbId))}" target="_blank" class="chip chip-tmdb">TMDB</a>`;
-    }
-    if (type === "tv" && res.tvdbId) {
-        chipsHtml += `<a href="https://thetvdb.com/dereferrer/series/${encodeURIComponent(String(res.tvdbId))}" target="_blank" class="chip chip-tvdb">TVDB</a>`;
-    }
-    const searchString = encodeURIComponent(`${title} ${year} ${type === 'tv' ? 'tv show' : 'movie'}`);
-    chipsHtml += `<a href="https://www.google.com/search?q=${searchString}" target="_blank" class="chip chip-google">Google Search 🔍</a>`;
-    
-    // Action button
-    const buttonText = inLibrary ? "In Library" : (type === "tv" ? "Add to Sonarr" : "Add to Radarr");
-    const buttonClass = inLibrary ? "btn btn-secondary btn-added" : "btn btn-primary";
-    
-    card.innerHTML = `
-        ${posterHtml}
-        <div class="card-info-content">
-            <div class="card-title-row">
-                <h3>${escapeHtml(title)}</h3>
-                <div class="card-year-refresh">
-                    <span class="year">${escapeHtml(year)}</span>
-                </div>
-            </div>
-            <div class="card-badges">
-                <span class="badge badge-network">${escapeHtml(network)}</span>
-                ${certification}
-                ${runtime ? `<span class="badge badge-network">${escapeHtml(runtime)}</span>` : ''}
-                ${inLibrary ? '<span class="badge badge-in-library">In Library</span>' : ''}
-            </div>
-            ${buildRatingBadgesHtml(ratingItem)}
-            <div class="genres-list">${genres}</div>
-            <div class="card-plot">${plotHtml}</div>
-            
-            <div class="details-toggle-row" style="margin-top: auto; border-top: 1px dashed var(--border-color); padding-top: 8px; display: flex; justify-content: space-between; align-items: center;">
-                <span style="font-size: 11px; color: var(--text-secondary); font-weight: 500;">External Sources</span>
-                <button type="button" class="btn-details-toggle" style="background: transparent; border: none; color: var(--accent-blue); font-size: 12px; cursor: pointer; display: flex; align-items: center; gap: 4px; padding: 0; outline: none; font-weight: 600; transition: var(--transition-smooth);">Show ▾</button>
-            </div>
-            <div class="card-details-panel hidden" style="margin-top: 8px; display: flex; flex-wrap: wrap; gap: 6px;">
-                ${chipsHtml}
-            </div>
-    
-            <div class="card-actions" style="margin-top: 0;">
-                <button class="${buttonClass} btn-search-add" ${inLibrary ? 'disabled' : ''}>
-                    ${buttonText}
-                </button>
-            </div>
-        </div>
-    `;
+    card.innerHTML = moduleBuildSearchCardHtml(res, type);
     
     // Plot expansion handler
     const plotDiv = card.querySelector(".card-plot");
@@ -2106,6 +1638,7 @@ function createSearchCard(res, type) {
     }
     
     // Add button handler
+    const inLibrary = (res.id != null && res.id !== 0);
     const addBtn = card.querySelector(".btn-search-add");
     if (addBtn && !inLibrary) {
         addBtn.addEventListener("click", () => {
@@ -2176,49 +1709,7 @@ function getPosterNavigationUrl(item, type) {
 }
 
 function getDemoSearchResults(query, type) {
-    if (type === "movie") {
-        return [
-            {
-                title: query,
-                year: 2026,
-                tmdbId: 88801,
-                imdbId: "tt1234567",
-                overview: `[Demo Sandbox] Simulated movie result matching your query "${query}".`,
-                studio: "Demo Studios",
-                genres: ["Action", "Sci-Fi"]
-            },
-            {
-                title: `${query}: Part II`,
-                year: 2027,
-                tmdbId: 88802,
-                imdbId: "tt2345678",
-                overview: `[Demo Sandbox] Futuristic sequel to "${query}".`,
-                studio: "Demo Studios",
-                genres: ["Action", "Sci-Fi", "Adventure"]
-            }
-        ];
-    } else {
-        return [
-            {
-                title: query,
-                year: 2026,
-                tvdbId: 99901,
-                imdbId: "tt3456789",
-                overview: `[Demo Sandbox] Simulated TV series matching your query "${query}".`,
-                network: "Demo Network",
-                genres: ["Drama", "Mystery"]
-            },
-            {
-                title: `${query} (Spinoff)`,
-                year: 2028,
-                tvdbId: 99902,
-                imdbId: "tt4567890",
-                overview: `[Demo Sandbox] Popular television spinoff based on "${query}".`,
-                network: "Demo Streaming",
-                genres: ["Comedy"]
-            }
-        ];
-    }
+    return moduleGetDemoSearchResults(query, type);
 }
 
 function openDemoAddModal(type, item, index, searchCard = null, rawMetadata = null) {
