@@ -5,6 +5,25 @@ from threading import Timer
 from cli import run_cli
 from web import start_server
 
+def port_in_use(port: int, host: str = "127.0.0.1") -> bool:
+    """True if something is already listening on host:port (e.g. a stale xarrtools instance)."""
+    import socket
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        return sock.connect_ex((host, port)) == 0
+
+
+def run_server_mode(debug: bool = False, port: int = 5000):
+    """Starts the web server and opens a browser, unless the port is already taken."""
+    if port_in_use(port):
+        print(f"[Error] Port {port} is already in use - another xarrtools instance may still be running.\n"
+              f"        Find it with:  ss -ltnp | grep :{port}   (or: lsof -i :{port})\n"
+              f"        then stop it, or open http://localhost:{port} if that is the instance you want.",
+              file=sys.stderr)
+        sys.exit(1)
+    Timer(1.5, open_browser).start()
+    start_server(port=port, debug=debug)
+
+
 def open_browser():
     """Timer callback to automatically open the default web browser."""
     print("Opening browser to http://localhost:5000...")
@@ -25,8 +44,7 @@ if __name__ == "__main__":
     if args.cli:
         run_cli()
     elif args.server:
-        Timer(1.5, open_browser).start()
-        start_server(port=5000, debug=args.debug)
+        run_server_mode(debug=args.debug)
     else:
         # Standalone desktop app mode with server-fallback if graphical components are missing
         try:
@@ -38,6 +56,5 @@ if __name__ == "__main__":
                 print("Falling back to standard browser-based server mode...", file=sys.stderr)
             else:
                 print("Launching in standard browser-based server mode...")
-            Timer(1.5, open_browser).start()
-            start_server(port=5000, debug=args.debug)
+            run_server_mode(debug=args.debug)
 
