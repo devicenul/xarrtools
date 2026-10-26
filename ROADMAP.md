@@ -32,16 +32,7 @@ This document tracks planned future functionality, architectural changes, and us
   - Generate release artifacts (`.dmg`, `Setup.exe`, standalone binaries) and attach them to GitHub Releases.
 - **Code files involved**: `.github/workflows/build.yml`.
 
-### 4. Standardized Code Documentation & Type Annotations
-- **Status**: Partially done: about half of the functions carry return annotations (`web/server.py` is the main gap, 1 of 31), and `AGENTS.md` / `docs/` now describe the architecture.
-- **Goal**: Standardize and enrich inline code documentation, block comments, and docstrings across all modules to improve code legibility and maintainability.
-- **Implementation Strategy**:
-  - Perform a thorough audit of the code modules, ensuring all classes, utility functions, routes, and regex matching/parsing blocks have descriptive PEP 257 compliant docstrings.
-  - Add comprehensive Python type hinting (`typing` annotations) across all core and CLI modules.
-  - Add context comments explaining non-trivial business logic, database queries, and test isolation design details.
-- **Code files involved**: all Python files under `core/`, `web/`, and `cli/`.
-
-### 5. Free Packaging and Distribution Pipeline
+### 4. Free Packaging and Distribution Pipeline
 - **Goal**: Create cross-platform installation packages and setup distribution channels completely free of charge, avoiding developer registration fees.
 - **Implementation Strategy**:
   - **macOS (Homebrew Tap & DMG)**: Distribute the compiled `.app` bundle inside an unsigned drag-and-drop `.dmg` using `create-dmg` or `dmgbuild`. Create a custom Homebrew Tap repository (`homebrew-xarrtools`) with a Ruby formula to distribute the pre-compiled binary seamlessly via `brew install xarrtools`. Provide clear instructions for Gatekeeper bypass (`xattr -d com.apple.quarantine`).
@@ -53,6 +44,12 @@ This document tracks planned future functionality, architectural changes, and us
 ---
 
 ## Completed Features
+
+### ✓ Standardized Code Documentation & Type Annotations
+- Comprehensive PEP 257 compliant docstrings across all modules, classes, utility functions, routes, and parsing blocks in `core/`, `web/`, `cli/`, `gui/`, `main.py`, and `build.py`.
+- Complete Python type annotations (`typing` signatures) covering parameters and returns across all application layers.
+- Contextual block and inline comments clarifying non-trivial business logic, regex pattern matching, deduplication heuristics, threading/locking boundaries, and database query optimizations.
+- Zero-error `mypy` static type checking configured in `pyproject.toml` (`[tool.mypy]`) and tracked in `requirements-dev.txt`.
 
 ### ✓ Structured Logging Architecture
 - Centralized `core/logging_setup.py` with idempotent `setup_logging(level=None)` attaching console and `RotatingFileHandler` to the `xarrtools` hierarchy root.

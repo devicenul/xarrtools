@@ -8,6 +8,7 @@ import hashlib
 import json
 from pathlib import Path
 import logging
+from typing import Dict, List, Optional, Tuple
 import requests
 
 logger = logging.getLogger("xarrtools.posters")
@@ -15,7 +16,7 @@ logger = logging.getLogger("xarrtools.posters")
 import core.db
 from core.config import config
 
-MAX_POSTER_SIZE = 10 * 1024 * 1024  # 10 MB limit
+MAX_POSTER_SIZE: int = 10 * 1024 * 1024  # 10 MB limit
 
 
 def get_posters_dir() -> Path:
@@ -28,7 +29,7 @@ def get_extension_for_mimetype(content_type: str) -> str:
     if not content_type:
         return ".bin"
     ct = content_type.lower().split(";")[0].strip()
-    mapping = {
+    mapping: Dict[str, str] = {
         "image/jpeg": ".jpg",
         "image/jpg": ".jpg",
         "image/png": ".png",
@@ -42,7 +43,7 @@ def get_extension_for_mimetype(content_type: str) -> str:
 def get_mimetype_for_filename(filename: str) -> str:
     """Deduces MIME content type from filename extension."""
     ext = os.path.splitext(filename)[1].lower()
-    mapping = {
+    mapping: Dict[str, str] = {
         ".jpg": "image/jpeg",
         ".jpeg": "image/jpeg",
         ".png": "image/png",
@@ -53,7 +54,7 @@ def get_mimetype_for_filename(filename: str) -> str:
     return mapping.get(ext, "image/jpeg")
 
 
-def validate_poster_url(url: str, allowed_server_urls: list[str] = None) -> tuple[bool, str, int]:
+def validate_poster_url(url: str, allowed_server_urls: Optional[List[str]] = None) -> Tuple[bool, str, int]:
     """Validates poster URL for scheme and SSRF protection.
     
     Returns:
@@ -92,7 +93,7 @@ def validate_poster_url(url: str, allowed_server_urls: list[str] = None) -> tupl
     return True, "", 200
 
 
-def get_cached_poster(url: str) -> tuple[bytes, str] | None:
+def get_cached_poster(url: str) -> Optional[Tuple[bytes, str]]:
     """Retrieves cached poster bytes and content-type if present on disk."""
     if not url:
         return None
@@ -149,7 +150,7 @@ def store_poster(url: str, data: bytes, content_type: str = "image/jpeg") -> boo
         return False
 
 
-def download_poster(url: str) -> tuple[bytes, str] | None:
+def download_poster(url: str) -> Optional[Tuple[bytes, str]]:
     """Downloads poster using SSRF protection and write-through caching.
     
     Timeout is 5s. Returns (bytes, content_type) or None on failure.

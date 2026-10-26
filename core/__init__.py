@@ -1,1 +1,1 @@
-# xarrtools core package
+"""Core business logic, clients, database, and enrichment for xarrtools."""

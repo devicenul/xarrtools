@@ -1,9 +1,11 @@
+"""Flask web application and REST API server for xarrtools."""
 import os
 import sys
 import json
 import threading
 import logging
 from pathlib import Path
+from typing import Any, Dict, List, Optional, Set, Tuple, Union, TypedDict
 from flask import Flask, jsonify, request, render_template, send_from_directory, Response
 from datetime import datetime, timedelta, timezone
 
@@ -52,8 +54,10 @@ app = Flask(
     static_url_path="/static"
 )
 
+RouteResponse = Union[Response, str, Tuple[Any, int], Tuple[str, int, Dict[str, str]]]
+
 @app.route("/static/dist/<path:filename>")
-def serve_dist(filename):
+def serve_dist(filename: str) -> RouteResponse:
     """Serves compiled frontend TypeScript/ES modules."""
     if not is_dist_built():
         print(f"[xarrtools] WARNING: Frontend dist directory not found at {dist_dir}. Run 'npm run build'.", file=sys.stderr)
@@ -61,17 +65,30 @@ def serve_dist(filename):
     return send_from_directory(dist_dir, filename)
 
 # Thread-safe global scan progress
-scan_progress = {
+scan_progress: Dict[str, Any] = {
     "status": "idle",
     "message": "",
     "current": 0,
     "total": 0
 }
+# scan_progress_lock guards concurrent mutations to scan_progress and prevents overlapping manual scans.
 scan_progress_lock = threading.Lock()
+# scheduler_job_lock prevents concurrent scheduled scans from firing while another scheduled scan is running.
 scheduler_job_lock = threading.Lock()
 _scheduler_startup_time = datetime.now(timezone.utc)
 
-library_cache = {
+class LibraryCache(TypedDict):
+    """In-memory cache for Radarr and Sonarr libraries to speed up match detection."""
+    radarr_tmdb_ids: Set[int]
+    radarr_imdb_ids: Set[str]
+    radarr_titles: Dict[str, List[int]]
+    sonarr_tvdb_ids: Set[int]
+    sonarr_imdb_ids: Set[str]
+    sonarr_titles: Dict[str, List[int]]
+    last_updated: Optional[datetime]
+
+# library_cache_lock protects reading and swapping the in-memory Radarr/Sonarr library ID cache.
+library_cache: LibraryCache = {
     "radarr_tmdb_ids": set(),
     "radarr_imdb_ids": set(),
     "radarr_titles": {},
@@ -82,7 +99,8 @@ library_cache = {
 }
 library_cache_lock = threading.Lock()
 
-def update_scan_progress(status, message, current=0, total=0):
+def update_scan_progress(status: str, message: str, current: int = 0, total: int = 0) -> None:
+    """Updates global scan progress state safely under scan_progress_lock."""
     with scan_progress_lock:
         scan_progress["status"] = status
         scan_progress["message"] = message
@@ -91,7 +109,8 @@ def update_scan_progress(status, message, current=0, total=0):
 
 
 # Initialize Radarr / Sonarr Clients
-def get_clients():
+def get_clients() -> Tuple[Optional[RadarrClient], Optional[SonarrClient]]:
+    """Initializes and returns Radarr and Sonarr API clients if configured."""
     radarr_client = None
     if config.validate_radarr():
         radarr_client = RadarrClient(config.radarr_url, config.radarr_api_key)
@@ -102,7 +121,7 @@ def get_clients():
         
     return radarr_client, sonarr_client
 
-def is_incomplete_metadata(item: dict) -> bool:
+def is_incomplete_metadata(item: Dict[str, Any]) -> bool:
     """Checks if an item has invalid or missing values for title, cast, and plot (description) all combined."""
     title = item.get("title")
     is_title_missing = not title or str(title).strip() in ("", "Unknown", "None")
@@ -116,7 +135,8 @@ def is_incomplete_metadata(item: dict) -> bool:
     return is_title_missing and is_cast_missing and is_plot_missing
 
 @app.before_request
-def enforce_api_key():
+def enforce_api_key() -> Optional[RouteResponse]:
+    """Validates X-API-Key header for state-mutating API requests."""
     if request.method in ["POST", "PUT", "DELETE"] and request.path.startswith("/api/"):
         api_key = request.headers.get("X-API-Key")
         server_api_key = config._get_setting("api_key")
@@ -128,9 +148,10 @@ def enforce_api_key():
             
         if not api_key or api_key != server_api_key:
             return jsonify({"status": "error", "message": "Unauthorized"}), 401
+    return None
 
 @app.route("/")
-def index():
+def index() -> str:
     """Serves the primary UI page."""
     server_api_key = config._get_setting("api_key")
     if not server_api_key:
@@ -143,15 +164,16 @@ def index():
         print("[xarrtools] WARNING: Frontend dist directory is missing or unbuilt. Run 'npm install && npm run build'.", file=sys.stderr)
     return render_template("index.html", api_key=server_api_key, dist_built=dist_built)
 
-def sync_library_cache():
+def sync_library_cache() -> None:
+    """Fetches Radarr and Sonarr libraries to refresh in-memory ID and title cache."""
     try:
         radarr_client, sonarr_client = get_clients()
-        radarr_tmdb_ids = set()
-        radarr_imdb_ids = set()
-        radarr_titles = {}
-        sonarr_tvdb_ids = set()
-        sonarr_imdb_ids = set()
-        sonarr_titles = {}
+        radarr_tmdb_ids: Set[int] = set()
+        radarr_imdb_ids: Set[str] = set()
+        radarr_titles: Dict[str, List[int]] = {}
+        sonarr_tvdb_ids: Set[int] = set()
+        sonarr_imdb_ids: Set[str] = set()
+        sonarr_titles: Dict[str, List[int]] = {}
         
         if radarr_client:
             try:
@@ -202,18 +224,19 @@ def sync_library_cache():
     except Exception as e:
         logger.error(f"Library cache thread error: {e}")
 
-def update_library_cache_loop():
+def update_library_cache_loop() -> None:
+    """Daemon loop that periodically refreshes the in-memory library cache every 5 minutes."""
     while True:
         sync_library_cache()
         import time
         time.sleep(300)
 
-import threading
+# Background library cache refresh daemon. Disabled during tests for isolation.
 if "PYTEST_CURRENT_TEST" not in os.environ:
     threading.Thread(target=update_library_cache_loop, daemon=True).start()
 
 @app.route("/api/config", methods=["GET"])
-def get_server_config():
+def get_server_config() -> RouteResponse:
     """Returns Root Paths and Quality Profiles from Sonarr and Radarr."""
     radarr_client, sonarr_client = get_clients()
     
@@ -243,7 +266,7 @@ def get_server_config():
     return jsonify(response_data)
 
 @app.route("/api/settings", methods=["GET", "POST"])
-def manage_settings():
+def manage_settings() -> RouteResponse:
     """Reads or updates configuration settings."""
     if request.method == "POST":
         data = request.json or {}
@@ -311,7 +334,7 @@ def manage_settings():
         return jsonify(get_all_settings())
 
 @app.route("/api/backup/export", methods=["GET"])
-def backup_export():
+def backup_export() -> RouteResponse:
     """Exports settings and optionally cached media data as a JSON file or full ZIP archive attachment."""
     include_media = request.args.get("include_media", "true").lower() == "true"
     fmt = request.args.get("format", "json").lower()
@@ -341,7 +364,7 @@ def backup_export():
         return jsonify({"status": "error", "message": str(e)}), 500
 
 @app.route("/api/logs/download", methods=["GET"])
-def download_logs():
+def download_logs() -> Response:
     """Downloads application log files (xarrtools.log, xarrtools.log.1) packaged in a ZIP archive.
     
     Returns a ZIP containing existing log files, or a README note if no logs are present.
@@ -373,7 +396,7 @@ def download_logs():
     )
 
 @app.route("/api/backup/import", methods=["POST"])
-def backup_import():
+def backup_import() -> RouteResponse:
     """Imports settings and cached media data from an uploaded JSON or ZIP file."""
     if "file" not in request.files:
         return jsonify({"status": "error", "message": "No file uploaded."}), 400
@@ -430,7 +453,7 @@ def backup_import():
 import re
 from flask import Response
 @app.route("/api/poster", methods=["GET"])
-def proxy_poster():
+def proxy_poster() -> RouteResponse:
     """Proxies poster images safely to prevent mixed content and SSRF/path traversal, with disk cache."""
     from core.posters import validate_poster_url, get_cached_poster, store_poster, MAX_POSTER_SIZE
     url = request.args.get("url")
@@ -477,7 +500,7 @@ def proxy_poster():
         return "Error fetching image", 500
 
 @app.route("/api/archive", methods=["POST"])
-def archive_media():
+def archive_media() -> RouteResponse:
     """Updates the archived status of an item."""
     data = request.json or {}
     type_ = data.get("type")
@@ -496,7 +519,7 @@ def archive_media():
         return jsonify({"status": "error", "message": str(e)}), 500
 
 @app.route("/api/archive/batch", methods=["POST"])
-def archive_media_batch():
+def archive_media_batch() -> RouteResponse:
     """Archives (or unarchives) many items at once: {"archive": bool, "items": [{type, title, year, raw_item}]}."""
     data = request.json or {}
     items = data.get("items")
@@ -518,7 +541,7 @@ def archive_media_batch():
     return jsonify({"status": status, "archived": done, "failed": failed}), (200 if done or not failed else 500)
 
 @app.route("/api/cache/stats", methods=["GET"])
-def cache_stats():
+def cache_stats() -> RouteResponse:
     """Returns row counts and database size diagnostics."""
     try:
         return jsonify(get_cache_stats())
@@ -526,7 +549,7 @@ def cache_stats():
         return jsonify({"status": "error", "message": str(e)}), 500
 
 @app.route("/api/cache/prune", methods=["POST"])
-def cache_prune():
+def cache_prune() -> RouteResponse:
     """Manually triggers pruning of cache entries older than 12 months."""
     try:
         clean_expired_cache()
@@ -535,7 +558,7 @@ def cache_prune():
         return jsonify({"status": "error", "message": str(e)}), 500
 
 @app.route("/api/cache/clear", methods=["POST"])
-def cache_clear():
+def cache_clear() -> RouteResponse:
     """Manually wipes all discoveries from the cache table."""
     try:
         clear_all_cache()
@@ -544,15 +567,17 @@ def cache_clear():
         return jsonify({"status": "error", "message": str(e)}), 500
 
 @app.route("/api/scan/progress", methods=["GET"])
-def get_scan_progress():
+def get_scan_progress() -> RouteResponse:
+    """Returns the current scan status and progress counter."""
     with scan_progress_lock:
         return jsonify(scan_progress)
 
-def run_scan(past_months: int = 1, future_months: int = 2) -> dict:
+def run_scan(past_months: int = 1, future_months: int = 2) -> Dict[str, Any]:
     """Scrapes external release feeds, enriches items, updates the SQLite cache,
     and returns a dict with 'tv' and 'movies' lists of enriched items.
     Works outside of Flask request context.
     """
+    # scan_progress_lock ensures only one scan or scheduled run executes at any time.
     with scan_progress_lock:
         if scan_progress["status"] != "idle":
             raise RuntimeError("A scan is already in progress.")
@@ -563,6 +588,7 @@ def run_scan(past_months: int = 1, future_months: int = 2) -> dict:
     ignore_year = (get_setting("default_match_ignore_year", "1") == "1")
     radarr_client, sonarr_client = get_clients()
 
+    # Force synchronous library cache sync in pytest to avoid stale cache or missing client mocks.
     if "PYTEST_CURRENT_TEST" in os.environ or library_cache.get("last_updated") is None:
         sync_library_cache()
 
@@ -687,12 +713,13 @@ def run_scan(past_months: int = 1, future_months: int = 2) -> dict:
 
                     data["is_in_library"] = in_library
                     data["date_str"] = item.get("date_str", "")
-                    data["date_obj"] = item.get("date_obj").strftime("%Y-%m-%d") if isinstance(item.get("date_obj"), datetime) else (str(item.get("date_obj")) if item.get("date_obj") else "")
+                    raw_dt = item.get("date_obj")
+                    data["date_obj"] = raw_dt.strftime("%Y-%m-%d") if isinstance(raw_dt, datetime) else (str(raw_dt) if raw_dt else "")
                     data["href"] = item.get("href", "")
 
                     # Cache newly fetched details
                     add_cached_item("tv", data)
-                    cached_after = get_cached_item("tv", data["title"], data.get("year", item["date_obj"].year), data.get("imdbId"))
+                    cached_after = get_cached_item("tv", data["title"], data.get("year", item["date_obj"].year), data.get("imdbId"))  # type: ignore[arg-type]  # core.db.get_cached_item accepts Optional[str] at runtime
                     if cached_after:
                         data["is_archived"] = bool(cached_after["is_archived"])
                         data["has_new_metadata"] = bool(cached_after.get("has_new_metadata", 0))
@@ -701,13 +728,15 @@ def run_scan(past_months: int = 1, future_months: int = 2) -> dict:
                         data["has_new_metadata"] = bool(data.get("has_new_metadata", False))
 
                 data["date_str"] = item["date_str"]
-                data["date_obj"] = data.get("date_obj") or (item.get("date_obj").strftime("%Y-%m-%d") if isinstance(item.get("date_obj"), datetime) else (str(item.get("date_obj")) if item.get("date_obj") else ""))
+                raw_dt = item.get("date_obj")
+                data["date_obj"] = data.get("date_obj") or (raw_dt.strftime("%Y-%m-%d") if isinstance(raw_dt, datetime) else (str(raw_dt) if raw_dt else ""))
                 data["is_returning"] = item.get("is_returning", False)
                 enriched_tv.append(data)
             except Exception as e:
                 logger.error(f"Error enriching TV show '{item['title']}': {e}")
-                if item.get("date_obj"):
-                    item["date_obj"] = item["date_obj"].strftime("%Y-%m-%d") if isinstance(item["date_obj"], datetime) else str(item["date_obj"])
+                raw_dt = item.get("date_obj")
+                if raw_dt:
+                    item["date_obj"] = raw_dt.strftime("%Y-%m-%d") if isinstance(raw_dt, datetime) else str(raw_dt)
                 item["plot"] = item["description"]
                 item["cast"] = "Cast details not available."
                 item["genres"] = []
@@ -725,7 +754,7 @@ def run_scan(past_months: int = 1, future_months: int = 2) -> dict:
             try:
                 current_idx = len(tv_raw) + idx + 1
                 update_scan_progress("enriching", f"Getting metadata for {item['title']}", current_idx, total_items)
-                cached = get_cached_item("movie", item["title"], item["date_obj"].year, item.get("imdbId"))
+                cached = get_cached_item("movie", item["title"], item["date_obj"].year, item.get("imdbId"))  # type: ignore[arg-type]  # core.db.get_cached_item accepts Optional[str] at runtime
 
                 # Check if cache is incomplete
                 is_incomplete = True
@@ -829,12 +858,13 @@ def run_scan(past_months: int = 1, future_months: int = 2) -> dict:
 
                     data["is_in_library"] = in_library
                     data["date_str"] = item.get("date_str", "")
-                    data["date_obj"] = item.get("date_obj").strftime("%Y-%m-%d") if isinstance(item.get("date_obj"), datetime) else (str(item.get("date_obj")) if item.get("date_obj") else "")
+                    raw_dt = item.get("date_obj")
+                    data["date_obj"] = raw_dt.strftime("%Y-%m-%d") if isinstance(raw_dt, datetime) else (str(raw_dt) if raw_dt else "")
                     data["href"] = item.get("href", "")
 
                     # Cache newly fetched details
                     add_cached_item("movie", data)
-                    cached_after = get_cached_item("movie", data["title"], data.get("year", item["date_obj"].year), data.get("imdbId"))
+                    cached_after = get_cached_item("movie", data["title"], data.get("year", item["date_obj"].year), data.get("imdbId"))  # type: ignore[arg-type]  # core.db.get_cached_item accepts Optional[str] at runtime
                     if cached_after:
                         data["is_archived"] = bool(cached_after["is_archived"])
                         data["has_new_metadata"] = bool(cached_after.get("has_new_metadata", 0))
@@ -843,14 +873,16 @@ def run_scan(past_months: int = 1, future_months: int = 2) -> dict:
                         data["has_new_metadata"] = bool(data.get("has_new_metadata", False))
 
                 data["date_str"] = item["date_str"]
-                data["date_obj"] = data.get("date_obj") or (item.get("date_obj").strftime("%Y-%m-%d") if isinstance(item.get("date_obj"), datetime) else (str(item.get("date_obj")) if item.get("date_obj") else ""))
+                raw_dt = item.get("date_obj")
+                data["date_obj"] = data.get("date_obj") or (raw_dt.strftime("%Y-%m-%d") if isinstance(raw_dt, datetime) else (str(raw_dt) if raw_dt else ""))
                 if "imdbId" not in data or not data["imdbId"]:
                     data["imdbId"] = item.get("imdbId")
                 enriched_movies.append(data)
             except Exception as e:
                 logger.error(f"Error enriching movie '{item['title']}': {e}")
-                if item.get("date_obj"):
-                    item["date_obj"] = item["date_obj"].strftime("%Y-%m-%d") if isinstance(item["date_obj"], datetime) else str(item["date_obj"])
+                raw_dt = item.get("date_obj")
+                if raw_dt:
+                    item["date_obj"] = raw_dt.strftime("%Y-%m-%d") if isinstance(raw_dt, datetime) else str(raw_dt)
                 item["plot"] = item["description"]
                 item["cast"] = "Cast details not available."
                 item["genres"] = []
@@ -871,7 +903,7 @@ def run_scan(past_months: int = 1, future_months: int = 2) -> dict:
         update_scan_progress("idle", "Idle", 0, 0)
 
 @app.route("/api/discover", methods=["GET"])
-def discover_releases():
+def discover_releases() -> RouteResponse:
     """Scrapes, caches, enriches, and resolves releases for TV and Movies."""
     past_months = request.args.get("past_months", default=1, type=int)
     future_months = request.args.get("future_months", default=2, type=int)
@@ -1036,7 +1068,7 @@ def discover_releases():
     except Exception as e:
         return jsonify({"status": "error", "message": f"Failed to scrape releases: {e}"}), 500
 
-def run_scheduler_job() -> dict:
+def run_scheduler_job() -> Dict[str, Any]:
     """Executes a scheduled refresh scan, updates last_run and last_result in settings,
     and catches all exceptions so it never crashes the background worker.
     """
@@ -1105,7 +1137,7 @@ def run_scheduler_job() -> dict:
     finally:
         scheduler_job_lock.release()
 
-def scheduler_loop():
+def scheduler_loop() -> None:
     """Background daemon thread loop for scheduled refreshes."""
     import time
     while True:
@@ -1135,11 +1167,12 @@ def scheduler_loop():
         except Exception as e:
             logger.error(f"Scheduler loop error: {e}", exc_info=True)
 
+# Background daemon thread for scheduled refreshes. Disabled in tests for determinism.
 if "PYTEST_CURRENT_TEST" not in os.environ:
     threading.Thread(target=scheduler_loop, daemon=True).start()
 
 @app.route("/api/scheduler/status", methods=["GET"])
-def get_scheduler_status():
+def get_scheduler_status() -> RouteResponse:
     """Returns the current state and execution history of the background scheduler."""
     enabled = config.scheduler_enabled
     interval_hours = config.scheduler_interval_hours
@@ -1176,7 +1209,7 @@ def get_scheduler_status():
     })
 
 @app.route("/api/scheduler/run-now", methods=["POST"])
-def scheduler_run_now():
+def scheduler_run_now() -> RouteResponse:
     """Triggers an immediate background scheduled refresh scan."""
     with scan_progress_lock:
         if scan_progress["status"] != "idle":
@@ -1188,7 +1221,7 @@ def scheduler_run_now():
     return jsonify({"status": "started", "message": "Scheduled refresh triggered."})
 
 @app.route("/api/cache/refresh", methods=["POST"])
-def cache_refresh_item():
+def cache_refresh_item() -> RouteResponse:
     """Forces metadata enrichment from live APIs for a single movie or show and updates cache."""
     data = request.json or {}
     type_ = data.get("type")
@@ -1231,9 +1264,9 @@ def cache_refresh_item():
                     
                     # Automatch title fallback
                     has_title_match = False
-                    title_norm = normalize_title(title_val, is_tv=True)
+                    title_norm = normalize_title(title_val or "", is_tv=True)
                     ignore_year = (get_setting("default_match_ignore_year", "1") == "1")
-                    sonarr_titles_local = {}
+                    sonarr_titles_local: Dict[str, List[int]] = {}
                     for show in series:
                         t_norm = normalize_title(show.get("title", ""), is_tv=True)
                         if t_norm:
@@ -1289,9 +1322,9 @@ def cache_refresh_item():
                     
                     # Automatch title fallback
                     has_title_match = False
-                    title_norm = normalize_title(title_val, is_tv=False)
+                    title_norm = normalize_title(title_val or "", is_tv=False)
                     ignore_year = (get_setting("default_match_ignore_year", "1") == "1")
-                    radarr_titles_local = {}
+                    radarr_titles_local: Dict[str, List[int]] = {}
                     for movie in movies:
                         t_norm = normalize_title(movie.get("title", ""), is_tv=False)
                         if t_norm:
@@ -1330,7 +1363,7 @@ def cache_refresh_item():
         return jsonify({"status": "error", "message": str(e)}), 500
 
 @app.route("/api/lookup", methods=["GET"])
-def lookup_media():
+def lookup_media() -> RouteResponse:
     """Performs a live lookup on Sonarr/Radarr indexers for a title."""
     type_ = request.args.get("type")
     title = request.args.get("title")
@@ -1344,7 +1377,12 @@ def lookup_media():
     search_title = re.sub(r'\((\d{4})$', r'(\1)', title.strip())
     base_title = re.sub(r'\s*[\(\[]\d{4}[\)\]]?$', '', search_title).strip()
     
-    def _merge_unique_results(primary_list, secondary_list, id_key):
+    def _merge_unique_results(
+        primary_list: List[Dict[str, Any]],
+        secondary_list: List[Dict[str, Any]],
+        id_key: str
+    ) -> List[Dict[str, Any]]:
+        """Merges secondary search results into primary list deduplicating by ID or title/year."""
         merged = list(primary_list)
         seen = set()
         for item in merged:
@@ -1388,7 +1426,7 @@ def lookup_media():
         return jsonify({"status": "error", "message": str(e)}), 500
 
 @app.route("/api/add", methods=["POST"])
-def add_media():
+def add_media() -> RouteResponse:
     """Adds a movie or TV show to Radarr/Sonarr library."""
     req_data = request.json or {}
     type_ = req_data.get("type")
@@ -1440,6 +1478,7 @@ def add_media():
         
     try:
         if type_ == "tv":
+            assert sonarr_client is not None
             res = sonarr_client.add_series(
                 series_data=raw_meta,
                 quality_profile_id=int(profile_id),
@@ -1466,6 +1505,7 @@ def add_media():
 
             return jsonify({"status": "success", "message": f"Successfully added TV Show '{res.get('title')}'!"})
         else:
+            assert radarr_client is not None
             res = radarr_client.add_movie(
                 movie_data=raw_meta,
                 quality_profile_id=int(profile_id),
@@ -1496,7 +1536,7 @@ def add_media():
         return jsonify({"status": "error", "message": str(e)}), 500
 
 @app.route("/api/link_library", methods=["POST"])
-def link_library():
+def link_library() -> RouteResponse:
     """Manually link a discovery item to an existing Sonarr/Radarr library match and mark it in-library."""
     req_data = request.json or {}
     type_ = req_data.get("type")
@@ -1558,7 +1598,7 @@ def link_library():
 import threading
 import time
 
-def background_poster_healer():
+def background_poster_healer() -> None:
     """Background thread that populates missing poster URLs in the cache database."""
     # Give the server some time to start up and allow connections to initialize
     time.sleep(5)
@@ -1610,12 +1650,12 @@ def background_poster_healer():
             logger.warning(f"Background poster healer error: {e}", exc_info=True)
             time.sleep(5)
 
-# Start background healer thread
+# Start background healer thread. Disabled in test suites to prevent background DB contention.
 if "PYTEST_CURRENT_TEST" not in os.environ:
     threading.Thread(target=background_poster_healer, daemon=True).start()
 
 @app.route("/api/feeds", methods=["GET"])
-def get_custom_feeds():
+def get_custom_feeds() -> RouteResponse:
     """Retrieve all configured custom feeds."""
     conn = get_db_connection()
     cursor = conn.cursor()
@@ -1625,7 +1665,7 @@ def get_custom_feeds():
     return jsonify({"status": "success", "feeds": rows})
 
 @app.route("/api/feeds", methods=["POST"])
-def save_custom_feed():
+def save_custom_feed() -> RouteResponse:
     """Create or update a custom feed with strict schema and regex safety validation."""
     data = request.json or {}
     id_ = data.get("id")
@@ -1707,7 +1747,7 @@ def save_custom_feed():
     return jsonify({"status": "success", "message": "Feed saved successfully", "feed_id": feed_id})
 
 @app.route("/api/feeds/test", methods=["POST"])
-def test_custom_feed():
+def test_custom_feed() -> RouteResponse:
     """Dry-run mapping configurations against target feeds returning parsed previews."""
     data = request.json or {}
     url = data.get("url")
@@ -1789,7 +1829,7 @@ def test_custom_feed():
         }), 500
 
 @app.route("/api/feeds/delete", methods=["POST"])
-def delete_custom_feed():
+def delete_custom_feed() -> RouteResponse:
     """Wipes a configured custom feed registry from the database."""
     data = request.json or {}
     id_ = data.get("id")
@@ -1811,7 +1851,7 @@ def delete_custom_feed():
     return jsonify({"status": "success", "message": "Feed deleted successfully"})
 
 @app.route("/api/feeds/restore", methods=["POST"])
-def restore_default_feeds_route():
+def restore_default_feeds_route() -> RouteResponse:
     """Wipes the custom feeds registry and restores standard default configurations."""
     from core.db import restore_default_feeds
     try:
@@ -1820,7 +1860,7 @@ def restore_default_feeds_route():
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
 
-def start_server(port=5000, debug=False):
+def start_server(port: int = 5000, debug: bool = False) -> None:
     """Starts the Flask web server."""
     from core.logging_setup import setup_logging
     setup_logging(level="DEBUG" if debug else None)

@@ -6,10 +6,10 @@ Conventions used across the app:
 """
 import re
 import unicodedata
-from typing import Optional
+from typing import Dict, Optional
 
 # ISO 639-1 -> English name (covers the languages TMDB/TVmaze report in practice)
-LANGUAGE_NAMES = {
+LANGUAGE_NAMES: Dict[str, str] = {
     "af": "Afrikaans", "ar": "Arabic", "bg": "Bulgarian", "bn": "Bengali", "ca": "Catalan",
     "cs": "Czech", "da": "Danish", "de": "German", "el": "Greek", "en": "English",
     "es": "Spanish", "et": "Estonian", "fa": "Persian", "fi": "Finnish", "fr": "French",
@@ -44,7 +44,7 @@ def country_code(value: Optional[str]) -> str:
     return v if len(v) == 2 and v.isalpha() else ""
 
 
-def slug(text: str) -> str:
+def slug(text: Optional[str] = "") -> str:
     """Unicode-aware comparison key: lowercase, accents/punctuation/spaces removed, '&' read as 'and'.
 
     Non-Latin titles (Greek, Cyrillic, CJK...) keep their letters so they never collapse to an empty key.

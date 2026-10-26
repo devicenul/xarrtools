@@ -1,6 +1,8 @@
+"""Interactive command-line interface (CLI) terminal manager for xarrtools."""
 import sys
 import logging
 import urllib.parse
+from typing import Any, Dict, List, Optional, Set, Tuple
 from rich.console import Console
 
 logger = logging.getLogger("xarrtools.cli")
@@ -28,7 +30,7 @@ except Exception:
     CROSS_MARK = "[red]X[/red]"
 
 
-def parse_indices(selection_str: str, max_val: int) -> list:
+def parse_indices(selection_str: str, max_val: int) -> List[int]:
     """Parses selection string like '1, 3' or '1-3' or 'all' into 0-indexed integers."""
     selection_str = selection_str.strip().lower()
     if not selection_str:
@@ -37,7 +39,7 @@ def parse_indices(selection_str: str, max_val: int) -> list:
     if selection_str == "all":
         return list(range(max_val))
         
-    indices = set()
+    indices: Set[int] = set()
     parts = [p.strip() for p in selection_str.split(",")]
     for part in parts:
         if "-" in part:
@@ -61,18 +63,20 @@ def parse_indices(selection_str: str, max_val: int) -> list:
                 pass
     return sorted(list(indices))
 
-def show_config_status():
+def show_config_status() -> None:
     """Renders a panel showing connection status to Sonarr/Radarr."""
     radarr_ok = config.validate_radarr()
     sonarr_ok = config.validate_sonarr()
 
     status_lines = []
     
+    # Check Radarr service availability and report missing environment variables
     if radarr_ok:
         status_lines.append(f"{CHECK_MARK} [bold]Radarr[/bold]: Configured ([cyan]" + config.radarr_url + "[/cyan])")
     else:
         status_lines.append(f"{CROSS_MARK} [bold]Radarr[/bold]: Not Configured (Missing: " + ", ".join(config.get_missing_radarr_vars()) + ")")
         
+    # Check Sonarr service availability and report missing environment variables
     if sonarr_ok:
         status_lines.append(f"{CHECK_MARK} [bold]Sonarr[/bold]: Configured ([cyan]" + config.sonarr_url + "[/cyan])")
     else:
@@ -81,10 +85,10 @@ def show_config_status():
     console.print(Panel("\n".join(status_lines), title="[bold white]Service Status[/bold white]", expand=False))
 
 def resolve_preset_index(
-    items: list,
+    items: List[Dict[str, Any]],
     key_field: str,
-    explicit_keys: list,
-    mru_keys: list
+    explicit_keys: List[str],
+    mru_keys: List[str]
 ) -> int:
     """
     Resolves the 1-based index for default selection from items using a 3-tier hybrid strategy:
@@ -96,7 +100,7 @@ def resolve_preset_index(
     if not items:
         return 1
 
-    def _get_val(keys: list) -> str:
+    def _get_val(keys: List[str]) -> str:
         for k in keys:
             try:
                 val = get_setting(k, "")
@@ -141,7 +145,12 @@ def resolve_preset_index(
     # 3. Safety Fallback: Index 1
     return 1
 
-def select_from_list(prompt_text: str, items: list, display_key: str = "name", default_index: int = 1) -> dict:
+def select_from_list(
+    prompt_text: str,
+    items: List[Dict[str, Any]],
+    display_key: str = "name",
+    default_index: int = 1
+) -> Dict[str, Any]:
     """Uses a rich Table to let the user select a configuration parameter from a list."""
     if not items:
         return {}
@@ -162,7 +171,8 @@ def select_from_list(prompt_text: str, items: list, display_key: str = "name", d
             return items[choice - 1]
         console.print("[red]Invalid selection. Please choose a valid index.[/red]")
 
-def handle_radarr_workflow():
+def handle_radarr_workflow() -> None:
+    """Interactive workflow to search movies in Radarr, select results, and add them to the library."""
     if not config.validate_radarr():
         console.print("[red]Radarr is not configured! Please update your .env file.[/red]")
         return
@@ -268,7 +278,8 @@ def handle_radarr_workflow():
         except ArrAPIError as e:
             console.print(f"{CROSS_MARK} Failed to add '{movie.get('title')}': {e}")
 
-def handle_sonarr_workflow():
+def handle_sonarr_workflow() -> None:
+    """Interactive workflow to search series in Sonarr, select results, and add them to the library."""
     if not config.validate_sonarr():
         console.print("[red]Sonarr is not configured! Please update your .env file.[/red]")
         return
@@ -374,7 +385,7 @@ def handle_sonarr_workflow():
         except ArrAPIError as e:
             console.print(f"{CROSS_MARK} Failed to add '{series.get('title')}': {e}")
 
-def handle_discovery_workflow():
+def handle_discovery_workflow() -> None:
     """Runs the Metacritic scraper and TVMaze/Radarr enrichment to find and add new releases."""
     console.print("\n[bold yellow]=== Discover New Releases ===[/bold yellow]")
     
@@ -408,8 +419,8 @@ def handle_discovery_workflow():
     console.print(f"[green]Scraped Metacritic successfully! Found {len(tv_releases)} TV shows and {len(movie_releases)} movies.[/green]")
 
     # 3. Enrich with progress bar
-    enriched_tv = []
-    enriched_movies = []
+    enriched_tv: List[Dict[str, Any]] = []
+    enriched_movies: List[Dict[str, Any]] = []
     
     with Progress(
         SpinnerColumn(),
@@ -470,7 +481,7 @@ def handle_discovery_workflow():
                 progress.advance(movie_task)
 
     # 4. Display Results in Consecutive Order
-    combined_items = []
+    combined_items: List[Dict[str, Any]] = []
     
     # TV Shows First
     console.print("\n[bold cyan]============ NEW TV SHOWS ============[/bold cyan]")
@@ -531,12 +542,12 @@ def handle_discovery_workflow():
         console.print("[red]No valid selections made.[/red]")
         return
 
-    selected_tv_shows = []
-    selected_movies = []
+    selected_tv_shows: List[Dict[str, Any]] = []
+    selected_movies: List[Dict[str, Any]] = []
 
     for i in selected_indices:
         entry = combined_items[i]
-        item_data = entry["data"]
+        item_data: Dict[str, Any] = entry["data"]
         
         if item_data.get("is_in_library"):
             console.print(f"[yellow]Skipping '{item_data['title']}' (already in library).[/yellow]")
@@ -669,7 +680,8 @@ def handle_discovery_workflow():
                 console.print(f"[red]Error fetching Radarr config options: {e}[/red]")
 
 
-def handle_export_workflow():
+def handle_export_workflow() -> None:
+    """Export configuration settings, custom feeds, and cached media items to JSON or ZIP."""
     console.print("\n[bold yellow]Backup Settings & Cache[/bold yellow]")
     console.print("[yellow]Warning: Backups contain API keys in plain text. Keep exported files private and secure.[/yellow]")
     include_media = Confirm.ask("Include basic details of cached media objects?", default=True)
@@ -701,7 +713,8 @@ def handle_export_workflow():
         console.print(f"[red]Error exporting backup: {e}[/red]")
 
 
-def handle_import_workflow():
+def handle_import_workflow() -> None:
+    """Restore configuration settings, custom feeds, and cached items from JSON or ZIP."""
     console.print("\n[bold yellow]Restore Settings & Cache[/bold yellow]")
     console.print("[yellow]Warning: Backups contain API keys in plain text. Keep them private and secure.[/yellow]")
     filename = Prompt.ask("Enter path to backup file (.json or .zip)")
@@ -749,7 +762,8 @@ def handle_import_workflow():
         console.print(f"[red]Error importing backup: {e}[/red]")
 
 
-def run_cli():
+def run_cli() -> None:
+    """Start the interactive command-line terminal manager."""
     from core.logging_setup import setup_logging
     setup_logging()
     while True:

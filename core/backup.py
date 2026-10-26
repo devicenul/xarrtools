@@ -7,6 +7,7 @@ import zipfile
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 import logging
+from typing import Any, Dict, IO, List, Optional, Set, Tuple, Union
 
 logger = logging.getLogger("xarrtools.backup")
 
@@ -20,11 +21,11 @@ from core.posters import (
     get_mimetype_for_filename
 )
 
-MAX_UNCOMPRESSED_TOTAL = 2 * 1024 * 1024 * 1024  # 2 GB
-MAX_ENTRY_SIZE = 20 * 1024 * 1024                 # 20 MB
+MAX_UNCOMPRESSED_TOTAL: int = 2 * 1024 * 1024 * 1024  # 2 GB
+MAX_ENTRY_SIZE: int = 20 * 1024 * 1024                 # 20 MB
 
 
-def verify_backup_checksum(data: dict) -> bool | None:
+def verify_backup_checksum(data: Dict[str, Any]) -> Optional[bool]:
     """Verifies SHA-256 checksum of canonical JSON payload.
     
     Returns:
@@ -43,7 +44,7 @@ def verify_backup_checksum(data: dict) -> bool | None:
     return actual == expected
 
 
-def export_full_backup(path_or_fileobj, include_media: bool = True) -> dict:
+def export_full_backup(path_or_fileobj: Union[str, Path, IO[bytes]], include_media: bool = True) -> Dict[str, int]:
     """Exports a full backup zip containing backup.json (format_version 2), posters, and manifest.json.
     
     Args:
@@ -121,10 +122,11 @@ def export_full_backup(path_or_fileobj, include_media: bool = True) -> dict:
     manifest_files = {
         "backup.json": hashlib.sha256(backup_json_bytes).hexdigest()
     }
-    poster_index = {}  # sha256_of_url -> url
-    poster_archive_data = {}  # archive_name -> bytes
+    poster_index: Dict[str, str] = {}  # sha256_of_url -> url
+    poster_archive_data: Dict[str, bytes] = {}  # archive_name -> bytes
     
-    def process_poster(url: str):
+    def process_poster(url: str) -> Optional[Tuple[str, str, str, bytes]]:
+        """Downloads or retrieves cached poster bytes, returning (url, sha256, archive_name, data)."""
         try:
             res = get_cached_poster(url)
             if not res:
@@ -171,7 +173,7 @@ def export_full_backup(path_or_fileobj, include_media: bool = True) -> dict:
     }
 
 
-def import_full_backup(fileobj) -> dict:
+def import_full_backup(fileobj: Union[str, Path, IO[bytes]]) -> Dict[str, Union[str, int]]:
     """Imports full backup archive from a ZIP file or file-like object.
     
     Verifies manifest hashes and backup.json checksum before writing anything.

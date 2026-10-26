@@ -53,6 +53,7 @@ Read this file first, then [docs/architecture.md](docs/architecture.md) (how it 
 ```bash
 ./init.sh                                   # create venv, install requirements-dev.txt, create .env, init DB
 .venv/bin/python -m pytest tests -q --no-cov   # ~25 s; use the venv path printed by init.sh if it differs
+mypy core web cli gui main.py               # run static type checking (0 errors)
 ./build.sh                                  # PyInstaller binary via build.py (build.ps1 / build.bat on Windows)
 python main.py --server                     # run the web UI on http://localhost:5000
 ```

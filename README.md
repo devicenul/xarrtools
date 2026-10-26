@@ -198,3 +198,16 @@ To execute the unit and integration tests with coverage:
    .venv\Scripts\pytest --cov=core --cov=web --cov=cli tests/ --cov-report=term-missing
    ```
 3. This runs the comprehensive test suite (testing all scrapers, config accessors, database helpers, Flask API controllers, and Rich CLI logic) against a temporary SQLite database with all external REST integrations mocked for clean, hermetic execution.
+
+---
+
+## Static Type Checking 🔍
+
+Run `mypy` across all modules:
+
+```bash
+source ./init.sh --env-only
+"$VENV_DIR/bin/mypy" core web cli gui main.py
+```
+(On Windows: `.venv\Scripts\mypy core web cli gui main.py`)
+All modules pass static analysis with 0 errors.

@@ -6,11 +6,11 @@ Provides pure, testable scheduling math:
 - compute_next_run: calculates the next scheduled execution datetime (UTC-aware; time of day is local).
 - is_due: determines whether a scheduled refresh should run given last_run, interval, time_of_day, and now.
 """
-from datetime import datetime, timedelta, timezone, tzinfo
+from datetime import date, datetime, timedelta, timezone, tzinfo
 import re
-from typing import Optional, Tuple, Union
+from typing import Optional, Pattern, Tuple, Union
 
-TIME_OF_DAY_REGEX = re.compile(r"^([01]\d|2[0-3]):([0-5]\d)$")
+TIME_OF_DAY_REGEX: Pattern[str] = re.compile(r"^([01]\d|2[0-3]):([0-5]\d)$")
 
 
 def validate_time_of_day(val: Optional[str]) -> bool:
@@ -59,7 +59,7 @@ def _to_utc_datetime(dt: Optional[Union[datetime, str]]) -> Optional[datetime]:
     raise TypeError(f"Expected datetime, ISO string or None, got {type(dt)}")
 
 
-def _local_candidate(day, h: int, m: int, tz: Optional[tzinfo]) -> datetime:
+def _local_candidate(day: Union[date, datetime], h: int, m: int, tz: Optional[tzinfo]) -> datetime:
     """Returns the UTC-aware instant of wall-clock h:m on `day` in `tz` (system local zone if None)."""
     naive = datetime(day.year, day.month, day.day, h, m, 0)
     if tz is None:
@@ -85,6 +85,8 @@ def compute_next_run(
     """
     interval_hours = max(1, min(168, int(interval_hours)))
     current = _to_utc_datetime(now) if now is not None else datetime.now(timezone.utc)
+    if current is None:
+        current = datetime.now(timezone.utc)
     last = _to_utc_datetime(last_run)
 
     has_tod = validate_time_of_day(time_of_day) and bool(time_of_day and time_of_day.strip())
@@ -129,6 +131,8 @@ def is_due(
         return False
 
     current = _to_utc_datetime(now) if now is not None else datetime.now(timezone.utc)
+    if current is None:
+        current = datetime.now(timezone.utc)
     last = _to_utc_datetime(last_run)
 
     if last is None:

@@ -1,28 +1,36 @@
-import sqlite3
-import os
-import json
-import re
-from pathlib import Path
-from datetime import datetime, timedelta
+"""Database models, migrations, cache operations, and settings management for xarrtools.
 
-import sys
+Provides SQLite persistence for discoveries, metadata cache, custom feeds,
+and user configuration. All write operations use WAL journal mode and immediate transactions
+to guarantee concurrency safety.
+"""
+import json
 import logging
-from core.metadata import evaluate_item_state_transition
+import os
+import re
+import sqlite3
+import sys
+from datetime import datetime, timedelta
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Set, Tuple, Union
+
 from core.locales import slug
+from core.metadata import evaluate_item_state_transition
 
 logger = logging.getLogger("xarrtools.db")
 
 # Store database in the project root folder (or executable directory if compiled)
 if getattr(sys, 'frozen', False):
-    DB_PATH = Path(sys.executable).resolve().parent / "xarrtools.db"
+    DB_PATH: Path = Path(sys.executable).resolve().parent / "xarrtools.db"
 else:
     DB_PATH = Path(__file__).resolve().parent.parent / "xarrtools.db"
 
-TVMAZE_SCHEDULE_URL = "https://api.tvmaze.com/schedule/full"
-TMDB_DISCOVER_URL = "https://api.themoviedb.org/3/discover/movie"
-LETTERBOXD_DEFAULT_URL = "https://letterboxd.com/films/popular/this/week/size/small/rss/"
+TVMAZE_SCHEDULE_URL: str = "https://api.tvmaze.com/schedule/full"
+TMDB_DISCOVER_URL: str = "https://api.themoviedb.org/3/discover/movie"
+LETTERBOXD_DEFAULT_URL: str = "https://letterboxd.com/films/popular/this/week/size/small/rss/"
 
-def get_db_connection():
+
+def get_db_connection() -> sqlite3.Connection:
     """Establishes and returns a connection to the SQLite database with Row factory."""
     conn = sqlite3.connect(DB_PATH, timeout=5)
     conn.isolation_level = None
@@ -32,7 +40,8 @@ def get_db_connection():
     conn.execute("PRAGMA synchronous = NORMAL;")
     return conn
 
-def init_db():
+
+def init_db() -> None:
     """Creates settings, cache, and custom_feeds tables, and migrates existing settings/columns."""
     parent_dir = DB_PATH.parent
     if not os.access(parent_dir, os.W_OK):
@@ -288,7 +297,7 @@ def init_db():
         cursor.execute("INSERT INTO settings (key, value) VALUES ('migrated_tmdb_feed', '1')")
     conn.close()
 
-def restore_default_feeds(conn=None):
+def restore_default_feeds(conn: Optional[sqlite3.Connection] = None) -> None:
     """Wipes all custom feeds and inserts the standard default feeds (Metacritic, DVDs, TVmaze, TMDB, Wikipedia)."""
     local_conn = False
     if conn is None:
@@ -300,7 +309,6 @@ def restore_default_feeds(conn=None):
         cursor = conn.cursor()
         cursor.execute("DELETE FROM custom_feeds")
         
-        import json
         default_feeds = [
             {
                 "name": "Metacritic - New TV Shows",
@@ -389,7 +397,7 @@ def get_setting(key: str, default: str = "") -> str:
     conn.close()
     return row[0] if row else default
 
-def set_setting(key: str, value: str):
+def set_setting(key: str, value: str) -> None:
     """Inserts or updates a setting key-value pair."""
     conn = get_db_connection()
     cursor = conn.cursor()
@@ -397,7 +405,7 @@ def set_setting(key: str, value: str):
     conn.commit()
     conn.close()
 
-def get_all_settings() -> dict:
+def get_all_settings() -> Dict[str, str]:
     """Returns all settings as a flat dictionary."""
     conn = get_db_connection()
     cursor = conn.cursor()
@@ -464,7 +472,13 @@ def normalize_title(title: str, is_tv: bool = False) -> str:
         title = clean_movie_title(title)
     return slug(title)
 
-def get_cached_item(type_: str, title: str, year: int, imdb_id: str = None, conn = None) -> dict:
+def get_cached_item(
+    type_: str,
+    title: str,
+    year: int,
+    imdb_id: Optional[str] = None,
+    conn: Optional[sqlite3.Connection] = None
+) -> Optional[Dict[str, Any]]:
     """Retrieves a cached movie or TV show by IMDb ID or normalized title (checking exact/close matches first, falling back to ignore year setting)."""
     local_conn = False
     if conn is None:
@@ -526,7 +540,7 @@ def get_cached_item(type_: str, title: str, year: int, imdb_id: str = None, conn
             
     return None
 
-def add_cached_item(type_: str, item: dict, conn = None):
+def add_cached_item(type_: str, item: Dict[str, Any], conn: Optional[sqlite3.Connection] = None) -> None:
     """Caches or updates a media discovery details item, running within explicit BEGIN IMMEDIATE transactions."""
     close_conn = False
     if conn is None:
@@ -536,7 +550,8 @@ def add_cached_item(type_: str, item: dict, conn = None):
         
     try:
         cursor = conn.cursor()
-        imdb_id = item.get("imdbId") or item.get("imdb_id")
+        raw_imdb = item.get("imdbId") or item.get("imdb_id")
+        imdb_id = str(raw_imdb) if raw_imdb else None
         
         # Check if already exists in cache using our robust lookup inside transaction
         existing = get_cached_item(type_, item["title"], item["year"], imdb_id, conn=conn)
@@ -656,7 +671,7 @@ def add_cached_item(type_: str, item: dict, conn = None):
         if close_conn:
             conn.close()
 
-def add_cached_items_batch(type_: str, items: list):
+def add_cached_items_batch(type_: str, items: List[Dict[str, Any]]) -> None:
     """Batches inserts to yield the WAL lock periodically for concurrent operations."""
     chunk_size = 25
     for i in range(0, len(items), chunk_size):
@@ -673,16 +688,23 @@ def add_cached_items_batch(type_: str, items: list):
         finally:
             conn.close()
 
-def archive_cached_item(type_: str, title: str, year: int, is_archived: bool = True, raw_item: dict = None):
+def archive_cached_item(
+    type_: str,
+    title: str,
+    year: int,
+    is_archived: bool = True,
+    raw_item: Optional[Dict[str, Any]] = None
+) -> None:
     """Sets the is_archived flag on a cached discovery. Inserts a skeleton if not in cache."""
     conn = get_db_connection()
     conn.execute("BEGIN IMMEDIATE")
     try:
         cursor = conn.cursor()
         
-        imdb_id = None
+        imdb_id: Optional[str] = None
         if raw_item:
-            imdb_id = raw_item.get("imdbId") or raw_item.get("imdb_id")
+            raw_imdb = raw_item.get("imdbId") or raw_item.get("imdb_id")
+            imdb_id = str(raw_imdb) if raw_imdb else None
             
         existing = get_cached_item(type_, title, year, imdb_id, conn=conn)
         
@@ -761,7 +783,7 @@ def archive_cached_item(type_: str, title: str, year: int, is_archived: bool = T
         conn.close()
 
 
-def clean_expired_cache():
+def clean_expired_cache() -> None:
     """Removes cached discoveries older than 12 months (365 days) from premiere/release date."""
     conn = get_db_connection()
     cursor = conn.cursor()
@@ -778,7 +800,7 @@ def clean_expired_cache():
     if deleted > 0:
         logger.info(f"Purged {deleted} expired entries from cache.")
 
-def get_cache_stats() -> dict:
+def get_cache_stats() -> Dict[str, Union[int, str]]:
     """Returns row counts and disk space diagnostics of the cache."""
     conn = get_db_connection()
     cursor = conn.cursor()
@@ -807,7 +829,7 @@ def get_cache_stats() -> dict:
         "database_size": size_str
     }
 
-def clear_all_cache():
+def clear_all_cache() -> None:
     """Wipes all cached discovery details from the database."""
     conn = get_db_connection()
     cursor = conn.cursor()
@@ -815,7 +837,7 @@ def clear_all_cache():
     conn.commit()
     conn.close()
 
-def get_cached_discoveries(start_date: str, end_date: str) -> tuple:
+def get_cached_discoveries(start_date: str, end_date: str) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
     """Retrieves cached TV shows and movies with release dates in the specified range YYYY-MM-DD."""
     conn = get_db_connection()
     cursor = conn.cursor()
@@ -837,7 +859,13 @@ def get_cached_discoveries(start_date: str, end_date: str) -> tuple:
     conn.close()
     return [dict(row) for row in tv_rows], [dict(row) for row in movie_rows]
 
-def update_cached_library_status(type_: str, title: str, year: int, is_in_library: bool, imdb_id: str = None):
+def update_cached_library_status(
+    type_: str,
+    title: str,
+    year: int,
+    is_in_library: bool,
+    imdb_id: Optional[str] = None
+) -> None:
     """Updates the is_in_library status for a cached item in the database."""
     conn = get_db_connection()
     conn.execute("BEGIN IMMEDIATE")
@@ -858,7 +886,7 @@ def update_cached_library_status(type_: str, title: str, year: int, is_in_librar
         conn.close()
 
 
-def export_to_dict(include_media: bool = True) -> dict:
+def export_to_dict(include_media: bool = True) -> Dict[str, Any]:
     """Exports all settings and optionally basic details of cached media objects to a dict with integrity checksum."""
     import hashlib
     conn = get_db_connection()
@@ -868,7 +896,7 @@ def export_to_dict(include_media: bool = True) -> dict:
     cursor.execute("SELECT key, value FROM settings")
     settings = {row["key"]: row["value"] for row in cursor.fetchall()}
     
-    data = {
+    data: Dict[str, Any] = {
         "format_version": 1,
         "settings": settings
     }
@@ -899,7 +927,7 @@ def export_to_dict(include_media: bool = True) -> dict:
     return data
 
 
-def verify_backup_checksum(data: dict) -> bool | None:
+def verify_backup_checksum(data: Dict[str, Any]) -> Optional[bool]:
     """Verifies SHA-256 checksum of canonical JSON payload. None if absent (legacy), True if valid, False if mismatch."""
     import hashlib
     if not isinstance(data, dict):
@@ -913,7 +941,7 @@ def verify_backup_checksum(data: dict) -> bool | None:
     return actual == expected
 
 
-def import_from_dict(data: dict) -> tuple[int, int]:
+def import_from_dict(data: Dict[str, Any]) -> Tuple[int, int]:
     """Imports settings and basic details of cached media objects from a dict."""
     settings_count = 0
     media_count = 0

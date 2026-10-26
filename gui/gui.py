@@ -1,3 +1,4 @@
+"""Pywebview desktop GUI launcher and window manager for xarrtools."""
 import sys
 import time
 import socket
@@ -5,17 +6,19 @@ import threading
 import ctypes
 import logging
 from pathlib import Path
+from typing import Optional
 import webview
 
 logger = logging.getLogger("xarrtools.gui")
 
-def hide_console():
+def hide_console() -> None:
     """Hides the console window when running on Windows in GUI mode."""
+    # Hide the attached terminal window on Windows so GUI runs seamlessly
     if sys.platform == "win32":
         try:
             hwnd = ctypes.windll.kernel32.GetConsoleWindow()
             if hwnd:
-                # SW_HIDE = 0
+                # SW_HIDE = 0: hides the window and activates another window
                 ctypes.windll.user32.ShowWindow(hwnd, 0)
         except Exception as e:
             logger.warning(f"Failed to hide console window: {e}")
@@ -26,7 +29,7 @@ def get_free_port() -> int:
     try:
         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         s.bind(("127.0.0.1", 0))
-        port = s.getsockname()[1]
+        port = int(s.getsockname()[1])
         s.close()
         return port
     except Exception:
@@ -44,10 +47,10 @@ def wait_for_server(port: int, timeout: float = 5.0) -> bool:
             time.sleep(0.1)
     return False
 
-def get_icon_path() -> str:
+def get_icon_path() -> Optional[str]:
     """Resolves the absolute path to the window icon, supporting PyInstaller execution."""
     if getattr(sys, "frozen", False):
-        base_path = Path(sys._MEIPASS)
+        base_path = Path(sys._MEIPASS)  # type: ignore[attr-defined]  # PyInstaller runtime attribute
     else:
         base_path = Path(__file__).resolve().parent.parent
     
@@ -65,7 +68,7 @@ def get_icon_path() -> str:
         return str(icon_path)
     return None
 
-def ensure_gui_available():
+def ensure_gui_available() -> None:
     """Verifies that a graphical display and a supported pywebview backend exist before starting a server."""
     import os
     import logging
@@ -74,10 +77,12 @@ def ensure_gui_available():
     pwv_logger.setLevel(logging.CRITICAL)
     pwv_logger.propagate = False
 
+    # Check for X11/Wayland display server on Linux / BSD systems
     if sys.platform.startswith("linux") or sys.platform.startswith("openbsd"):
         if not (os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY")):
             raise RuntimeError("No graphical display (DISPLAY or WAYLAND_DISPLAY) detected.")
 
+        # Ensure either QT or GTK Python bindings are installed for pywebview rendering
         has_backend = False
         for mod_name in ("webview.platforms.gtk", "webview.platforms.qt"):
             try:
@@ -92,7 +97,7 @@ def ensure_gui_available():
             )
 
 
-def run_gui(debug: bool = False):
+def run_gui(debug: bool = False) -> None:
     """Launches the Flask web server in a background daemon thread and displays the UI in a pywebview window."""
     # 0. Verify GUI display and backend availability BEFORE booting the background server
     ensure_gui_available()
@@ -138,3 +143,4 @@ def run_gui(debug: bool = False):
         webview.start(debug=debug, icon=icon_path)
     else:
         webview.start(debug=debug)
+

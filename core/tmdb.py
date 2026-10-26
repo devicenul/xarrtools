@@ -42,11 +42,13 @@ def get_api_key() -> str:
 
 
 def _is_bearer_token(key: str) -> bool:
+    """Checks if key is a TMDB v4 Bearer JWT token."""
     # v4 read access tokens are JWTs: three dot-separated base64 segments starting with 'eyJ'
     return key.startswith("eyJ") and key.count(".") == 2
 
 
 def _get(path: str, params: Optional[Dict[str, Any]] = None, timeout: int = 15) -> Dict[str, Any]:
+    """Sends an authenticated GET request to the TMDB API and returns JSON response."""
     key = get_api_key()
     if not key:
         raise TMDBError("TMDB API key is not set (Settings -> TMDB API Key)")
@@ -72,10 +74,12 @@ def _get(path: str, params: Optional[Dict[str, Any]] = None, timeout: int = 15) 
 
 
 def _norm(title: str) -> str:
+    """Normalizes a title to a slug string for comparison."""
     return slug(title or "")
 
 
 def _genre_names(genre_ids: List[int]) -> List[str]:
+    """Maps TMDB genre IDs to English genre names, caching the genre list."""
     if not _genre_cache:
         for g in _get("/genre/movie/list", {"language": "en-US"}).get("genres", []):
             _genre_cache[g["id"]] = g["name"]
@@ -83,6 +87,7 @@ def _genre_names(genre_ids: List[int]) -> List[str]:
 
 
 def _discover_page(start: datetime, end: datetime, page: int) -> Dict[str, Any]:
+    """Fetches a single page of movie discoveries within the given date window."""
     return _get("/discover/movie", {
         "include_adult": "false",
         "include_video": "false",
@@ -95,6 +100,7 @@ def _discover_page(start: datetime, end: datetime, page: int) -> Dict[str, Any]:
 
 
 def _movie_item(r: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """Parses a TMDB movie discovery result into a standardized dictionary."""
     release = r.get("release_date")
     title = (r.get("title") or "").strip()
     if not release or not title:
@@ -147,16 +153,17 @@ def discover_movies(start_date: datetime, end_date: datetime, chunk_days: int = 
 
 
 def _find_movie_id(title: str, year: Optional[int], imdb_id: Optional[str]) -> Optional[int]:
+    """Finds a TMDB movie ID matching the title, release year, or IMDb ID."""
     if imdb_id:
         found = _get(f"/find/{imdb_id}", {"external_source": "imdb_id"}).get("movie_results") or []
         if found:
             return found[0]["id"]
     wanted = _norm(title)
-    years = [None]
+    years: List[Optional[int]] = [None]
     if year:
         years = [year, year - 1, year + 1]
     for y in years:
-        params = {"query": title, "include_adult": "false", "language": "en-US"}
+        params: Dict[str, Any] = {"query": title, "include_adult": "false", "language": "en-US"}
         if y:
             params["primary_release_year"] = y
         for r in (_get("/search/movie", params).get("results") or []):

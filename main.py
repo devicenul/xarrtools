@@ -1,12 +1,15 @@
+"""Main entry point for xarrtools (desktop GUI, web server, and CLI modes)."""
 import sys
 import webbrowser
 import argparse
 import logging
 from threading import Timer
+from typing import Optional
 from cli import run_cli
 from web import start_server
 
 logger = logging.getLogger("xarrtools.main")
+
 
 def port_in_use(port: int, host: str = "127.0.0.1") -> bool:
     """True if something is already listening on host:port (e.g. a stale xarrtools instance)."""
@@ -15,7 +18,7 @@ def port_in_use(port: int, host: str = "127.0.0.1") -> bool:
         return sock.connect_ex((host, port)) == 0
 
 
-def run_server_mode(debug: bool = False, port: int = 5000):
+def run_server_mode(debug: bool = False, port: int = 5000) -> None:
     """Starts the web server and opens a browser, unless the port is already taken."""
     if port_in_use(port):
         logger.error(f"Port {port} is already in use.")
@@ -24,17 +27,19 @@ def run_server_mode(debug: bool = False, port: int = 5000):
               f"        then stop it, or open http://localhost:{port} if that is the instance you want.",
               file=sys.stderr)
         sys.exit(1)
+    # Schedule browser opening shortly after server initialization
     Timer(1.5, open_browser).start()
     start_server(port=port, debug=debug)
 
 
-def open_browser():
+def open_browser() -> None:
     """Timer callback to automatically open the default web browser."""
     logger.info("Opening browser to http://localhost:5000...")
     webbrowser.open("http://localhost:5000")
 
+
 if __name__ == "__main__":
-    # Set up argument parsing with safe fallback handling
+    # Set up argument parsing with mutually exclusive operational modes
     parser = argparse.ArgumentParser(description="xarrtools - Radarr & Sonarr Media Discovery Companion")
     group = parser.add_mutually_exclusive_group()
     group.add_argument("--gui", "-g", action="store_true", help="Launch the standalone desktop GUI (default)")
@@ -48,6 +53,7 @@ if __name__ == "__main__":
     from core.logging_setup import setup_logging
     setup_logging(level="DEBUG" if args.debug else None)
 
+    # Dispatch to requested operational mode
     if args.cli:
         run_cli()
     elif args.server:
@@ -66,4 +72,5 @@ if __name__ == "__main__":
                 logger.info("Launching in standard browser-based server mode...")
                 print("Launching in standard browser-based server mode...")
             run_server_mode(debug=args.debug)
+
 

@@ -7,7 +7,7 @@ determines low-metadata status, and computes item state transitions for auto-arc
 smart unarchiving, and badge management.
 """
 
-from typing import Any, Dict, List, Optional, Set, Tuple, Union
+from typing import Any, Callable, Dict, List, Optional, Set, Tuple, Union
 
 # ---------------------------------------------------------------------------
 # Sentinel Sets for Missing Metadata
@@ -193,7 +193,8 @@ def evaluate_metadata(item: Optional[Dict[str, Any]]) -> Dict[str, Any]:
             }
         }
 
-    def _extract_field(aliases: List[str], validator_func) -> Tuple[Any, bool]:
+    def _extract_field(aliases: List[str], validator_func: Callable[[Any], bool]) -> Tuple[Any, bool]:
+        """Extracts candidate value among alias keys and validates completeness."""
         best_val = None
         for alias in aliases:
             if hasattr(item, "get"):
@@ -266,7 +267,8 @@ def evaluate_item_state_transition(
 
     is_low_now = should_auto_archive(new_item)
     
-    def _get_val(obj, key, default=None):
+    def _get_val(obj: Any, key: str, default: Any = None) -> Any:
+        """Safely extracts a key from a dictionary or subscriptable object with default fallback."""
         if hasattr(obj, "get"):
             return obj.get(key, default)
         try:

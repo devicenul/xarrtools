@@ -1,5 +1,6 @@
+"""Feed scrapers, parsers, and deduplication for TV shows and movies."""
 import requests
-from bs4 import BeautifulSoup
+from bs4 import BeautifulSoup, Tag
 from datetime import datetime, timedelta
 import re
 import time
@@ -7,7 +8,7 @@ import socket
 import ipaddress
 import urllib.parse
 import json
-from typing import List, Dict, Any, Tuple, Optional
+from typing import List, Dict, Any, Tuple, Optional, Set, Union, cast
 from requests.adapters import HTTPAdapter
 from urllib3.connection import HTTPConnection, HTTPSConnection
 from urllib3.connectionpool import HTTPConnectionPool, HTTPSConnectionPool
@@ -30,11 +31,13 @@ HEADERS = {
 # --- SSRF & DNS Rebinding Defenses ---
 
 class SafeHTTPConnection(HTTPConnection):
-    def __init__(self, *args, **kwargs):
-        self.safe_ip = kwargs.pop('safe_ip', None)
+    """HTTP connection that pins host resolution to a pre-validated safe IP address."""
+
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        self.safe_ip: Optional[str] = kwargs.pop('safe_ip', None)
         super().__init__(*args, **kwargs)
         
-    def _new_conn(self):
+    def _new_conn(self) -> Any:
         if self.safe_ip:
             original_host = self.host
             self.host = self.safe_ip
@@ -44,11 +47,13 @@ class SafeHTTPConnection(HTTPConnection):
         return super()._new_conn()
 
 class SafeHTTPSConnection(HTTPSConnection):
-    def __init__(self, *args, **kwargs):
-        self.safe_ip = kwargs.pop('safe_ip', None)
+    """HTTPS connection that pins host resolution to a pre-validated safe IP address."""
+
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        self.safe_ip: Optional[str] = kwargs.pop('safe_ip', None)
         super().__init__(*args, **kwargs)
         
-    def _new_conn(self):
+    def _new_conn(self) -> Any:
         if self.safe_ip:
             original_host = self.host
             self.host = self.safe_ip
@@ -58,13 +63,17 @@ class SafeHTTPSConnection(HTTPSConnection):
         return super()._new_conn()
 
 class SafeHTTPConnectionPool(HTTPConnectionPool):
+    """Connection pool using SafeHTTPConnection."""
     ConnectionCls = SafeHTTPConnection
 
 class SafeHTTPSConnectionPool(HTTPSConnectionPool):
+    """Connection pool using SafeHTTPSConnection."""
     ConnectionCls = SafeHTTPSConnection
 
 class SafePoolManager(PoolManager):
-    def __init__(self, safe_ip, *args, **kwargs):
+    """Pool manager that injects safe_ip into request context for each connection."""
+
+    def __init__(self, safe_ip: str, *args: Any, **kwargs: Any) -> None:
         self.safe_ip = safe_ip
         super().__init__(*args, **kwargs)
         self.pool_classes_by_scheme = {
@@ -72,17 +81,19 @@ class SafePoolManager(PoolManager):
             'https': SafeHTTPSConnectionPool,
         }
         
-    def _new_pool(self, scheme, host, port, request_context=None):
+    def _new_pool(self, scheme: str, host: str, port: int, request_context: Optional[Dict[str, Any]] = None) -> Any:
         request_context = request_context or {}
         request_context['safe_ip'] = self.safe_ip
         return super()._new_pool(scheme, host, port, request_context)
 
 class SafeIPHTTPAdapter(HTTPAdapter):
-    def __init__(self, safe_ip, *args, **kwargs):
+    """Requests HTTP adapter enforcing DNS resolution to a pre-validated IP address."""
+
+    def __init__(self, safe_ip: str, *args: Any, **kwargs: Any) -> None:
         self.safe_ip = safe_ip
         super().__init__(*args, **kwargs)
         
-    def init_poolmanager(self, connections, maxsize, block=False, **pool_kwargs):
+    def init_poolmanager(self, connections: int, maxsize: int, block: bool = False, **pool_kwargs: Any) -> None:
         self.poolmanager = SafePoolManager(
             safe_ip=self.safe_ip,
             num_pools=connections,
@@ -91,13 +102,13 @@ class SafeIPHTTPAdapter(HTTPAdapter):
             **pool_kwargs
         )
 
-def safe_fetch_feed(url: str, headers: dict = None, timeout: int = 15, max_redirects: int = 3) -> str:
+def safe_fetch_feed(url: str, headers: Optional[Dict[str, str]] = None, timeout: int = 15, max_redirects: int = 3) -> str:
     """Fetches a URL safely enforcing SSRF/DNS Rebinding protections and payload limit restrictions."""
     current_url = url
     session = requests.Session()
-    headers = headers or {}
-    if "User-Agent" not in headers:
-        headers["User-Agent"] = HEADERS["User-Agent"]
+    req_headers: Dict[str, str] = dict(headers or {})
+    if "User-Agent" not in req_headers:
+        req_headers["User-Agent"] = HEADERS["User-Agent"]
 
     for _ in range(max_redirects + 1):
         parsed = urllib.parse.urlparse(current_url)
@@ -111,7 +122,7 @@ def safe_fetch_feed(url: str, headers: dict = None, timeout: int = 15, max_redir
         # Resolve and validate IP address
         try:
             addr_info = socket.getaddrinfo(host, parsed.port or (443 if parsed.scheme == 'https' else 80))
-            target_ip = addr_info[0][4][0]
+            target_ip = str(addr_info[0][4][0])
         except Exception as e:
             raise ValueError(f"DNS Resolution failed for {host}: {e}")
 
@@ -128,7 +139,7 @@ def safe_fetch_feed(url: str, headers: dict = None, timeout: int = 15, max_redir
         session.mount(f"{parsed.scheme}://{host}", adapter)
 
         # Fetch (streaming chunks to enforce size limits)
-        response = session.get(current_url, headers=headers, timeout=timeout, allow_redirects=False, stream=True)
+        response = session.get(current_url, headers=req_headers, timeout=timeout, allow_redirects=False, stream=True)
 
         if response.status_code in (301, 302, 303, 307, 308):
             redirect_url = response.headers.get("Location")
@@ -163,7 +174,7 @@ def is_safe_regex(pattern: str) -> bool:
         return False
     # 2. Track parenthetical nesting and reject repetitions on groups with nested repetitions
     paren_depth = 0
-    group_has_quantifier = {}
+    group_has_quantifier: Dict[int, bool] = {}
     for idx, char in enumerate(pattern):
         if char == '(' and (idx == 0 or pattern[idx-1] != '\\'):
             paren_depth += 1
@@ -184,7 +195,7 @@ def is_safe_regex(pattern: str) -> bool:
                 group_has_quantifier[d] = True
     return True
 
-def apply_transforms(val: str, transforms: list) -> str:
+def apply_transforms(val: Optional[str], transforms: Optional[List[Dict[str, Any]]]) -> str:
     """Applies cleanups and regex mappings safely with ReDoS guards and index bounds checks."""
     if val is None:
         val = ""
@@ -230,7 +241,7 @@ def apply_transforms(val: str, transforms: list) -> str:
                 val = t.get("value", "")
     return val
 
-def evaluate_json_path(data: any, path: str) -> any:
+def evaluate_json_path(data: Any, path: str) -> Any:
     """Safely traverses nested JSON maps and lists, with safe type checking and wildcards."""
     if not path or path == "$":
         return data
@@ -241,7 +252,7 @@ def evaluate_json_path(data: any, path: str) -> any:
             if part == "*":
                 if isinstance(current, list):
                     remaining_path = ".".join(parts[idx+1:])
-                    res = []
+                    res: List[Any] = []
                     for item in current:
                         found = evaluate_json_path(item, remaining_path)
                         if isinstance(found, list):
@@ -266,14 +277,14 @@ def parse_xml_safely(raw_xml: str) -> ET.Element:
     strip_namespaces(root)
     return root
 
-def strip_namespaces(el):
+def strip_namespaces(el: ET.Element) -> None:
     """Recursively removes namespace URI prefixes from XML element tags."""
     if el.tag.startswith("{"):
         el.tag = el.tag.split("}", 1)[1]
     for child in el:
         strip_namespaces(child)
 
-def safe_int(val) -> Optional[int]:
+def safe_int(val: Any) -> Optional[int]:
     """Extracts digits and casts to integer safely, avoiding ValueError crashes."""
     if val is None:
         return None
@@ -285,14 +296,14 @@ def safe_int(val) -> Optional[int]:
     except (ValueError, IndexError):
         return None
 
-def standardize_item(raw_item: dict, default_type: str, base_url: str) -> dict:
+def standardize_item(raw_item: Dict[str, Any], default_type: str, base_url: str) -> Dict[str, Any]:
     """Standardizes a parsed item dictionary into expected format structures."""
-    title = raw_item.get("title", "").strip()
-    href = raw_item.get("href", "").strip()
+    title = str(raw_item.get("title") or "").strip()
+    href = str(raw_item.get("href") or "").strip()
     if href and base_url:
         href = urllib.parse.urljoin(base_url, href)
         
-    date_str = raw_item.get("date_str", "").strip()
+    date_str = str(raw_item.get("date_str") or "").strip()
     date_obj = parse_date(date_str) if date_str else datetime.now()
     if date_obj == datetime(1900, 1, 1):
         date_obj = datetime.now()
@@ -315,70 +326,70 @@ def standardize_item(raw_item: dict, default_type: str, base_url: str) -> dict:
         "cast": cast
     }
 
-def parse_custom_feed(feed_config: dict, raw_payload: str) -> list:
+def parse_custom_feed(feed_config: Dict[str, Any], raw_payload: str) -> List[Dict[str, Any]]:
     """Parses custom RSS, JSON, or HTML feeds using declarative mapping schemas."""
     feed_type = feed_config.get("feed_type") or "rss"
-    item_selector = feed_config.get("item_selector")
-    mappings = feed_config.get("mappings") or {}
+    item_selector = feed_config.get("item_selector") or ""
+    mappings: Dict[str, Any] = feed_config.get("mappings") or {}
     default_media_type = feed_config.get("default_media_type", "movie")
-    base_url = feed_config.get("url")
+    base_url = feed_config.get("url") or ""
     
-    parsed_items = []
+    parsed_items: List[Dict[str, Any]] = []
     
     # 1. JSON Parsing
     if feed_type == "json":
         data = json.loads(raw_payload)
         items = evaluate_json_path(data, item_selector)
-        if not isinstance(items, list):
-            items = [items] if items else []
-        for item in items:
-            parsed_item = {}
+        items_list: List[Any] = items if isinstance(items, list) else ([items] if items else [])
+        for item in items_list:
+            parsed_item: Dict[str, Any] = {}
             for field, rule in mappings.items():
                 val = evaluate_json_path(item, rule.get("selector", ""))
-                val = apply_transforms(val, rule.get("transforms"))
-                parsed_item[field] = val
+                val_str = apply_transforms(str(val) if val is not None else None, rule.get("transforms"))
+                parsed_item[field] = val_str
             parsed_items.append(standardize_item(parsed_item, default_media_type, base_url))
             
     # 2. RSS/XML Parsing
     elif feed_type == "rss":
         root = parse_xml_safely(raw_payload)
-        items = root.findall(f".//{item_selector}")
-        for item in items:
+        xml_items = root.findall(f".//{item_selector}") if item_selector else []
+        for x_item in xml_items:
             parsed_item = {}
             for field, rule in mappings.items():
                 sel = rule.get("selector", "")
                 if not sel:
                     continue
-                el = item.find(sel)
-                val = el.text if el is not None else ""
-                val = apply_transforms(val, rule.get("transforms"))
-                parsed_item[field] = val
+                xml_el = x_item.find(sel)
+                raw_text = xml_el.text if xml_el is not None else ""
+                val_str = apply_transforms(raw_text, rule.get("transforms"))
+                parsed_item[field] = val_str
             parsed_items.append(standardize_item(parsed_item, default_media_type, base_url))
             
     # 3. HTML Parsing
     elif feed_type == "html":
         soup = BeautifulSoup(raw_payload, "html.parser")
-        items = soup.select(item_selector)
-        for item in items:
+        html_items = soup.select(item_selector) if item_selector else []
+        for h_item in html_items:
             parsed_item = {}
             for field, rule in mappings.items():
                 sel = rule.get("selector", "")
                 if not sel:
                     continue
-                el = item.select_one(sel)
-                if not el:
+                child_el = h_item.select_one(sel)
+                if not child_el:
                     continue
                 
                 extract_type = rule.get("extract", "text")
                 if extract_type == "text":
-                    val = el.get_text()
+                    val_raw = child_el.get_text()
                 elif extract_type == "attribute":
-                    val = el.get(rule.get("attribute_name", ""))
+                    attr_val = child_el.get(rule.get("attribute_name", ""))
+                    val_raw = " ".join(attr_val) if isinstance(attr_val, list) else (attr_val or "")
                 else:
-                    val = ""
+                    val_raw = ""
                     
-                val = apply_transforms(val, rule.get("transforms"))
-                parsed_item[field] = val
+                val_str = apply_transforms(val_raw, rule.get("transforms"))
+                parsed_item[field] = val_str
             parsed_items.append(standardize_item(parsed_item, default_media_type, base_url))
             
     return parsed_items
@@ -516,12 +527,12 @@ def scrape_new_releases(url: str, is_tv: bool = True, raise_on_error: bool = Fal
                 time.sleep(1.5 * (attempt + 1))
     if response is None:
         logger.warning(f"Failed to fetch page {url}: {last_error}")
-        if raise_on_error:
+        if raise_on_error and last_error:
             raise last_error
         return []
 
     soup = BeautifulSoup(response.text, "html.parser")
-    containers = soup.find_all('div', **{"data-testid": "filter-results"})
+    containers = soup.find_all('div', attrs={"data-testid": "filter-results"})
     
     results = []
     for c in containers:
@@ -529,7 +540,7 @@ def scrape_new_releases(url: str, is_tv: bool = True, raise_on_error: bool = Fal
         if not a_tag:
             continue
             
-        href = a_tag['href']
+        href = str(a_tag['href'])
         
         is_returning = False
         if is_tv:
@@ -537,7 +548,7 @@ def scrape_new_releases(url: str, is_tv: bool = True, raise_on_error: bool = Fal
             if "/season-" in href.lower() or "-season" in href.lower():
                 is_returning = True
 
-        title_span = c.find('h3', **{"data-testid": "product-title"})
+        title_span = c.find('h3', attrs={"data-testid": "product-title"})
         raw_title = title_span.get_text(strip=True) if title_span else "Unknown"
         title = raw_title
         if is_tv:
@@ -558,7 +569,7 @@ def scrape_new_releases(url: str, is_tv: bool = True, raise_on_error: bool = Fal
                     break
             
             # Look for the description
-            desc_div = text_container.find('div', class_=lambda x: x and ('line-clamp-2' in x or 'line-clamp' in x))
+            desc_div = text_container.find('div', class_=lambda x: bool(x and ('line-clamp-2' in x or 'line-clamp' in x)))
             if desc_div:
                 description = desc_div.get_text(strip=True)
             elif len(spans) > 1:
@@ -586,7 +597,7 @@ def scrape_new_releases(url: str, is_tv: bool = True, raise_on_error: bool = Fal
         
     return results
 
-def scrape_dvds_releases(year: int, month: int, url_template: str = None) -> List[Dict[str, Any]]:
+def scrape_dvds_releases(year: int, month: int, url_template: Optional[str] = None) -> List[Dict[str, Any]]:
     """Scrapes dvdsreleasedates.com for a given year and month."""
     if url_template:
         url = url_template.format(year=year, month=month)
@@ -608,7 +619,7 @@ def scrape_dvds_releases(year: int, month: int, url_template: str = None) -> Lis
         current_date = None
         
         for tr in table.find_all("tr"):
-            date_td = tr.find("td", class_=lambda x: x and "reldate" in x)
+            date_td = tr.find("td", class_=lambda x: bool(x and "reldate" in x))
             if date_td:
                 raw_text = date_td.get_text()
                 clean_date = raw_text.split("(")[0].strip()
@@ -628,7 +639,7 @@ def scrape_dvds_releases(year: int, month: int, url_template: str = None) -> Lis
                     continue
                     
                 title = title_a.get_text(strip=True)
-                href = title_a["href"]
+                href = title_a.get("href")
                 
                 title = clean_movie_title(title)
                 
@@ -636,19 +647,21 @@ def scrape_dvds_releases(year: int, month: int, url_template: str = None) -> Lis
                     continue
                 
                 imdb_id = None
-                imdb_a = cell.find("a", href=lambda h: h and "imdb.com/title/" in h)
-                if imdb_a:
-                    match = re.search(r'tt\d+', imdb_a["href"])
+                imdb_a = cell.find("a", href=lambda h: bool(h and "imdb.com/title/" in h))
+                if imdb_a and imdb_a.get("href"):
+                    imdb_href = str(imdb_a["href"])
+                    match = re.search(r'tt\d+', imdb_href)
                     if match:
                         imdb_id = match.group(0)
                 
                 date_obj = parse_dvd_date(current_date) if current_date else datetime(1900, 1, 1)
+                href_str = str(href) if href else ""
                 
                 movies.append({
                     "title": title,
                     "date_str": current_date or "Unknown Date",
                     "date_obj": date_obj,
-                    "href": f"https://www.dvdsreleasedates.com{href}" if href.startswith("/") else href,
+                    "href": f"https://www.dvdsreleasedates.com{href_str}" if href_str.startswith("/") else href_str,
                     "imdbId": imdb_id,
                     "description": "No plot summary available.",
                     "is_returning": False
@@ -712,12 +725,13 @@ def dedupe_movies(items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     by_imdb: Dict[str, Dict[str, Any]] = {}
     by_key: Dict[str, List[Dict[str, Any]]] = {}
 
-    def conflicts(a, b):
+    def conflicts(a: Dict[str, Any], b: Dict[str, Any]) -> bool:
         """Different TMDB/IMDb ids on both sides means they are different films."""
         return bool((a.get("tmdbId") and b.get("tmdbId") and a["tmdbId"] != b["tmdbId"]) or
                     (a.get("imdbId") and b.get("imdbId") and a["imdbId"] != b["imdbId"]))
 
-    def find(item, key):
+    def find(item: Dict[str, Any], key: str) -> Optional[Dict[str, Any]]:
+        """Finds an existing matching movie in the deduplication index."""
         if item.get("tmdbId") and item["tmdbId"] in by_tmdb:
             return by_tmdb[item["tmdbId"]]
         if item.get("imdbId") and item["imdbId"] in by_imdb:
@@ -826,7 +840,7 @@ def scrape_tvmaze_schedule(url: str, start_date: datetime, end_date: datetime, l
         }
     return list(best.values())
 
-def _with_query(url: str, **params) -> str:
+def _with_query(url: str, **params: Any) -> str:
     """Returns url with the given query parameters set/overridden."""
     parsed = urllib.parse.urlparse(url)
     query = dict(urllib.parse.parse_qsl(parsed.query))
@@ -839,9 +853,10 @@ def scrape_metacritic_window(url: str, is_tv: bool, start_date: datetime, max_pa
     The base list failing raises (so the feed is flagged as errored); the coming-soon list is best-effort.
     """
     results: List[Dict[str, Any]] = []
-    seen = set()
+    seen: Set[str] = set()
 
-    def collect(list_url: str, strict: bool):
+    def collect(list_url: str, strict: bool) -> None:
+        """Collects paginated items from a given Metacritic list URL."""
         for page in range(1, max_pages + 1):
             page_url = list_url if page == 1 else _with_query(list_url, page=page)
             try:
@@ -854,7 +869,9 @@ def scrape_metacritic_window(url: str, is_tv: bool, start_date: datetime, max_pa
             if not new_items:
                 break
             for i in new_items:
-                seen.add(i.get("href"))
+                href = i.get("href")
+                if href:
+                    seen.add(href)
                 results.append(i)
             dated = [i["date_obj"] for i in new_items if i["date_obj"].year != 1900]
             if dated and min(dated) < start_date:
@@ -867,10 +884,10 @@ def scrape_metacritic_window(url: str, is_tv: bool, start_date: datetime, max_pa
 def get_discoveries(past_days: int = 30, future_days: int = 60) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
     """Retrieves new TV shows and movies released within the specified past/future days window, merging custom feeds."""
     logger.info(f"Starting discovery scan for past {past_days} days and future {future_days} days...")
-    tv_raw = []
-    movie_raw = []
+    tv_raw: List[Dict[str, Any]] = []
+    movie_raw: List[Dict[str, Any]] = []
     dvd_enabled = False
-    dvd_url_template = None
+    dvd_url_template: Optional[str] = None
     
     # 1. Fetch enabled custom feeds from database
     from core.db import get_db_connection
@@ -978,7 +995,7 @@ def get_discoveries(past_days: int = 30, future_days: int = 60) -> Tuple[List[Di
     end_date = now + timedelta(days=future_days)
     
     # 2. DVDs Release Dates scraper (if enabled)
-    dvd_movies = []
+    dvd_movies: List[Dict[str, Any]] = []
     if dvd_enabled:
         current = start_date
         while current <= end_date:

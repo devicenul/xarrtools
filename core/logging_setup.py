@@ -14,17 +14,17 @@ import sys
 import logging
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
-from typing import Optional, Union, Set
+from typing import List, Optional, Pattern, Set, Tuple, Union
 
 # Module-level log directory override (used by tests or custom setups)
 LOG_DIR: Optional[Path] = None
 
-DEFAULT_LOG_FORMAT = "%(asctime)s [%(levelname)s] %(name)s: %(message)s"
-DEFAULT_DATE_FORMAT = "%Y-%m-%d %H:%M:%S"
-ALLOWED_LOG_LEVELS = ("DEBUG", "INFO", "WARNING", "ERROR")
+DEFAULT_LOG_FORMAT: str = "%(asctime)s [%(levelname)s] %(name)s: %(message)s"
+DEFAULT_DATE_FORMAT: str = "%Y-%m-%d %H:%M:%S"
+ALLOWED_LOG_LEVELS: Tuple[str, ...] = ("DEBUG", "INFO", "WARNING", "ERROR")
 
 # Credential masking patterns
-REDACTION_PATTERNS = [
+REDACTION_PATTERNS: List[Pattern[str]] = [
     # Query parameters & header keys: apikey=..., api_key=..., access_token=..., token=..., secret=...
     re.compile(r"(?i)([?&](?:api[_-]?key|apikey|access_token|token|secret|password)=)([^&\s'\"`]+)"),
     # Header format: X-Api-Key: ... or X-Api-Key=...
