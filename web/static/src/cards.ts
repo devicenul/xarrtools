@@ -6,8 +6,12 @@ import { MediaItem, CardRenderOptions } from "./types.js";
 
 /**
  * Escapes characters with special meaning in HTML entities.
+ * Tolerates null/undefined/numbers and escapes &, <, >, ", and '.
  */
 export function escapeHtml(v: unknown): string {
+  if (v === null || v === undefined) {
+    return "";
+  }
   return String(v).replace(
     /[&<>"']/g,
     c =>
@@ -19,6 +23,27 @@ export function escapeHtml(v: unknown): string {
         "'": "&#39;"
       }[c] as string)
   );
+}
+
+/**
+ * Validates and sanitizes a URL, allowing only http:, https: or relative paths starting with /
+ * Returns '' otherwise (blocks javascript:, data:, etc.).
+ */
+export function safeUrl(url: unknown): string {
+  if (!url) return "";
+  const s = String(url).trim();
+  if (s.startsWith("/") && !s.startsWith("//")) {
+    return s;
+  }
+  try {
+    const parsed = new URL(s);
+    if (parsed.protocol === "http:" || parsed.protocol === "https:") {
+      return s;
+    }
+  } catch {
+    // If not a valid absolute URL
+  }
+  return "";
 }
 
 /**
@@ -97,15 +122,15 @@ export function getPosterNavigationUrl(item: Partial<MediaItem>, type: string): 
   const tvdbId = item.tvdbId || item.tvdb_id;
 
   if (type === "movie") {
-    if (imdbId) return `https://www.imdb.com/title/${imdbId}/`;
-    if (tmdbId) return `https://www.themoviedb.org/movie/${tmdbId}`;
+    if (imdbId) return `https://www.imdb.com/title/${encodeURIComponent(String(imdbId))}/`;
+    if (tmdbId) return `https://www.themoviedb.org/movie/${encodeURIComponent(String(tmdbId))}`;
   } else if (type === "tv") {
-    if (tvdbId) return `https://thetvdb.com/dereferrer/series/${tvdbId}`;
-    if (imdbId) return `https://www.imdb.com/title/${imdbId}/`;
+    if (tvdbId) return `https://thetvdb.com/dereferrer/series/${encodeURIComponent(String(tvdbId))}`;
+    if (imdbId) return `https://www.imdb.com/title/${encodeURIComponent(String(imdbId))}/`;
   }
 
   // Fallback to Metacritic/source URL
-  if (item.href) return item.href;
+  if (item.href && safeUrl(item.href)) return item.href;
 
   // Double fallback to Google search
   const searchString = encodeURIComponent(
@@ -137,7 +162,7 @@ export function buildMediaCardHtml(
       ? legacyIndex
       : 0;
 
-  const genres = (item.genres || []).map(g => `<span class="genre-pill">${g}</span>`).join("");
+  const genres = (item.genres || []).map(g => `<span class="genre-pill">${escapeHtml(g)}</span>`).join("");
   const buttonText = isAdded ? "Added to Library" : type === "tv" ? "Add to Sonarr" : "Add to Radarr";
   const buttonClass = isAdded ? "btn btn-secondary btn-added" : "btn btn-primary";
 
@@ -149,10 +174,10 @@ export function buildMediaCardHtml(
     const visibleText = item.plot.slice(0, maxChars);
     const hiddenText = item.plot.slice(maxChars);
     plotHtml = `
-            <span class="plot-visible">${visibleText}</span><span class="plot-ellipsis">...</span><span class="plot-hidden hidden">${hiddenText}</span><button class="plot-more-btn">more</button>
+            <span class="plot-visible">${escapeHtml(visibleText)}</span><span class="plot-ellipsis">...</span><span class="plot-hidden hidden">${escapeHtml(hiddenText)}</span><button class="plot-more-btn">more</button>
         `;
   } else {
-    plotHtml = item.plot || "";
+    plotHtml = escapeHtml(item.plot || "");
   }
 
   const returningBadge =
@@ -167,42 +192,41 @@ export function buildMediaCardHtml(
   // Construct source chips
   let chipsHtml = "";
   if (item.href) {
-    chipsHtml += `<a href="${item.href}" target="_blank" class="chip chip-metacritic">Metacritic</a>`;
+    chipsHtml += `<a href="${escapeHtml(safeUrl(item.href))}" target="_blank" class="chip chip-metacritic">Metacritic</a>`;
   }
   const imdbId = item.imdbId || item.imdb_id;
   if (imdbId) {
-    chipsHtml += `<a href="https://www.imdb.com/title/${imdbId}/" target="_blank" class="chip chip-imdb">IMDb</a>`;
+    chipsHtml += `<a href="https://www.imdb.com/title/${encodeURIComponent(String(imdbId))}/" target="_blank" class="chip chip-imdb">IMDb</a>`;
   }
   const tmdbId = item.tmdbId || item.tmdb_id;
   if (type === "movie" && tmdbId) {
-    chipsHtml += `<a href="https://www.themoviedb.org/movie/${tmdbId}" target="_blank" class="chip chip-tmdb">TMDB</a>`;
+    chipsHtml += `<a href="https://www.themoviedb.org/movie/${encodeURIComponent(String(tmdbId))}" target="_blank" class="chip chip-tmdb">TMDB</a>`;
   }
   const tvdbId = item.tvdbId || item.tvdb_id;
   if (type === "tv" && tvdbId) {
-    chipsHtml += `<a href="https://thetvdb.com/dereferrer/series/${tvdbId}" target="_blank" class="chip chip-tvdb">TVDB</a>`;
+    chipsHtml += `<a href="https://thetvdb.com/dereferrer/series/${encodeURIComponent(String(tvdbId))}" target="_blank" class="chip chip-tvdb">TVDB</a>`;
   }
-  const searchString = encodeURIComponent(`${item.title} ${item.year} ${type === "tv" ? "tv show" : "movie"}`);
+  const searchString = encodeURIComponent(`${item.title || ""} ${item.year || ""} ${type === "tv" ? "tv show" : "movie"}`);
   chipsHtml += `<a href="https://www.google.com/search?q=${searchString}" target="_blank" class="chip chip-google">Google Search 🔍</a>`;
 
   // Setup poster image
-  const navUrl = getPosterNavigationUrl(item, type);
-  const titleEscapedForFallback = (item.title || "").replace(/'/g, "&#39;").replace(/"/g, "&quot;");
+  const navUrl = safeUrl(getPosterNavigationUrl(item, type));
   let posterHtml = "";
   if (item.poster_url) {
     posterHtml = `
-            <a href="${navUrl}" target="_blank" class="card-poster-link" title="Click to view external page">
+            <a href="${escapeHtml(navUrl)}" target="_blank" class="card-poster-link" title="Click to view external page">
                 <div class="card-poster">
-                    <img src="${item.poster_url}" alt="${item.title} poster" class="poster-img" onerror="this.onerror=null; this.parentElement.innerHTML='<div class=&quot;poster-fallback&quot;><span>${type === "tv" ? "📺" : "🎬"}</span><p style=&quot;font-size: 11px; padding: 0 8px; font-weight: 500; color: var(--text-primary); text-transform: uppercase; letter-spacing: 0.5px;&quot;>${titleEscapedForFallback}</p></div>';">
+                    <img src="${escapeHtml(safeUrl(item.poster_url))}" alt="${escapeHtml(item.title)} poster" class="poster-img" data-fallback-title="${escapeHtml(item.title)}" data-fallback-icon="${type === "tv" ? "tv" : "movie"}" onerror="xarrtoolsPosterFallback(this)">
                 </div>
             </a>
         `;
   } else {
     posterHtml = `
-            <a href="${navUrl}" target="_blank" class="card-poster-link" title="Click to view external page">
+            <a href="${escapeHtml(navUrl)}" target="_blank" class="card-poster-link" title="Click to view external page">
                 <div class="card-poster">
                     <div class="poster-fallback">
                         <span>${type === "tv" ? "📺" : "🎬"}</span>
-                        <p style="font-size: 11px; padding: 0 8px; font-weight: 500; color: var(--text-primary); text-transform: uppercase; letter-spacing: 0.5px;">${titleEscapedForFallback}</p>
+                        <p style="font-size: 11px; padding: 0 8px; font-weight: 500; color: var(--text-primary); text-transform: uppercase; letter-spacing: 0.5px;">${escapeHtml(item.title)}</p>
                     </div>
                 </div>
             </a>
@@ -213,9 +237,9 @@ export function buildMediaCardHtml(
         ${posterHtml}
         <div class="card-info-content">
             <div class="card-title-row">
-                <h3>${item.title}</h3>
+                <h3>${escapeHtml(item.title)}</h3>
                 <div class="card-year-refresh">
-                    <span class="year">${item.year}</span>
+                    <span class="year">${escapeHtml(item.year)}</span>
                     <button class="btn-refresh-icon" title="Refresh Metadata">
                         <svg class="refresh-svg" viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round" style="display: block; pointer-events: none;">
                             <polyline points="23 4 23 10 17 10"></polyline>
@@ -225,7 +249,7 @@ export function buildMediaCardHtml(
                 </div>
             </div>
             <div class="card-badges">
-                <span class="badge badge-network">${item.network}</span>
+                <span class="badge badge-network">${escapeHtml(item.network)}</span>
                 ${returningBadge}
                 ${localeBadge(item)}
                 ${item.has_new_metadata ? '<span class="badge badge-new-metadata">New metadata</span>' : ""}
@@ -234,9 +258,9 @@ export function buildMediaCardHtml(
             </div>
             ${buildRatingBadgesHtml(item)}
             <div class="genres-list">${genres}</div>
-            <div class="card-cast"><strong>Cast:</strong> <span>${item.cast}</span></div>
-            ${type === "movie" && item.director ? `<div class="card-crew"><strong>Director:</strong> <span>${item.director}</span></div>` : ""}
-            ${type === "movie" && item.producer ? `<div class="card-crew"><strong>Producer:</strong> <span>${item.producer}</span></div>` : ""}
+            <div class="card-cast"><strong>Cast:</strong> <span>${escapeHtml(item.cast)}</span></div>
+            ${type === "movie" && item.director ? `<div class="card-crew"><strong>Director:</strong> <span>${escapeHtml(item.director)}</span></div>` : ""}
+            ${type === "movie" && item.producer ? `<div class="card-crew"><strong>Producer:</strong> <span>${escapeHtml(item.producer)}</span></div>` : ""}
             <div class="card-plot">${plotHtml}</div>
             
             <div class="details-toggle-row" style="margin-top: auto; border-top: 1px dashed var(--border-color); padding-top: 8px; display: flex; justify-content: space-between; align-items: center;">
@@ -248,9 +272,9 @@ export function buildMediaCardHtml(
             </div>
     
             <div class="card-actions" style="margin-top: 0;">
-                <a href="${item.trailer}" target="_blank" class="btn btn-trailer">🎬 Trailer</a>
+                <a href="${escapeHtml(safeUrl(item.trailer))}" target="_blank" class="btn btn-trailer">🎬 Trailer</a>
                 <button class="${archiveBtnClass}">${archiveBtnLabel}</button>
-                <button class="${buttonClass}" ${isAdded ? "disabled" : ""} onclick="openAddModal('${type}', ${index})">
+                <button class="${buttonClass}" ${isAdded ? "disabled" : ""} onclick="openAddModal('${type === "tv" ? "tv" : "movie"}', ${escapeHtml(index)})">
                     ${buttonText}
                 </button>
             </div>

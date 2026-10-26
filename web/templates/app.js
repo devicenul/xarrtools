@@ -1,6 +1,6 @@
 import { matchLocale as moduleMatchLocale, matchFilter as moduleMatchFilter, itemPassesFilters as moduleItemPassesFilters, getFilteredUnarchived as moduleGetFilteredUnarchived } from '/static/dist/filters.js';
 import { archiveBatch as moduleArchiveBatch, archiveItem as moduleArchiveItem, fetchConfig as moduleFetchConfig, fetchSettings as moduleFetchSettings, saveSettings as moduleSaveSettings, fetchScanProgress as moduleFetchScanProgress, fetchDiscoveries as moduleFetchDiscoveries, refreshCacheItem as moduleRefreshCacheItem, lookupMedia as moduleLookupMedia, addMedia as moduleAddMedia, linkLibrary as moduleLinkLibrary, fetchCacheStats as moduleFetchCacheStats, pruneCache as modulePruneCache, clearCache as moduleClearCache, getBackupExportUrl as moduleGetBackupExportUrl, importBackup as moduleImportBackup, fetchFeeds as moduleFetchFeeds, saveFeed as moduleSaveFeed, deleteFeed as moduleDeleteFeed, testFeed as moduleTestFeed, restoreDefaultFeeds as moduleRestoreDefaultFeeds } from '/static/dist/api.js';
-import { escapeHtml as moduleEscapeHtml, countryName as moduleCountryName, localeBadge as moduleLocaleBadge, buildRatingBadgesHtml as moduleBuildRatingBadgesHtml, getPosterNavigationUrl as moduleGetPosterNavigationUrl, buildMediaCardHtml as moduleBuildMediaCardHtml } from '/static/dist/cards.js';
+import { escapeHtml as moduleEscapeHtml, safeUrl as moduleSafeUrl, countryName as moduleCountryName, localeBadge as moduleLocaleBadge, buildRatingBadgesHtml as moduleBuildRatingBadgesHtml, getPosterNavigationUrl as moduleGetPosterNavigationUrl, buildMediaCardHtml as moduleBuildMediaCardHtml } from '/static/dist/cards.js';
 
 // Global Application State
 let appConfig = null;
@@ -51,8 +51,8 @@ function addNotification(message, type = "info") {
     const item = document.createElement("div");
     item.className = `notification-item ${type}`;
     item.innerHTML = `
-        <div>${message}</div>
-        <span class="notification-time">${timeStr}</span>
+        <div>${escapeHtml(message)}</div>
+        <span class="notification-time">${escapeHtml(timeStr)}</span>
     `;
     
     list.insertBefore(item, list.firstChild);
@@ -936,7 +936,7 @@ async function openAddModal(type, index) {
         }
     } catch (error) {
         lookupLoading.classList.add("hidden");
-        lookupResultsList.innerHTML = `<div class="lookup-status">Error loading indexers: ${error.message}</div>`;
+        lookupResultsList.innerHTML = `<div class="lookup-status">Error loading indexers: ${escapeHtml(error.message)}</div>`;
     }
 }
 
@@ -981,18 +981,18 @@ function renderLookupResults(results, type, discoveryItem) {
         const idLabel = type === "tv" ? `TVDB ID: ${res.tvdbId || 'N/A'}` : `TMDB ID: ${res.tmdbId || 'N/A'}`;
         const collectionName = res.collection ? (res.collection.title || res.collection.name) : null;
         const collectionBadge = (type === "movie" && collectionName)
-            ? `<span class="badge" style="background: rgba(0, 210, 255, 0.08); color: var(--accent-blue); border: 1px solid rgba(0, 210, 255, 0.2); font-size: 10px; padding: 2px 6px; border-radius: 4px; display: inline-flex; align-items: center; text-transform: none; margin: 0;">📦 ${collectionName}</span>`
+            ? `<span class="badge" style="background: rgba(0, 210, 255, 0.08); color: var(--accent-blue); border: 1px solid rgba(0, 210, 255, 0.2); font-size: 10px; padding: 2px 6px; border-radius: 4px; display: inline-flex; align-items: center; text-transform: none; margin: 0;">📦 ${escapeHtml(collectionName)}</span>`
             : '';
 
         itemRow.innerHTML = `
             <div class="lookup-item-details">
                 <div class="lookup-item-title">
-                    ${res.title}
+                    ${escapeHtml(res.title)}
                     ${isBestMatch ? '<span class="auto-match-tag">Auto Match</span>' : ''}
                 </div>
                 <div class="lookup-item-meta" style="display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin-top: 4px;">
-                    <span class="year-badge">${res.year || 'N/A'}</span>
-                    <span class="id-badge">${idLabel}</span>
+                    <span class="year-badge">${escapeHtml(res.year || 'N/A')}</span>
+                    <span class="id-badge">${escapeHtml(idLabel)}</span>
                     ${collectionBadge}
                 </div>
             </div>
@@ -1423,7 +1423,7 @@ async function loadCustomFeeds() {
                 if (feed.last_status === "success") {
                     statusBadge = `<span class="badge" style="background: rgba(0, 255, 135, 0.1); color: var(--accent-green); border: 1px solid rgba(0, 255, 135, 0.25); font-size:10px; padding:2px 6px;">Success</span>`;
                 } else if (feed.last_status === "error") {
-                    errorTooltip = feed.last_error_message ? `title="${feed.last_error_message.replace(/"/g, '&quot;')}"` : "";
+                    errorTooltip = feed.last_error_message ? `title="${escapeHtml(feed.last_error_message)}"` : "";
                     statusBadge = `<span class="badge" style="background: rgba(255, 0, 80, 0.1); color: #ff0050; border: 1px solid rgba(255, 0, 80, 0.25); font-size:10px; padding:2px 6px; cursor:help;" ${errorTooltip}>Error ⚠️</span>`;
                 } else {
                     statusBadge = `<span class="badge" style="background: rgba(255, 255, 255, 0.05); color: var(--text-secondary); border: 1px solid var(--border-color); font-size:10px; padding:2px 6px;">Never</span>`;
@@ -1433,12 +1433,12 @@ async function loadCustomFeeds() {
                 const enabledStyle = feed.enabled === 1 ? "" : "opacity: 0.5; text-decoration: line-through;";
                 
                 tr.innerHTML = `
-                    <td style="padding: 8px; font-weight: 500; color: var(--text-primary); max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; ${enabledStyle}">${feed.name}</td>
-                    <td style="padding: 8px; text-transform: uppercase; font-size: 11px; color: var(--text-secondary);">${feed.feed_type}</td>
+                    <td style="padding: 8px; font-weight: 500; color: var(--text-primary); max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; ${enabledStyle}">${escapeHtml(feed.name)}</td>
+                    <td style="padding: 8px; text-transform: uppercase; font-size: 11px; color: var(--text-secondary);">${escapeHtml(feed.feed_type)}</td>
                     <td style="padding: 8px;">${statusBadge}</td>
                     <td style="padding: 8px; text-align: right; white-space: nowrap;">
-                        <button type="button" class="btn btn-secondary btn-feed-row-edit" data-feed-id="${feed.id}" style="font-size:11px; padding:2px 6px; margin:0 4px 0 0; width:auto; display:inline-block;">Edit</button>
-                        <button type="button" class="btn btn-feed-row-delete" data-feed-id="${feed.id}" data-feed-name="${feed.name}" style="background: rgba(255, 42, 133, 0.1); border: 1px solid rgba(255, 42, 133, 0.3); color: var(--accent-magenta); font-size:11px; padding:2px 6px; margin:0; width:auto; display:inline-block;">&times;</button>
+                        <button type="button" class="btn btn-secondary btn-feed-row-edit" data-feed-id="${escapeHtml(feed.id)}" style="font-size:11px; padding:2px 6px; margin:0 4px 0 0; width:auto; display:inline-block;">Edit</button>
+                        <button type="button" class="btn btn-feed-row-delete" data-feed-id="${escapeHtml(feed.id)}" data-feed-name="${escapeHtml(feed.name)}" style="background: rgba(255, 42, 133, 0.1); border: 1px solid rgba(255, 42, 133, 0.3); color: var(--accent-magenta); font-size:11px; padding:2px 6px; margin:0; width:auto; display:inline-block;">&times;</button>
                     </td>
                 `;
                 
@@ -1452,10 +1452,10 @@ async function loadCustomFeeds() {
                 tableBody.appendChild(tr);
             });
         } else {
-            tableBody.innerHTML = `<tr><td colspan="4" style="padding: 12px; text-align: center; color: var(--accent-magenta);">Error loading feeds: ${data.message}</td></tr>`;
+            tableBody.innerHTML = `<tr><td colspan="4" style="padding: 12px; text-align: center; color: var(--accent-magenta);">Error loading feeds: ${escapeHtml(data.message)}</td></tr>`;
         }
     } catch (err) {
-        tableBody.innerHTML = `<tr><td colspan="4" style="padding: 12px; text-align: center; color: var(--accent-magenta);">Fetch failed: ${err.message}</td></tr>`;
+        tableBody.innerHTML = `<tr><td colspan="4" style="padding: 12px; text-align: center; color: var(--accent-magenta);">Fetch failed: ${escapeHtml(err.message)}</td></tr>`;
     }
 }
 
@@ -1876,7 +1876,7 @@ async function runGlobalSearch() {
     resultsGrid.innerHTML = `
         <div class="empty-state" style="height: 30vh; margin: 0 auto; grid-column: 1 / -1;">
             <div class="spinner-small" style="margin: 0 auto 12px;"></div>
-            <p>Searching ${type === 'tv' ? 'Sonarr' : 'Radarr'} for "${query}"...</p>
+            <p>Searching ${type === 'tv' ? 'Sonarr' : 'Radarr'} for "${escapeHtml(query)}"...</p>
         </div>
     `;
     
@@ -1909,7 +1909,7 @@ async function runGlobalSearch() {
             resultsGrid.innerHTML = `
                 <div class="empty-state" style="height: 30vh; margin: 0 auto; grid-column: 1 / -1;">
                     <div class="empty-icon" style="font-size: 40px; margin-bottom: 12px;">🤷</div>
-                    <p>No results found for "${query}". Try a different title or media type.</p>
+                    <p>No results found for "${escapeHtml(query)}". Try a different title or media type.</p>
                 </div>
             `;
             addNotification(`No results found for "${query}".`, "info");
@@ -1918,7 +1918,7 @@ async function runGlobalSearch() {
         resultsGrid.innerHTML = `
             <div class="empty-state" style="height: 30vh; margin: 0 auto; grid-column: 1 / -1;">
                 <div class="empty-icon" style="font-size: 40px; margin-bottom: 12px;">⚠️</div>
-                <p>Search error: ${error.message}</p>
+                <p>Search error: ${escapeHtml(error.message)}</p>
             </div>
         `;
         addNotification(`Global search error: ${error.message}`, "error");
@@ -1949,8 +1949,8 @@ function createSearchCard(res, type) {
     const title = res.title || "Unknown Title";
     const network = type === "tv" ? (res.network || "Unknown Network") : (res.studio || "Unknown Studio");
     const runtime = res.runtime ? `${res.runtime} min` : "";
-    const genres = (res.genres || []).map(g => `<span class="genre-pill">${g}</span>`).join("");
-    const certification = res.certification ? `<span class="badge badge-network">${res.certification}</span>` : "";
+    const genres = (res.genres || []).map(g => `<span class="genre-pill">${escapeHtml(g)}</span>`).join("");
+    const certification = res.certification ? `<span class="badge badge-network">${escapeHtml(res.certification)}</span>` : "";
     
     // Extract ratings for badge helper
     const ratingItem = {
@@ -1982,30 +1982,30 @@ function createSearchCard(res, type) {
         const visibleText = overview.slice(0, maxChars);
         const hiddenText = overview.slice(maxChars);
         plotHtml = `
-            <span class="plot-visible">${visibleText}</span><span class="plot-ellipsis">...</span><span class="plot-hidden hidden">${hiddenText}</span><button class="plot-more-btn">more</button>
+            <span class="plot-visible">${escapeHtml(visibleText)}</span><span class="plot-ellipsis">...</span><span class="plot-hidden hidden">${escapeHtml(hiddenText)}</span><button class="plot-more-btn">more</button>
         `;
     } else {
-        plotHtml = overview;
+        plotHtml = escapeHtml(overview);
     }
     
     // Poster HTML
-    const navUrl = getPosterNavigationUrl(res, type);
+    const navUrl = safeUrl(getPosterNavigationUrl(res, type));
     let posterHtml = "";
     if (posterUrl) {
         posterHtml = `
-            <a href="${navUrl}" target="_blank" class="card-poster-link" title="Click to view external page">
+            <a href="${escapeHtml(navUrl)}" target="_blank" class="card-poster-link" title="Click to view external page">
                 <div class="card-poster">
-                    <img src="${posterUrl}" alt="${title} poster" class="poster-img" onerror="this.onerror=null; this.parentElement.innerHTML='<div class=&quot;poster-fallback&quot;><span>${type === 'tv' ? '📺' : '🎬'}</span><p style=&quot;font-size: 11px; padding: 0 8px; font-weight: 500; color: var(--text-primary); text-transform: uppercase; letter-spacing: 0.5px;&quot;>${title.replace(/'/g, '&#39;').replace(/"/g, '&quot;')}</p></div>';">
+                    <img src="${escapeHtml(safeUrl(posterUrl))}" alt="${escapeHtml(title)} poster" class="poster-img" data-fallback-title="${escapeHtml(title)}" data-fallback-icon="${type === 'tv' ? 'tv' : 'movie'}" onerror="xarrtoolsPosterFallback(this)">
                 </div>
             </a>
         `;
     } else {
         posterHtml = `
-            <a href="${navUrl}" target="_blank" class="card-poster-link" title="Click to view external page">
+            <a href="${escapeHtml(navUrl)}" target="_blank" class="card-poster-link" title="Click to view external page">
                 <div class="card-poster">
                     <div class="poster-fallback">
                         <span>${type === 'tv' ? '📺' : '🎬'}</span>
-                        <p style="font-size: 11px; padding: 0 8px; font-weight: 500; color: var(--text-primary); text-transform: uppercase; letter-spacing: 0.5px;">${title.replace(/'/g, '&#39;').replace(/"/g, '&quot;')}</p>
+                        <p style="font-size: 11px; padding: 0 8px; font-weight: 500; color: var(--text-primary); text-transform: uppercase; letter-spacing: 0.5px;">${escapeHtml(title)}</p>
                     </div>
                 </div>
             </a>
@@ -2015,13 +2015,13 @@ function createSearchCard(res, type) {
     // External source chips
     let chipsHtml = "";
     if (res.imdbId) {
-        chipsHtml += `<a href="https://www.imdb.com/title/${res.imdbId}/" target="_blank" class="chip chip-imdb">IMDb</a>`;
+        chipsHtml += `<a href="https://www.imdb.com/title/${encodeURIComponent(String(res.imdbId))}/" target="_blank" class="chip chip-imdb">IMDb</a>`;
     }
     if (type === "movie" && res.tmdbId) {
-        chipsHtml += `<a href="https://www.themoviedb.org/movie/${res.tmdbId}" target="_blank" class="chip chip-tmdb">TMDB</a>`;
+        chipsHtml += `<a href="https://www.themoviedb.org/movie/${encodeURIComponent(String(res.tmdbId))}" target="_blank" class="chip chip-tmdb">TMDB</a>`;
     }
     if (type === "tv" && res.tvdbId) {
-        chipsHtml += `<a href="https://thetvdb.com/dereferrer/series/${res.tvdbId}" target="_blank" class="chip chip-tvdb">TVDB</a>`;
+        chipsHtml += `<a href="https://thetvdb.com/dereferrer/series/${encodeURIComponent(String(res.tvdbId))}" target="_blank" class="chip chip-tvdb">TVDB</a>`;
     }
     const searchString = encodeURIComponent(`${title} ${year} ${type === 'tv' ? 'tv show' : 'movie'}`);
     chipsHtml += `<a href="https://www.google.com/search?q=${searchString}" target="_blank" class="chip chip-google">Google Search 🔍</a>`;
@@ -2034,15 +2034,15 @@ function createSearchCard(res, type) {
         ${posterHtml}
         <div class="card-info-content">
             <div class="card-title-row">
-                <h3>${title}</h3>
+                <h3>${escapeHtml(title)}</h3>
                 <div class="card-year-refresh">
-                    <span class="year">${year}</span>
+                    <span class="year">${escapeHtml(year)}</span>
                 </div>
             </div>
             <div class="card-badges">
-                <span class="badge badge-network">${network}</span>
+                <span class="badge badge-network">${escapeHtml(network)}</span>
                 ${certification}
-                ${runtime ? `<span class="badge badge-network">${runtime}</span>` : ''}
+                ${runtime ? `<span class="badge badge-network">${escapeHtml(runtime)}</span>` : ''}
                 ${inLibrary ? '<span class="badge badge-in-library">In Library</span>' : ''}
             </div>
             ${buildRatingBadgesHtml(ratingItem)}
@@ -2143,6 +2143,33 @@ function openAddModalFromLookup(res, type, card) {
     
     modalOverlay.classList.remove("hidden");
 }
+
+window.xarrtoolsPosterFallback = function(img) {
+    if (!img) return;
+    img.onerror = null;
+    const parent = img.parentElement;
+    if (!parent) return;
+
+    const title = img.getAttribute("data-fallback-title") || "";
+    const iconType = img.getAttribute("data-fallback-icon");
+    const emoji = iconType === "tv" ? "📺" : "🎬";
+
+    const fallbackDiv = document.createElement("div");
+    fallbackDiv.className = "poster-fallback";
+
+    const iconSpan = document.createElement("span");
+    iconSpan.textContent = emoji;
+
+    const titleP = document.createElement("p");
+    titleP.style.cssText = "font-size: 11px; padding: 0 8px; font-weight: 500; color: var(--text-primary); text-transform: uppercase; letter-spacing: 0.5px;";
+    titleP.textContent = title;
+
+    fallbackDiv.appendChild(iconSpan);
+    fallbackDiv.appendChild(titleP);
+
+    parent.innerHTML = "";
+    parent.appendChild(fallbackDiv);
+};
 
 function getPosterNavigationUrl(item, type) {
     return moduleGetPosterNavigationUrl(item, type);
@@ -2587,6 +2614,10 @@ function escapeHtml(v) {
     return moduleEscapeHtml(v);
 }
 
+function safeUrl(u) {
+    return moduleSafeUrl(u);
+}
+
 function countryName(code) {
     return moduleCountryName(code);
 }
@@ -2676,8 +2707,8 @@ function populateFilterOptions() {
             option.className = "multiselect-option";
             const isChecked = selectedGenres.has(genre);
             option.innerHTML = `
-                <input type="checkbox" value="${genre}" ${isChecked ? 'checked' : ''}>
-                <span>${genre}</span>
+                <input type="checkbox" value="${escapeHtml(genre)}" ${isChecked ? 'checked' : ''}>
+                <span>${escapeHtml(genre)}</span>
             `;
             option.querySelector("input").addEventListener("change", (e) => {
                 if (e.target.checked) {
@@ -2701,8 +2732,8 @@ function populateFilterOptions() {
             option.className = "multiselect-option";
             const isChecked = selectedNetworks.has(network);
             option.innerHTML = `
-                <input type="checkbox" value="${network}" ${isChecked ? 'checked' : ''}>
-                <span>${network}</span>
+                <input type="checkbox" value="${escapeHtml(network)}" ${isChecked ? 'checked' : ''}>
+                <span>${escapeHtml(network)}</span>
             `;
             option.querySelector("input").addEventListener("change", (e) => {
                 if (e.target.checked) {

@@ -84,6 +84,7 @@ def get_module_injection_code() -> str:
 
     // cards.js exports
     globalThis.moduleEscapeHtml = _distCards.escapeHtml;
+    globalThis.moduleSafeUrl = _distCards.safeUrl;
     globalThis.moduleCountryName = _distCards.countryName;
     globalThis.moduleLocaleBadge = _distCards.localeBadge;
     globalThis.moduleBuildRatingBadgesHtml = _distCards.buildRatingBadgesHtml;

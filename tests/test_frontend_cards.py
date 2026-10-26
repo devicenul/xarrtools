@@ -5,10 +5,12 @@ buildRatingBadgesHtml, getPosterNavigationUrl, and buildMediaCardHtml.
 Ensures byte-parity with the legacy app.js card innerHTML construction.
 """
 import json
+import re
 import shutil
 import subprocess
 from pathlib import Path
 import pytest
+from tests.frontend_harness import check_node_and_dist
 
 pytestmark = pytest.mark.skipif(shutil.which("node") is None, reason="node not available")
 
@@ -22,6 +24,7 @@ def run_node_module(body: str):
     code = f"""
 import {{
   escapeHtml,
+  safeUrl,
   countryName,
   localeBadge,
   buildRatingBadgesHtml,
@@ -41,15 +44,45 @@ import {{
 def test_escape_html_and_country_name():
     res = run_node_module("""
       const escaped = escapeHtml('<div class="test" data-v=\\'1\\'>A & B</div>');
+      const nullVal = escapeHtml(null);
+      const undefVal = escapeHtml(undefined);
+      const numVal = escapeHtml(2026);
       const us = countryName("US");
       const kr = countryName("KR");
       const unknown = countryName("ZZ");
-      console.log(JSON.stringify({ escaped, us, kr, unknown }));
+      console.log(JSON.stringify({ escaped, nullVal, undefVal, numVal, us, kr, unknown }));
     """)
     assert res["escaped"] == "&lt;div class=&quot;test&quot; data-v=&#39;1&#39;&gt;A &amp; B&lt;/div&gt;"
+    assert res["nullVal"] == ""
+    assert res["undefVal"] == ""
+    assert res["numVal"] == "2026"
     assert res["us"] in ("United States", "US")
     assert res["kr"] in ("South Korea", "KR")
     assert res["unknown"] in ("ZZ", "Unknown Region")
+
+
+def test_safe_url():
+    res = run_node_module("""
+      const http = safeUrl("http://example.com/poster.jpg");
+      const https = safeUrl("https://example.com/trailer?v=1&t=2");
+      const rel = safeUrl("/static/img.png");
+      const protoRel = safeUrl("//evil.com/x");
+      const js = safeUrl("javascript:alert(1)");
+      const data = safeUrl("data:text/html,<script>alert(1)</script>");
+      const vb = safeUrl("vbscript:msgbox(1)");
+      const empty = safeUrl("");
+      const nil = safeUrl(null);
+      console.log(JSON.stringify({ http, https, rel, protoRel, js, data, vb, empty, nil }));
+    """)
+    assert res["http"] == "http://example.com/poster.jpg"
+    assert res["https"] == "https://example.com/trailer?v=1&t=2"
+    assert res["rel"] == "/static/img.png"
+    assert res["protoRel"] == ""
+    assert res["js"] == ""
+    assert res["data"] == ""
+    assert res["vb"] == ""
+    assert res["empty"] == ""
+    assert res["nil"] == ""
 
 
 def test_locale_badge_rendering():
@@ -252,8 +285,8 @@ def test_build_media_card_html_byte_parity():
         const type = idx === 0 ? "tv" : "movie";
         const moduleOutput = buildMediaCardHtml(item, type, {{ isAdded: Boolean(item.is_in_library), index: idx }});
         results.push({{
-          hasTitle: moduleOutput.includes(item.title),
-          hasNetwork: moduleOutput.includes(item.network),
+          hasTitle: moduleOutput.includes(escapeHtml(item.title)),
+          hasNetwork: moduleOutput.includes(escapeHtml(item.network)),
           length: moduleOutput.length
         }});
       }}
@@ -262,3 +295,64 @@ def test_build_media_card_html_byte_parity():
     assert len(res) == 2
     assert res[0]["hasTitle"] and res[0]["hasNetwork"]
     assert res[1]["hasTitle"] and res[1]["hasNetwork"]
+
+
+def test_build_media_card_html_xss_protection():
+    check_node_and_dist()
+    res = run_node_module("""
+      const hostileItem = {
+        title: '<img src=x onerror=alert(1)> "O\\'Reilly" & <script>',
+        year: 2026,
+        network: '"><svg onload=1>',
+        country: "US",
+        language: "English",
+        genres: ['Action"genre', '<script>alert(2)</script>'],
+        is_returning: false,
+        is_in_library: false,
+        has_new_metadata: false,
+        is_archived: false,
+        cast: 'Cast "Member" & \\'Co-Star\\'',
+        director: 'Director "Villeneuve" & <script>',
+        producer: "Producer 'Mary' & <test>",
+        plot: '</div><script>alert(1)</script>',
+        poster_url: "javascript:alert(1)",
+        trailer: "javascript:alert(2)",
+        href: "data:text/html,<script>alert(1)</script>",
+        rating_imdb: 8.0
+      };
+
+      const tvHtml = buildMediaCardHtml(hostileItem, "tv", { isAdded: false, index: 0 });
+      const movieHtml = buildMediaCardHtml(hostileItem, "movie", { isAdded: false, index: 1 });
+      const fallbackHtml = buildMediaCardHtml({ ...hostileItem, poster_url: "" }, "movie");
+      console.log(JSON.stringify({ tvHtml, movieHtml, fallbackHtml }));
+    """)
+
+    for key in ("tvHtml", "movieHtml", "fallbackHtml"):
+        html = res[key]
+
+        # Assert no raw malicious tags
+        assert "<img src=x" not in html
+        assert "<script" not in html
+        assert "<svg onload" not in html
+
+        # Assert no javascript: or data: in href or src attributes
+        assert 'href="javascript:' not in html
+        assert 'src="javascript:' not in html
+        assert 'href="data:' not in html
+        assert 'src="data:' not in html
+        assert not re.search(r'(?:href|src)=["\']\s*(?:javascript|data):', html, re.IGNORECASE)
+
+        # Assert special characters appear as escaped entities
+        assert "&lt;img src=x onerror=alert(1)&gt;" in html
+        assert "&lt;/div&gt;&lt;script&gt;alert(1)&lt;/script&gt;" in html
+        assert "&quot;&gt;&lt;svg onload=1&gt;" in html
+        assert "&#39;" in html
+        assert "&quot;" in html
+
+        # Assert the onerror attribute contains no title text
+        onerror_matches = re.findall(r'onerror="([^"]*)"', html)
+        for m in onerror_matches:
+            assert m == "xarrtoolsPosterFallback(this)"
+            assert "alert" not in m
+            assert "Reilly" not in m
+            assert "script" not in m
