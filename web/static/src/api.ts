@@ -216,12 +216,16 @@ export async function clearCache(): Promise<ApiResponse> {
 /**
  * Build backup export URL.
  */
-export function getBackupExportUrl(includeMedia: boolean = true): string {
-  return `/api/backup/export?include_media=${includeMedia}`;
+export function getBackupExportUrl(includeMedia: boolean = true, format?: string): string {
+  let url = `/api/backup/export?include_media=${includeMedia}`;
+  if (format && format !== "json") {
+    url += `&format=${format}`;
+  }
+  return url;
 }
 
 /**
- * Import settings and cached media data from an uploaded JSON file.
+ * Import settings and cached media data from an uploaded JSON or ZIP file.
  * POST /api/backup/import
  */
 export async function importBackup(formData: FormData): Promise<BackupImportResponse> {

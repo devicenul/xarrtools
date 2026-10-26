@@ -46,6 +46,7 @@ dist/
 *.log
 .coverage.*
 coverage.xml
+posters/
 
 # Node (only used for ad-hoc JS syntax checks / tests)
 node_modules/

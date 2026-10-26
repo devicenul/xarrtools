@@ -200,6 +200,8 @@ export interface CacheStatsResponse extends ApiResponse {
 export interface BackupImportResponse extends ApiResponse {
   settings_count?: number;
   media_count?: number;
+  posters_count?: number;
+  custom_feeds_count?: number;
 }
 
 export interface FeedItem {

@@ -665,28 +665,39 @@ def handle_discovery_workflow():
 
 def handle_export_workflow():
     console.print("\n[bold yellow]Backup Settings & Cache[/bold yellow]")
+    console.print("[yellow]Warning: Backups contain API keys in plain text. Keep exported files private and secure.[/yellow]")
     include_media = Confirm.ask("Include basic details of cached media objects?", default=True)
     
     default_filename = "xarrtools_backup.json"
-    filename = Prompt.ask("Enter destination file path", default=default_filename)
+    filename = Prompt.ask("Enter destination file path (.json for settings/cache, .zip for full backup with posters)", default=default_filename)
     
     try:
-        from core.db import export_to_dict
-        data = export_to_dict(include_media=include_media)
-        import json
-        content = json.dumps(data, indent=2)
-        
-        with open(filename, "w", encoding="utf-8") as f:
-            f.write(content)
+        if filename.lower().endswith(".zip"):
+            from core.backup import export_full_backup
+            res = export_full_backup(filename, include_media=include_media)
+            console.print(f"[green]✓ Successfully exported full backup to '{filename}'[/green]")
+            console.print(f"  - Settings: [bold]{res.get('settings_count', 0)}[/bold]")
+            console.print(f"  - Custom feeds: [bold]{res.get('custom_feeds_count', 0)}[/bold]")
+            console.print(f"  - Media items: [bold]{res.get('media_count', 0)}[/bold]")
+            console.print(f"  - Posters cached: [bold]{res.get('posters_count', 0)}[/bold]")
+        else:
+            from core.db import export_to_dict
+            data = export_to_dict(include_media=include_media)
+            import json
+            content = json.dumps(data, indent=2)
             
-        console.print(f"[green]✓ Successfully exported backup to '{filename}'[/green]")
+            with open(filename, "w", encoding="utf-8") as f:
+                f.write(content)
+                
+            console.print(f"[green]✓ Successfully exported backup to '{filename}'[/green]")
     except Exception as e:
         console.print(f"[red]Error exporting backup: {e}[/red]")
 
 
 def handle_import_workflow():
     console.print("\n[bold yellow]Restore Settings & Cache[/bold yellow]")
-    filename = Prompt.ask("Enter path to backup file (.json)")
+    console.print("[yellow]Warning: Backups contain API keys in plain text. Keep them private and secure.[/yellow]")
+    filename = Prompt.ask("Enter path to backup file (.json or .zip)")
     
     import os
     if not os.path.exists(filename):
@@ -694,17 +705,33 @@ def handle_import_workflow():
         return
         
     try:
-        with open(filename, "r", encoding="utf-8") as f:
+        with open(filename, "rb") as f:
             content = f.read()
             
+        if content.startswith(b"PK") or filename.lower().endswith(".zip"):
+            from core.backup import import_full_backup
+            import io
+            res = import_full_backup(io.BytesIO(content))
+            console.print(f"[green]✓ Successfully imported backup from '{filename}'![/green]")
+            console.print(f"  - Settings imported/updated: [bold]{res.get('settings_count', 0)}[/bold]")
+            console.print(f"  - Custom feeds imported/updated: [bold]{res.get('custom_feeds_count', 0)}[/bold]")
+            console.print(f"  - Media items imported/updated: [bold]{res.get('media_count', 0)}[/bold]")
+            console.print(f"  - Posters restored: [bold]{res.get('posters_count', 0)}[/bold]")
+            return
+            
         import json
-        data = json.loads(content)
+        data = json.loads(content.decode("utf-8"))
         
         if not isinstance(data, dict):
             console.print("[red]Invalid backup file structure.[/red]")
             return
             
-        from core.db import import_from_dict
+        from core.db import verify_backup_checksum, import_from_dict
+        check = verify_backup_checksum(data)
+        if check is False:
+            console.print("[red]Error: Backup checksum verification failed (file corrupted or tampered).[/red]")
+            return
+            
         s_count, m_count = import_from_dict(data)
         console.print(f"[green]✓ Successfully imported backup from '{filename}'![/green]")
         console.print(f"  - Settings imported/updated: [bold]{s_count}[/bold]")

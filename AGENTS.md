@@ -35,6 +35,8 @@ Read this file first, then [docs/architecture.md](docs/architecture.md) (how it 
 | `core/enricher.py` | `enrich_tv_show` (TVmaze, Sonarr, Wikipedia cast fallback) and `enrich_movie` (Radarr, TMDB, Wikipedia fallback) |
 | `core/tmdb.py` | TMDB client: chunked discovery and per-movie enrichment |
 | `core/db.py` | SQLite schema, migrations, cache CRUD, settings, backup/restore |
+| `core/backup.py` | Full archive ZIP export/import, manifest integrity, and backup checksum verification |
+| `core/posters.py` | Local poster disk cache, metadata sidecars, and SSRF-safe download helpers |
 | `core/metadata.py` | Missing-metadata rules and the auto-archive state machine |
 | `core/locales.py` | Language/country normalisation and the Unicode-aware `slug()` title key |
 | `core/client.py`, `core/config.py` | Radarr/Sonarr API clients; settings/.env access |

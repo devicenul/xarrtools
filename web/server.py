@@ -252,9 +252,23 @@ def manage_settings():
 
 @app.route("/api/backup/export", methods=["GET"])
 def backup_export():
-    """Exports settings and optionally cached media data as a JSON file attachment."""
+    """Exports settings and optionally cached media data as a JSON file or full ZIP archive attachment."""
     include_media = request.args.get("include_media", "true").lower() == "true"
+    fmt = request.args.get("format", "json").lower()
     try:
+        if fmt == "full":
+            from core.backup import export_full_backup
+            import io
+            bio = io.BytesIO()
+            export_full_backup(bio, include_media=include_media)
+            return Response(
+                bio.getvalue(),
+                mimetype="application/zip",
+                headers={
+                    "Content-Type": "application/zip",
+                    "Content-Disposition": "attachment; filename=xarrtools_full_backup.zip"
+                }
+            )
         data = export_to_dict(include_media=include_media)
         import json
         json_data = json.dumps(data, indent=2)
@@ -268,7 +282,7 @@ def backup_export():
 
 @app.route("/api/backup/import", methods=["POST"])
 def backup_import():
-    """Imports settings and cached media data from an uploaded JSON file."""
+    """Imports settings and cached media data from an uploaded JSON or ZIP file."""
     if "file" not in request.files:
         return jsonify({"status": "error", "message": "No file uploaded."}), 400
         
@@ -277,12 +291,33 @@ def backup_import():
         return jsonify({"status": "error", "message": "No file selected."}), 400
         
     try:
+        content = file.read()
+        
+        # Detect ZIP by magic bytes: PK
+        if content.startswith(b"PK"):
+            from core.backup import import_full_backup
+            import io
+            bio = io.BytesIO(content)
+            res = import_full_backup(bio)
+            return jsonify({
+                "status": "success",
+                "message": "Full backup imported successfully.",
+                "settings_count": res.get("settings_count", 0),
+                "media_count": res.get("media_count", 0),
+                "posters_count": res.get("posters_count", 0),
+                "custom_feeds_count": res.get("custom_feeds_count", 0)
+            })
+            
         import json
-        content = file.read().decode("utf-8")
-        data = json.loads(content)
+        data = json.loads(content.decode("utf-8"))
         
         if not isinstance(data, dict):
             return jsonify({"status": "error", "message": "Invalid backup file structure."}), 400
+            
+        from core.db import verify_backup_checksum
+        check = verify_backup_checksum(data)
+        if check is False:
+            return jsonify({"status": "error", "message": "Backup checksum verification failed (file corrupted or tampered)."}), 400
             
         settings_count, media_count = import_from_dict(data)
         
@@ -290,8 +325,12 @@ def backup_import():
             "status": "success",
             "message": "Backup imported successfully.",
             "settings_count": settings_count,
-            "media_count": media_count
+            "media_count": media_count,
+            "posters_count": 0
         })
+    except ValueError as ve:
+        app.logger.error(f"Validation error importing backup: {ve}")
+        return jsonify({"status": "error", "message": str(ve)}), 400
     except Exception as e:
         app.logger.error(f"Error importing backup: {e}")
         return jsonify({"status": "error", "message": str(e)}), 500
@@ -300,48 +339,46 @@ import re
 from flask import Response
 @app.route("/api/poster", methods=["GET"])
 def proxy_poster():
-    """Proxies poster images safely to prevent mixed content and SSRF/path traversal."""
+    """Proxies poster images safely to prevent mixed content and SSRF/path traversal, with disk cache."""
+    from core.posters import validate_poster_url, get_cached_poster, store_poster, MAX_POSTER_SIZE
     url = request.args.get("url")
     if not url:
         return "Missing URL", 400
         
-    # Prevent path traversal in file:// or other weird schemes
     if not re.match(r"^https?://", url):
         return "Invalid URL scheme", 400
-        
-    try:
-        import urllib.parse
-        import ipaddress
-        import socket
-        
-        parsed = urllib.parse.urlparse(url)
-        hostname = parsed.hostname
-        if not hostname:
-            return "Invalid URL", 400
-            
-        # Resolve IP to protect against SSRF to private/internal networks
-        ip = socket.gethostbyname(hostname)
-        ip_obj = ipaddress.ip_address(ip)
-        if ip_obj.is_private or ip_obj.is_loopback or ip_obj.is_link_local or str(ip_obj) == "169.254.169.254":
-            allowed = False
-            for srv_url in [config.radarr_url, config.sonarr_url]:
-                if srv_url:
-                    srv_parsed = urllib.parse.urlparse(srv_url)
-                    if srv_parsed.hostname == hostname:
-                        allowed = True
-                        break
-            if not allowed:
-                return "Forbidden destination IP", 403
 
+    cached = get_cached_poster(url)
+    if cached:
+        data, content_type = cached
+        r = Response(data, mimetype=content_type)
+        r.headers["X-Content-Type-Options"] = "nosniff"
+        return r
+
+    valid, err, code = validate_poster_url(url)
+    if not valid:
+        return err, code
+
+    try:
         import requests
         resp = requests.get(url, stream=True, timeout=5)
         resp.raise_for_status()
+        content_type = resp.headers.get("Content-Type", "image/jpeg")
         
-        def generate():
-            for chunk in resp.iter_content(chunk_size=4096):
-                yield chunk
+        chunks = []
+        total_size = 0
+        for chunk in resp.iter_content(chunk_size=4096):
+            chunks.append(chunk)
+            total_size += len(chunk)
+            if total_size > MAX_POSTER_SIZE:
+                break
                 
-        r = Response(generate(), mimetype=resp.headers.get("Content-Type", "image/jpeg"))
+        data = b"".join(chunks)
+        ct = content_type.lower().split(";")[0].strip()
+        if total_size <= MAX_POSTER_SIZE and ct.startswith("image/"):
+            store_poster(url, data, ct)
+            
+        r = Response(data, mimetype=content_type)
         r.headers["X-Content-Type-Options"] = "nosniff"
         return r
     except Exception as e:

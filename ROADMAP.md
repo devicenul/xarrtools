@@ -98,7 +98,13 @@ This document tracks planned future functionality, architectural changes, and us
 - Items archived by hand are never resurfaced by new metadata.
 
 ### ✓ Backup & Restore Settings and Cache (Web UI, Standalone App, and CLI)
-- Export and import configuration settings and discovery cache databases with full schema validation and checksum integrity.
+- Export and import configuration settings and basic discovery cache databases with top-level `format_version: 1` and SHA-256 canonical JSON checksum integrity verification (accepting legacy unchecksummed files while rejecting tampered ones).
+
+### ✓ Full Instance Backup & Poster Disk Cache (ZIP & On-Disk Cache)
+- **Full Backup Archive (`.zip`)**: Export and restore entire instances including `backup.json` (`format_version: 2`), all cache columns (preserving descriptions, cast, ratings, directors, producers, dates, trailers, etc.), custom feeds with automated foreign key remapping via feed name/url, and SHA-256 integrity checksums.
+- **Manifest Integrity & Safety**: Generates `manifest.json` recording SHA-256 hashes for all archive files alongside a poster URL index `{sha256(url): url}`. Import verifies manifest hashes and checksums before writing to disk/DB, enforces zip-slip/path-traversal protection, and caps archive sizes (entries $\le$ 20MB, total $\le$ 2GB).
+- **Atomic Single-Transaction Restore**: Executes settings, custom feeds, and cache row upserts in a single SQLite transaction with sticky manual archives (`manually_archived = 1`) and sticky library presence.
+- **Local Poster Disk Cache**: Next-to-database poster cache directory (`posters/` next to `core.db.DB_PATH`) keyed by SHA-256 of the remote URL with metadata sidecars (`.meta`), automatic write-through caching on `/api/poster`, 10MB entry size caps, and shared SSRF protection. Concurrent export downloads missing posters via a thread pool worker queue while skipping failures gracefully.
 
 ### ✓ Low-Metadata Auto-Archiving & Smart Unarchiving with Badging
 - Automatically inspects the 4 core metadata fields (**Title**, **Studio/Network**, **Cast**, and **Plot**).

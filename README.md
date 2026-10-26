@@ -47,10 +47,12 @@ xarrtools/
 │
 ├── core/                       # Shared Domain Logic & Database layer
 │   ├── __init__.py
+│   ├── backup.py               # Full archive ZIP export/import and checksum verifier
 │   ├── client.py               # Radarr & Sonarr REST API wrappers
 │   ├── config.py               # Dynamic settings accessor (DB with .env fallback)
 │   ├── db.py                   # SQLite Cache & Settings database manager
 │   ├── enricher.py             # Metadata crawler (TVDB, TMDB, IMDb matching)
+│   ├── posters.py              # Poster disk cache and SSRF-safe download helpers
 │   └── scraper.py              # Metacritic / Release calendar HTML scrapers
 │
 ├── web/                        # Web Backend (Flask) & Frontend Assets

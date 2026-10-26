@@ -95,7 +95,12 @@ Languages`. `itemPassesFilters(item, type)` is the single predicate used by `ren
 `language`).
 Node-based test suites exercise compiled modules: `tests/test_frontend_filters.py`, `tests/test_frontend_api.py`,
 `tests/test_frontend_cards.py`, `tests/test_frontend_settings.py`, and `tests/test_frontend_modals.py`; `tests/test_m3_static_template_challenge.py` checks HTML/JS id parity.
-Build tooling is defined in `package.json` and `tsconfig.json`.
+## Backup & Poster cache (`core/backup.py`, `core/posters.py`)
+
+- **JSON backup** (`/api/backup/export?format=json`, `core.db.export_to_dict`): settings + basic media rows, top-level `format_version: 1`, and SHA-256 canonical JSON `checksum`. Unchecksummed legacy files are accepted; checksum mismatches are rejected with 400.
+- **Full instance backup** (`/api/backup/export?format=full`, `core.backup.export_full_backup`): complete `.zip` archive holding `backup.json` (`format_version: 2`, all cache columns, custom feeds with remapped source feed IDs, canonical checksum), `manifest.json` (SHA-256 hash of all files and `{sha256(url): url}` poster index), and downloaded poster images under `posters/`.
+- **Integrity & safety**: `import_full_backup` validates zip-slip/path traversal, caps entry sizes (<= 20MB) and total uncompressed size (<= 2GB), verifies manifest hashes and backup.json checksum before writing anything. Settings, custom feeds, and cache rows are restored in a single SQLite transaction with sticky manual archives and library presence preserved.
+- **Poster disk cache**: `posters/` folder next to the database (`core.posters.get_posters_dir`) storing raw bytes with `.meta` sidecars keyed by URL SHA-256. `/api/poster` (`web/server.py::proxy_poster`) checks this disk cache first to avoid network roundtrips, and writes through on successful fetch with SSRF validation (private/loopback IPs blocked, server hostnames allowed) and nosniff headers.
 
 ## Tests
 

@@ -344,9 +344,17 @@ export async function wipeCacheManually(): Promise<void> {
 export function exportBackup(): void {
   let includeMedia = false;
   if (typeof window !== "undefined" && window.confirm) {
-    includeMedia = window.confirm("Include cached media details (identifiers & library indicators) in the backup JSON file?");
+    includeMedia = window.confirm("Include cached media details (identifiers & library indicators) in the backup JSON file?\n\nNote: The export file contains your API keys in plain text.");
   }
   window.location.href = apiGetBackupExportUrl(includeMedia);
+}
+
+export function exportFullBackup(): void {
+  let includeMedia = true;
+  if (typeof window !== "undefined" && window.confirm) {
+    includeMedia = window.confirm("Include cached media details and posters in the full backup archive (.zip)?\n\nNote: The export file contains your API keys in plain text.");
+  }
+  window.location.href = apiGetBackupExportUrl(includeMedia, "full");
 }
 
 export function triggerBackupImport(): void {
@@ -372,7 +380,14 @@ export async function importBackup(e: Event): Promise<void> {
   try {
     const data = await apiImportBackup(formData);
     if ((data.ok ?? true) && data.status === "success") {
-      alert(`Backup imported successfully!\n\nImported/Updated:\n- Settings: ${data.settings_count}\n- Media Items: ${data.media_count}`);
+      let details = `Imported/Updated:\n- Settings: ${data.settings_count ?? 0}\n- Media Items: ${data.media_count ?? 0}`;
+      if (typeof data.posters_count === "number" && data.posters_count > 0) {
+        details += `\n- Posters: ${data.posters_count}`;
+      }
+      if (typeof data.custom_feeds_count === "number" && data.custom_feeds_count > 0) {
+        details += `\n- Custom Feeds: ${data.custom_feeds_count}`;
+      }
+      alert(`Backup imported successfully!\n\n${details}`);
       location.reload();
     } else {
       alert(`Failed to import backup: ${data.message || "Unknown error"}`);

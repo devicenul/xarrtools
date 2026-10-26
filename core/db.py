@@ -847,7 +847,8 @@ def update_cached_library_status(type_: str, title: str, year: int, is_in_librar
 
 
 def export_to_dict(include_media: bool = True) -> dict:
-    """Exports all settings and optionally basic details of cached media objects to a dict."""
+    """Exports all settings and optionally basic details of cached media objects to a dict with integrity checksum."""
+    import hashlib
     conn = get_db_connection()
     cursor = conn.cursor()
     
@@ -855,7 +856,10 @@ def export_to_dict(include_media: bool = True) -> dict:
     cursor.execute("SELECT key, value FROM settings")
     settings = {row["key"]: row["value"] for row in cursor.fetchall()}
     
-    data = {"settings": settings}
+    data = {
+        "format_version": 1,
+        "settings": settings
+    }
     
     # 2. Optionally fetch basic media items
     if include_media:
@@ -878,7 +882,23 @@ def export_to_dict(include_media: bool = True) -> dict:
         data["media_items"] = media_items
         
     conn.close()
+    canonical = json.dumps(data, sort_keys=True, separators=(',', ':'), ensure_ascii=False).encode('utf-8')
+    data["checksum"] = hashlib.sha256(canonical).hexdigest()
     return data
+
+
+def verify_backup_checksum(data: dict) -> bool | None:
+    """Verifies SHA-256 checksum of canonical JSON payload. None if absent (legacy), True if valid, False if mismatch."""
+    import hashlib
+    if not isinstance(data, dict):
+        return False
+    if "checksum" not in data:
+        return None
+    expected = data["checksum"]
+    payload = {k: v for k, v in data.items() if k != "checksum"}
+    canonical = json.dumps(payload, sort_keys=True, separators=(',', ':'), ensure_ascii=False).encode('utf-8')
+    actual = hashlib.sha256(canonical).hexdigest()
+    return actual == expected
 
 
 def import_from_dict(data: dict) -> tuple[int, int]:
