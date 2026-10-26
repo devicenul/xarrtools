@@ -119,6 +119,9 @@ globalThis.document = {{
   }},
   createElement(tag) {{
     return createMockEl(tag);
+  }},
+  createDocumentFragment() {{
+    return createMockEl('fragment');
   }}
 }};
 

@@ -66,6 +66,13 @@ def run_node_harness(script_code: str) -> dict:
             this.childNodes = [];
         }}
         appendChild(el) {{
+            if (el.tagName === 'FRAGMENT') {{
+                // Like a real DocumentFragment: move its children into this node.
+                el.children.slice().forEach(c => this.appendChild(c));
+                el.children = [];
+                el.childNodes = [];
+                return el;
+            }}
             el.parentElement = this;
             this.children.push(el);
             this.childNodes.push(el);
@@ -161,6 +168,7 @@ def run_node_harness(script_code: str) -> dict:
     global.document = {{
         addEventListener: () => {{}},
         createElement: (tag) => new MockElement(tag),
+        createDocumentFragment: () => new MockElement("fragment"),
         getElementById: (id) => getOrCreateElement(id),
         querySelector: (sel) => {{
             if (sel && sel.startsWith('#')) return getOrCreateElement(sel.slice(1));

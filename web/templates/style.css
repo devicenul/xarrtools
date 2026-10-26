@@ -468,6 +468,9 @@ select option {
     transition: var(--transition-smooth);
     position: relative;
     overflow: hidden;
+    /* Skip layout/paint of offscreen cards so very large lists stay responsive. */
+    content-visibility: auto;
+    contain-intrinsic-size: auto 260px;
 }
 
 .card-info-content {

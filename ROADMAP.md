@@ -9,7 +9,8 @@ This document tracks planned future functionality, architectural changes, and us
 ### 1. Advanced Frontend Performance & Virtualized Grid
 - **Goal**: Optimize UI responsiveness and DOM memory footprint for very large release libraries (>500 items).
 - **Implementation Strategy**:
-  - Implement progressive hydration and virtualized grid rendering for large release libraries to eliminate offscreen DOM nodes.
+  - **Done (first step):** cards use `content-visibility: auto`, poster images are `loading="lazy"`, and `renderMediaLists` uses an index map plus a single fragment insert (was O(n^2) `indexOf`). Plot text stays clamped with click-to-expand.
+  - **Next:** measure with thousands of synthetic items; only if still slow, implement virtualized grid rendering / progressive hydration (event delegation instead of per-card listeners) to eliminate offscreen DOM nodes.
   - Expand reactive event bus pub/sub patterns across complex modal workflows and live status updates.
 - **Code files involved**: [web/static/src/render.ts](web/static/src/render.ts), [web/static/src/events.ts](web/static/src/events.ts).
 

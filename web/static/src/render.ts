@@ -297,11 +297,14 @@ export function renderMediaLists(): void {
   const tvMatches = state.currentDiscoveries.tv.filter(item => itemPassesFilters(item, "tv"));
   tvMatches.sort(sortItems);
 
+  // Index lookup map + one fragment insert keep large lists O(n) instead of O(n^2) with a single reflow.
+  const tvIndex = new Map<MediaItem, number>(state.currentDiscoveries.tv.map((it, i) => [it, i]));
+  const tvFragment = document.createDocumentFragment();
   tvMatches.forEach(item => {
-    const origIndex = state.currentDiscoveries.tv.indexOf(item);
-    const card = createMediaCard(item, "tv", origIndex);
-    gridTv.appendChild(card);
+    const card = createMediaCard(item, "tv", tvIndex.get(item) ?? -1);
+    tvFragment.appendChild(card);
   });
+  gridTv.appendChild(tvFragment);
 
   if (tvMatches.length === 0) {
     gridTv.innerHTML = `<div class="empty-state">No matching TV shows found.</div>`;
@@ -311,11 +314,14 @@ export function renderMediaLists(): void {
   const movieMatches = state.currentDiscoveries.movies.filter(item => itemPassesFilters(item, "movie"));
   movieMatches.sort(sortItems);
 
+  // Index lookup map + one fragment insert keep large lists O(n) instead of O(n^2) with a single reflow.
+  const movieIndex = new Map<MediaItem, number>(state.currentDiscoveries.movies.map((it, i) => [it, i]));
+  const movieFragment = document.createDocumentFragment();
   movieMatches.forEach(item => {
-    const origIndex = state.currentDiscoveries.movies.indexOf(item);
-    const card = createMediaCard(item, "movie", origIndex);
-    gridMovies.appendChild(card);
+    const card = createMediaCard(item, "movie", movieIndex.get(item) ?? -1);
+    movieFragment.appendChild(card);
   });
+  gridMovies.appendChild(movieFragment);
 
   if (movieMatches.length === 0) {
     gridMovies.innerHTML = `<div class="empty-state">No matching movies found.</div>`;

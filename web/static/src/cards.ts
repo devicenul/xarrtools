@@ -216,7 +216,7 @@ export function buildMediaCardHtml(
     posterHtml = `
             <a href="${escapeHtml(navUrl)}" target="_blank" class="card-poster-link" title="Click to view external page">
                 <div class="card-poster">
-                    <img src="${escapeHtml(safeUrl(item.poster_url))}" alt="${escapeHtml(item.title)} poster" class="poster-img" data-fallback-title="${escapeHtml(item.title)}" data-fallback-icon="${type === "tv" ? "tv" : "movie"}" onerror="xarrtoolsPosterFallback(this)">
+                    <img src="${escapeHtml(safeUrl(item.poster_url))}" alt="${escapeHtml(item.title)} poster" class="poster-img" loading="lazy" decoding="async" data-fallback-title="${escapeHtml(item.title)}" data-fallback-icon="${type === "tv" ? "tv" : "movie"}" onerror="xarrtoolsPosterFallback(this)">
                 </div>
             </a>
         `;
