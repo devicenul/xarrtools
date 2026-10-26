@@ -30,7 +30,7 @@ def test_every_mentioned_path_exists():
 def test_documented_symbols_exist():
     sources = "".join((ROOT / p).read_text(encoding="utf-8") for p in (
         "core/scraper.py", "core/db.py", "core/metadata.py", "core/locales.py", "core/enricher.py",
-        "core/tmdb.py", "web/server.py", "web/templates/app.js"))
+        "core/tmdb.py", "web/server.py", "web/static/src/render.ts", "web/static/src/filters.ts"))
     for symbol in ("get_discoveries", "dedupe_movies", "merge_movie_lists", "_movie_key", "slug", "normalize_title",
                    "add_cached_item", "evaluate_item_state_transition", "archive_cached_item", "enrich_tv_show",
                    "enrich_movie", "itemPassesFilters", "getFilteredUnarchived", "renderMediaLists",

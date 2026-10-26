@@ -1,7 +1,7 @@
 """
 Empirical and Adversarial Test Suite for Milestone 3: Client State & DOM Badging
 ================================================================================
-Stress-tests `web/templates/app.js`, `web/templates/style.css`, and `web/templates/index.html`:
+Stress-tests compiled frontend modules (`web/static/dist/*.js`), `web/templates/style.css`, and `web/templates/index.html`:
 1. Card badging under all permutations of `has_new_metadata` (true, false, undefined, 1, 0, null, "", "true", NaN).
 2. Card badging coexistence alongside returning seasons, in-library items, ratings, and archived items (TV & Movies).
 3. Immediate reset of `item.has_new_metadata` to false upon manual or automatic archive toggle.
@@ -20,22 +20,17 @@ import pytest
 
 from tests.frontend_harness import check_node_and_dist, get_module_injection_code
 
-APP_JS_PATH = Path(__file__).resolve().parent.parent / "web" / "templates" / "app.js"
 STYLE_CSS_PATH = Path(__file__).resolve().parent.parent / "web" / "templates" / "style.css"
 INDEX_HTML_PATH = Path(__file__).resolve().parent.parent / "web" / "templates" / "index.html"
 
 
 def run_node_harness(script_code: str) -> dict:
-    """Executes a JavaScript test snippet in Node.js within the app.js closure scope."""
+    """Executes a JavaScript test snippet in Node.js within the compiled frontend module scope."""
     check_node_and_dist()
     node_bin = shutil.which("node")
 
     wrapped_script = f"""
     (async () => {{
-    {get_module_injection_code()}
-
-    const fs = require('fs');
-    const appJsCode = fs.readFileSync({json.dumps(str(APP_JS_PATH))}, 'utf8').split('\\n').filter(l => !l.startsWith('import ')).join('\\n');
 
     class MockClassList {{
         constructor() {{ this.classes = new Set(); }}
@@ -186,10 +181,30 @@ def run_node_harness(script_code: str) -> dict:
         clear() {{ this.store = {{}}; }}
     }};
 
-    // Combine appJsCode with runner inside same eval scope so let/const declarations are shared
-    const combinedScript = appJsCode + "\\n;\\n(async () => {{\\n" + {json.dumps(script_code)} + "\\n}})();";
+    {get_module_injection_code()}
 
-    await eval(combinedScript);
+    const createMediaCard = globalThis.moduleCreateMediaCard;
+    const renderMediaLists = globalThis.moduleRenderMediaLists;
+    const toggleArchive = globalThis.moduleToggleArchive;
+    const refreshMetadata = globalThis.moduleRefreshMetadata;
+    const invertMultiselect = globalThis.moduleInvertMultiselect;
+    const applyTabFilter = globalThis.moduleApplyTabFilter;
+    const buildRatingBadgesHtml = globalThis.moduleBuildRatingBadgesHtml;
+    const buildMediaCardHtml = globalThis.moduleBuildMediaCardHtml;
+    const escapeHtml = globalThis.moduleEscapeHtml;
+    const state = globalThis.moduleState;
+    const currentDiscoveries = state.currentDiscoveries;
+
+    global.createMediaCard = createMediaCard;
+    global.renderMediaLists = renderMediaLists;
+    global.toggleArchive = toggleArchive;
+    global.refreshMetadata = refreshMetadata;
+    global.currentDiscoveries = currentDiscoveries;
+    global.state = state;
+
+    await (async () => {{
+        {script_code}
+    }})();
     }})().catch(err => {{
         console.error(err);
         process.exit(1);

@@ -1,7 +1,9 @@
 import pytest
+import json
 import os
 import tempfile
 import pathlib
+from pathlib import Path
 import sqlite3
 import subprocess
 from bs4 import BeautifulSoup
@@ -200,15 +202,13 @@ class TestChallenge2EmptyOptionsLists:
             mock_ask.assert_called_with("Choose", default=1)
 
     def test_web_resolve_hybrid_preset_via_node_harness(self):
-        """Run Node.js execution to stress-test resolveHybridPreset directly from app.js."""
+        """Run Node.js execution to stress-test resolveHybridPreset directly from settings.js."""
         check_node_and_dist()
-        app_js_path = os.path.abspath("web/templates/app.js")
+        settings_js = Path(__file__).resolve().parent.parent / "web" / "static" / "dist" / "settings.js"
         
         js_code = f"""
-        const fs = require('fs');
         (async () => {{
-            {get_module_injection_code()}
-            let code = fs.readFileSync('{app_js_path}', 'utf8').split('\\n').filter(l => !l.startsWith('import ')).join('\\n');
+            const {{ resolveHybridPreset: fn }} = await import({json.dumps(settings_js.as_uri())});
 
             // Mock window, localStorage, and DOM environment
             const localStorageStore = {{}};
@@ -225,43 +225,35 @@ class TestChallenge2EmptyOptionsLists:
                 addEventListener: () => {{}}
             }};
 
-            const harness = `
-                ${{code}}
+            // 1. Empty options list edge cases
+            if (fn([], 'id', 1, 'mru') !== '') throw new Error('Empty array failed');
+            if (fn(null, 'id', 1, 'mru') !== '') throw new Error('Null options failed');
+            if (fn(undefined, 'id', 1, 'mru') !== '') throw new Error('Undefined options failed');
+            if (fn('not an array', 'id', 1, 'mru') !== '') throw new Error('String options failed');
+            if (fn([{{}}], 'id', 1, 'mru') !== '') throw new Error('Empty dict options failed');
 
-                const fn = window.resolveHybridPreset;
-                if (typeof fn !== 'function') throw new Error('resolveHybridPreset not found');
+            // 2. Explicit match
+            const profiles = [{{ id: 1, name: 'SD' }}, {{ id: 2, name: 'HD' }}, {{ id: 3, name: '4K' }}];
+            if (fn(profiles, 'id', 2, 'mru') !== '2') throw new Error('Explicit match failed');
+            if (fn(profiles, 'id', '3', 'mru') !== '3') throw new Error('Explicit string match failed');
 
-                // 1. Empty options list edge cases
-                if (fn([], 'id', 1, 'mru') !== '') throw new Error('Empty array failed');
-                if (fn(null, 'id', 1, 'mru') !== '') throw new Error('Null options failed');
-                if (fn(undefined, 'id', 1, 'mru') !== '') throw new Error('Undefined options failed');
-                if (fn('not an array', 'id', 1, 'mru') !== '') throw new Error('String options failed');
-                if (fn([{{}}], 'id', 1, 'mru') !== '') throw new Error('Empty dict options failed');
+            // 3. Deleted explicit -> MRU fallback
+            localStorageStore['mru_key'] = '2';
+            if (fn(profiles, 'id', 999, 'mru_key') !== '2') throw new Error('MRU fallback failed');
 
-                // 2. Explicit match
-                const profiles = [{{ id: 1, name: 'SD' }}, {{ id: 2, name: 'HD' }}, {{ id: 3, name: '4K' }}];
-                if (fn(profiles, 'id', 2, 'mru') !== '2') throw new Error('Explicit match failed');
-                if (fn(profiles, 'id', '3', 'mru') !== '3') throw new Error('Explicit string match failed');
+            // 4. Deleted explicit & deleted MRU -> Safety fallback to index 0
+            localStorageStore['mru_key'] = '888';
+            if (fn(profiles, 'id', 999, 'mru_key') !== '1') throw new Error('Safety fallback failed');
 
-                // 3. Deleted explicit -> MRU fallback
-                localStorageStore['mru_key'] = '2';
-                if (fn(profiles, 'id', 999, 'mru_key') !== '2') throw new Error('MRU fallback failed');
+            // 5. Backend appSettings fallback (via mapped altKey)
+            delete localStorageStore['xarrtools_mru_radarr_profile'];
+            global.appSettings = {{ 'radarr_mru_quality_profile': '3' }};
+            if (fn(profiles, 'id', null, 'xarrtools_mru_radarr_profile') !== '3') throw new Error('appSettings backend fallback failed');
 
-                // 4. Deleted explicit & deleted MRU -> Safety fallback to index 0
-                localStorageStore['mru_key'] = '888';
-                if (fn(profiles, 'id', 999, 'mru_key') !== '1') throw new Error('Safety fallback failed');
+            // 6. Direct appSettings key fallback
+            global.appSettings = {{ 'custom_mru_key': '2' }};
+            if (fn(profiles, 'id', null, 'custom_mru_key') !== '2') throw new Error('appSettings direct fallback failed');
 
-                // 5. Backend appSettings fallback (via mapped altKey)
-                delete localStorageStore['xarrtools_mru_radarr_profile'];
-                appSettings = {{ 'radarr_mru_quality_profile': '3' }};
-                if (fn(profiles, 'id', null, 'xarrtools_mru_radarr_profile') !== '3') throw new Error('appSettings backend fallback failed');
-
-                // 6. Direct appSettings key fallback
-                appSettings = {{ 'custom_mru_key': '2' }};
-                if (fn(profiles, 'id', null, 'custom_mru_key') !== '2') throw new Error('appSettings direct fallback failed');
-            `;
-
-            eval(harness);
             console.log('ALL_NODE_TESTS_PASSED');
         }})().catch(err => {{
             console.error(err);
@@ -270,7 +262,7 @@ class TestChallenge2EmptyOptionsLists:
         """
 
         res = subprocess.run(
-            ["node", "-e", js_code],
+            ["node", "--input-type=module", "-e", js_code],
             capture_output=True,
             text=True
         )
@@ -286,10 +278,13 @@ class TestChallenge3HtmlJsIntegrity:
     """Verifies HTML/JS syntax, DOM element bindings, and language profile deprecation."""
 
     def test_javascript_syntax_cleanliness(self):
-        """Execute node --check on web/templates/app.js to verify valid JS syntax."""
-        app_js_path = os.path.abspath("web/templates/app.js")
-        res = subprocess.run(["node", "--check", app_js_path], capture_output=True, text=True)
-        assert res.returncode == 0, f"JS Syntax Error in app.js:\n{res.stderr}"
+        """Execute node --check on compiled dist files to verify valid JS syntax."""
+        check_node_and_dist()
+        dist_dir = os.path.abspath("web/static/dist")
+        for f in os.listdir(dist_dir):
+            if f.endswith(".js"):
+                res = subprocess.run(["node", "--check", os.path.join(dist_dir, f)], capture_output=True, text=True)
+                assert res.returncode == 0, f"JS Syntax Error in {f}:\n{res.stderr}"
 
     def test_html_syntax_and_unique_ids(self):
         """Parse index.html with BeautifulSoup and ensure valid structure and no duplicate element IDs."""
@@ -311,7 +306,7 @@ class TestChallenge3HtmlJsIntegrity:
         assert not duplicates, f"Duplicate DOM element IDs found in index.html: {duplicates}"
 
     def test_settings_modal_element_ids_exist_in_dom(self):
-        """Verify that all settings selectors referenced in app.js exist in index.html."""
+        """Verify that all settings selectors exist in index.html."""
         html_path = os.path.abspath("web/templates/index.html")
         with open(html_path, "r", encoding="utf-8") as f:
             soup = BeautifulSoup(f.read(), "html.parser")
@@ -340,14 +335,14 @@ class TestChallenge3HtmlJsIntegrity:
             assert el is not None, f"Required element #{req_id} missing from index.html"
 
     def test_language_profile_deprecation_complete_removal(self):
-        """Verify that no language profile UI elements or deprecated identifiers exist in HTML or JS."""
+        """Verify that no language profile UI elements or deprecated identifiers exist in HTML or TS modules."""
         html_path = os.path.abspath("web/templates/index.html")
-        js_path = os.path.abspath("web/templates/app.js")
+        src_dir = Path(__file__).resolve().parent.parent / "web" / "static" / "src"
 
         with open(html_path, "r", encoding="utf-8") as f:
             html_content = f.read()
-        with open(js_path, "r", encoding="utf-8") as f:
-            js_content = f.read()
+        
+        ts_content = "".join(f.read_text(encoding="utf-8") for f in src_dir.glob("*.ts"))
 
         deprecated_tokens = [
             "select-lang-profile",
@@ -360,4 +355,4 @@ class TestChallenge3HtmlJsIntegrity:
 
         for token in deprecated_tokens:
             assert token not in html_content, f"Deprecated token '{token}' found in index.html"
-            assert token not in js_content, f"Deprecated token '{token}' found in app.js"
+            assert token not in ts_content, f"Deprecated token '{token}' found in web/static/src/*.ts"

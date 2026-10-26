@@ -45,7 +45,7 @@ def client(test_app):
 # ============================================================================
 
 def test_static_delivery_app_js_query_params_and_headers(client):
-    """Adversarially tests /static/app.js under varied query parameters and request headers."""
+    """Adversarially tests /static/dist/main.js under varied query parameters and request headers."""
     test_queries = [
         "",
         "?v=1.0.4",
@@ -56,7 +56,7 @@ def test_static_delivery_app_js_query_params_and_headers(client):
     ]
     
     for q in test_queries:
-        res = client.get(f"/static/app.js{q}", headers={
+        res = client.get(f"/static/dist/main.js{q}", headers={
             "User-Agent": "Mozilla/5.0 (AdversarialTest/1.0)",
             "Accept": "application/javascript, text/javascript, */*; q=0.01",
             "Accept-Encoding": "gzip, deflate",
@@ -107,7 +107,7 @@ def test_static_delivery_image_assets(client):
 
 def test_static_delivery_head_requests(client):
     """Tests HTTP HEAD requests for static assets and index route."""
-    endpoints = ["/", "/static/app.js", "/static/style.css", "/static/favicon.png"]
+    endpoints = ["/", "/static/dist/main.js", "/static/style.css", "/static/favicon.png"]
     for ep in endpoints:
         res = client.head(ep)
         assert res.status_code == 200
@@ -121,7 +121,7 @@ def test_static_path_traversal_protection(client):
         "/static/../../core/db.py",
         "/static/..%2fserver.py",
         "/static/%2e%2e%2fserver.py",
-        "/static/%2e%2e/templates/app.js",
+        "/static/%2e%2e/templates/main.js",
         "/static/nonexistent_file_404.js",
     ]
     for attack in traversal_attacks:
@@ -153,7 +153,7 @@ def test_server_large_query_and_header_stress(client):
     res_css = client.get(f"/static/style.css{huge_query}")
     assert res_css.status_code == 200
     
-    res_js = client.get(f"/static/app.js{huge_query}")
+    res_js = client.get(f"/static/dist/main.js{huge_query}")
     assert res_js.status_code == 200
 
 
@@ -348,81 +348,85 @@ def test_css_responsive_breakpoints():
 # TIER 4: JavaScript Syntax, Template Literals & Badging Logic
 # ============================================================================
 
-def test_app_js_syntax_via_node():
-    """Executes node --check on app.js to ensure 100% syntax validity."""
+def test_compiled_dist_syntax_via_node():
+    """Executes node --check on compiled dist files to ensure 100% syntax validity."""
     node_bin = shutil.which("node")
-    assert node_bin, "Node.js executable not found"
-    app_js_path = Path(__file__).resolve().parent.parent / "web" / "templates" / "app.js"
-    res = subprocess.run([node_bin, "--check", str(app_js_path)], capture_output=True, text=True)
-    assert res.returncode == 0, f"Node syntax check failed on app.js:\n{res.stderr}"
+    if not node_bin:
+        pytest.skip("Node.js executable not found")
+    dist_dir = Path(__file__).resolve().parent.parent / "web" / "static" / "dist"
+    if not dist_dir.is_dir() or not any(dist_dir.glob("*.js")):
+        pytest.skip("Frontend dist assets missing; run 'npm run build' first")
+    for js_file in dist_dir.glob("*.js"):
+        res = subprocess.run([node_bin, "--check", str(js_file)], capture_output=True, text=True)
+        assert res.returncode == 0, f"Node syntax check failed on {js_file.name}:\n{res.stderr}"
 
 
-def test_app_js_template_interpolation_node_ast():
-    """Validates that template string interpolations and expressions in app.js parse cleanly in Node VM."""
+def test_compiled_dist_template_interpolation_node_ast():
+    """Validates that template string interpolations and expressions parse cleanly in Node VM."""
     node_bin = shutil.which("node")
-    assert node_bin, "Node.js executable not found"
-    app_js_path = Path(__file__).resolve().parent.parent / "web" / "templates" / "app.js"
+    if not node_bin:
+        pytest.skip("Node.js executable not found")
+    cards_js = Path(__file__).resolve().parent.parent / "web" / "static" / "dist" / "cards.js"
+    if not cards_js.is_file():
+        pytest.skip("cards.js missing; run 'npm run build' first")
     
     # Parse file using node vm.Script to verify full AST and template literal compilation
     check_script = f"""
     const fs = require('fs');
     const vm = require('vm');
-    let code = fs.readFileSync({json.dumps(str(app_js_path))}, 'utf8').split('\\n').filter(l => !l.startsWith('import ')).join('\\n');
+    let code = fs.readFileSync({json.dumps(str(cards_js))}, 'utf8').split('\\n').filter(l => !l.startsWith('import ')).join('\\n').replace(/^export /gm, '');
     new vm.Script(code);
     """
     res = subprocess.run([node_bin, "-e", check_script], capture_output=True, text=True)
-    assert res.returncode == 0, f"Node vm.Script failed on app.js:\n{res.stderr}"
+    assert res.returncode == 0, f"Node vm.Script failed on cards.js:\n{res.stderr}"
 
 
-def test_app_js_has_new_metadata_interpolation_logic():
-    """Validates the exact rendering token and conditions for 'New metadata' badging in app.js."""
-    app_js_path = Path(__file__).resolve().parent.parent / "web" / "templates" / "app.js"
-    app_js = app_js_path.read_text(encoding="utf-8")
+def test_frontend_has_new_metadata_interpolation_logic():
+    """Validates the exact rendering token and conditions for 'New metadata' badging in TS modules."""
+    cards_ts = (Path(__file__).resolve().parent.parent / "web" / "static" / "src" / "cards.ts").read_text(encoding="utf-8")
+    render_ts = (Path(__file__).resolve().parent.parent / "web" / "static" / "src" / "render.ts").read_text(encoding="utf-8")
     
     # 1. Check template string contains the ternary for has_new_metadata
     expected_pattern = r'item\.has_new_metadata\s*\?\s*[\'"`]<span class="badge badge-new-metadata">New metadata</span>[\'"`]\s*:\s*[\'"`][\'"`]'
-    assert re.search(expected_pattern, app_js) is not None, "Missing or incorrect has_new_metadata rendering ternary in app.js"
+    assert re.search(expected_pattern, cards_ts) is not None, "Missing or incorrect has_new_metadata rendering ternary in cards.ts"
     
     # 2. Check toggleArchive resets has_new_metadata
-    toggle_archive_block = app_js[app_js.find("async function toggleArchive"):app_js.find("async function refreshMetadata")]
+    toggle_archive_block = render_ts[render_ts.find("async function toggleArchive"):render_ts.find("async function refreshMetadata")]
     assert "item.has_new_metadata = false" in toggle_archive_block, "toggleArchive does not reset has_new_metadata to false"
     
     # 3. Check renderMediaLists exists and is called
-    assert "function renderMediaLists" in app_js
+    assert "function renderMediaLists" in render_ts
     assert "renderMediaLists()" in toggle_archive_block
 
 
 def test_dom_ids_parity_between_html_and_js():
-    """Guarantees that every getElementById in app.js has a corresponding id in index.html."""
+    """Guarantees that every getElementById in web/static/src/*.ts has a corresponding id in index.html."""
     index_html = (Path(__file__).resolve().parent.parent / "web" / "templates" / "index.html").read_text(encoding="utf-8")
-    app_js = (Path(__file__).resolve().parent.parent / "web" / "templates" / "app.js").read_text(encoding="utf-8")
+    src_dir = Path(__file__).resolve().parent.parent / "web" / "static" / "src"
     
-    ids_in_js = set(re.findall(r"getElementById\([\"'`]?([a-zA-Z0-9_-]+)[\"'`]?\)", app_js))
+    ids_in_ts = set()
+    for ts_file in src_dir.glob("*.ts"):
+        ids_in_ts.update(re.findall(r"getElementById\([\"'`]?([a-zA-Z0-9_-]+)[\"'`]?\)", ts_file.read_text(encoding="utf-8")))
+    
     ids_in_html = set(re.findall(r'id=["\']([a-zA-Z0-9_-]+)["\']', index_html))
     
-    missing_ids = ids_in_js - ids_in_html
-    assert not missing_ids, f"DOM element IDs referenced in app.js but missing in index.html: {missing_ids}"
+    missing_ids = ids_in_ts - ids_in_html
+    assert not missing_ids, f"DOM element IDs referenced in web/static/src/*.ts but missing in index.html: {missing_ids}"
 
 
 def test_js_rating_badges_html_matrix():
     """Adversarially tests buildRatingBadgesHtml function using Node VM across rating permutations."""
     check_node_and_dist()
     node_bin = shutil.which("node")
-    assert node_bin, "Node.js executable not found"
-    app_js_path = Path(__file__).resolve().parent.parent / "web" / "templates" / "app.js"
+    if not node_bin:
+        pytest.skip("Node.js executable not found")
+    cards_js = Path(__file__).resolve().parent.parent / "web" / "static" / "dist" / "cards.js"
+    if not cards_js.is_file():
+        pytest.skip("cards.js missing; run 'npm run build' first")
     
     eval_script = f"""
-    const fs = require('fs');
     (async () => {{
-        {get_module_injection_code()}
-        const appJs = fs.readFileSync({json.dumps(str(app_js_path))}, 'utf8');
-        
-        // Extract buildRatingBadgesHtml definition
-        const fnStart = appJs.indexOf('function buildRatingBadgesHtml');
-        const fnEnd = appJs.indexOf('function createMediaCard');
-        const fnCode = appJs.substring(fnStart, fnEnd);
-        
-        eval(fnCode);
+        const {{ buildRatingBadgesHtml }} = await import({json.dumps(cards_js.as_uri())});
         
         const tests = [
             {{ in: {{}}, expectedEmpty: true }},
@@ -552,7 +556,7 @@ def test_api_discover_and_card_rendering_simulation(client):
     assert item["is_archived"] in (False, 0)
     assert item["has_new_metadata"] in (True, 1)
     
-    # Simulate JS card innerHTML construction matching app.js logic
+    # Simulate JS card innerHTML construction matching cards.ts logic
     returning_badge = '<span class="badge badge-returning">Returning</span>' if item.get("is_returning") else ''
     new_metadata_badge = '<span class="badge badge-new-metadata">New metadata</span>' if item.get("has_new_metadata") else ''
     archived_badge = '<span class="badge badge-archived">Archived</span>' if item.get("is_archived") else ''

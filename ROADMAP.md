@@ -6,14 +6,12 @@ This document tracks planned future functionality, architectural changes, and us
 
 ## Planned Enhancements
 
-### 1. Frontend Modularization & Reactive State Architecture
-- **Decision**: Developers are expected to install Node and build; the compiled JS is **not** checked in (it is git-ignored under `web/static/dist/`) until GitHub CI/CD can build and publish releases. `init.*` will install the Node dependencies, and `build.py` / the `run.*` launchers will run the TypeScript compile before starting or packaging the app.
-- **Goal**: Refactor the monolithic `web/templates/app.js` (~3,000 lines and growing) into modular ES6/TypeScript modules or a lightweight reactive state management framework to improve maintainability, developer ergonomics, and UI responsiveness.
+### 1. Advanced Frontend Performance & Virtualized Grid
+- **Goal**: Optimize UI responsiveness and DOM memory footprint for very large release libraries (>500 items).
 - **Implementation Strategy**:
-  - Break `app.js` into focused ES6 modules (`api.js`, `state.js`, `dom.js`, `modals.js`, `filters.js`, `settings.js`).
-  - Introduce standardized event buses / reactive state stores for filter changes, modal workflows, and notification feeds.
-  - Implement progressive hydration and virtualized grid rendering for large release libraries (>500 items).
-- **Code files involved**: [web/templates/app.js](web/templates/app.js), [web/templates/index.html](web/templates/index.html), [web/server.py](web/server.py).
+  - Implement progressive hydration and virtualized grid rendering for large release libraries to eliminate offscreen DOM nodes.
+  - Expand reactive event bus pub/sub patterns across complex modal workflows and live status updates.
+- **Code files involved**: [web/static/src/render.ts](web/static/src/render.ts), [web/static/src/events.ts](web/static/src/events.ts).
 
 ### 2. Dockerization for NAS/Server Hosting
 - **Goal**: Allow running the application inside a lightweight container on NAS systems (Synology, Unraid, QNAP) or homelab servers.
@@ -31,7 +29,7 @@ This document tracks planned future functionality, architectural changes, and us
   - Configure scan timings (e.g., run every 24 hours or customizable in Settings).
   - Scrape calendars, enrich results, and store entries in the SQLite database cache.
   - Log scan statistics and broadcast a notification update payload to the UI sidebar.
-- **Code files involved**: [web/server.py](web/server.py), [web/templates/app.js](web/templates/app.js).
+- **Code files involved**: [web/server.py](web/server.py), [web/static/src/main.ts](web/static/src/main.ts).
 
 ### 4. GitHub Builds and Releases Setup
 - **Goal**: Automate PyInstaller compilation and packaging workflows on GitHub tag triggers, distributing binary builds directly via GitHub Releases.
@@ -71,6 +69,11 @@ This document tracks planned future functionality, architectural changes, and us
 ---
 
 ## Completed Features
+
+### ✓ TypeScript Frontend Modularization
+- Migrated legacy monolithic `app.js` into modular TypeScript modules under `web/static/src/` (`main.ts`, `types.ts`, `state.ts`, `filters.ts`, `render.ts`, `cards.ts`, `api.ts`, `settings.ts`, `modals.ts`, etc.) compiled to ES2020 in `web/static/dist/` via `npm run build`.
+- Integrated automated build checks in `init.*` and `build.py` with compiled assets git-ignored.
+- Established comprehensive Node-based regression testing harness verifying 100% markup and functional parity with mock DOM.
 
 ### ✓ Agent Documentation (AGENTS.md and docs/)
 - Added `AGENTS.md`, `docs/architecture.md` and `docs/decisions.md` describing purpose, architecture and design rationale, with a test that fails when documented paths or symbols disappear.

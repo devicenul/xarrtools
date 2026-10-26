@@ -459,19 +459,16 @@ class TestMRUPersistenceAndConcurrency:
 # ============================================================================
 
 class TestJavaScriptHybridPresetHarness:
-    """Stress tests web/templates/app.js resolveHybridPreset and updateMRUCache under Node.js."""
+    """Stress tests settings.js resolveHybridPreset and updateMRUCache under Node.js."""
 
     def test_app_js_hybrid_preset_exhaustive_node_harness(self):
-        """Executes Node.js test harness loading web/templates/app.js directly."""
+        """Executes Node.js test harness loading web/static/dist/settings.js directly."""
         check_node_and_dist()
-        app_js_path = os.path.abspath("web/templates/app.js")
-        assert os.path.exists(app_js_path)
+        settings_js = Path(__file__).resolve().parent.parent / "web" / "static" / "dist" / "settings.js"
 
         script = f"""
-        const fs = require('fs');
         (async () => {{
-            {get_module_injection_code()}
-            const code = fs.readFileSync('{app_js_path}', 'utf8').split('\\n').filter(l => !l.startsWith('import ')).join('\\n');
+            const {{ resolveHybridPreset: resolve, updateMRUCache: updateMRU }} = await import({json.dumps(settings_js.as_uri())});
 
             // Mock browser DOM & Storage environment
             const store = {{}};
@@ -487,12 +484,6 @@ class TestJavaScriptHybridPresetHarness:
                 querySelectorAll: () => [],
                 addEventListener: () => {{}}
             }};
-
-            // Execute app.js in global context
-            eval(code);
-
-            const resolve = window.resolveHybridPreset;
-            const updateMRU = window.updateMRUCache;
 
             if (typeof resolve !== 'function') throw new Error('resolveHybridPreset not defined on window');
             if (typeof updateMRU !== 'function') throw new Error('updateMRUCache not defined on window');
@@ -537,7 +528,7 @@ class TestJavaScriptHybridPresetHarness:
         }});
         """
 
-        result = subprocess.run(["node", "-e", script], capture_output=True, text=True, check=True)
+        result = subprocess.run(["node", "--input-type=module", "-e", script], capture_output=True, text=True, check=True)
         assert "NODE_JS_HARNESS_SUCCESS" in result.stdout
 
 

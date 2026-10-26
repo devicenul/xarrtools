@@ -473,19 +473,22 @@ class TestWebUIAdversarialCardRendering:
     """Verifies static templates, DOM badging, CSS rules, and JavaScript rendering logic."""
 
     def test_app_js_badging_logic_present(self):
-        """Verifies web/templates/app.js contains the exact conditional logic for has_new_metadata badge."""
-        app_js_path = os.path.join(os.path.dirname(__file__), "..", "web", "templates", "app.js")
-        with open(app_js_path, "r", encoding="utf-8") as f:
-            content = f.read()
+        """Verifies frontend modules contain the exact conditional logic for has_new_metadata badge."""
+        cards_ts_path = os.path.join(os.path.dirname(__file__), "..", "web", "static", "src", "cards.ts")
+        render_ts_path = os.path.join(os.path.dirname(__file__), "..", "web", "static", "src", "render.ts")
+        with open(cards_ts_path, "r", encoding="utf-8") as f:
+            cards_content = f.read()
+        with open(render_ts_path, "r", encoding="utf-8") as f:
+            render_content = f.read()
 
         # Check badge creation snippet
-        assert "badge-new-metadata" in content
-        assert "has_new_metadata" in content
-        assert "item.has_new_metadata ? '<span class=\"badge badge-new-metadata\">New metadata</span>' : ''" in content
+        assert "badge-new-metadata" in cards_content
+        assert "has_new_metadata" in cards_content
+        assert 'item.has_new_metadata ? \'<span class="badge badge-new-metadata">New metadata</span>\' : ""' in cards_content
 
         # Check toggleArchive resets item.has_new_metadata
-        assert "if (isArchiving) {" in content
-        assert "item.has_new_metadata = false;" in content
+        assert "if (isArchiving) {" in render_content
+        assert "item.has_new_metadata = false;" in render_content
 
     def test_style_css_badge_styling_definitions(self):
         """Verifies web/templates/style.css defines the badge styling classes for both dark and light modes."""
@@ -503,7 +506,7 @@ class TestWebUIAdversarialCardRendering:
         assert res.status_code == 200
         html = res.data.decode("utf-8")
         assert "<meta name=\"x-api-key\"" in html
-        assert "app.js" in html
+        assert "main.js" in html
         assert "style.css" in html
         assert "id=\"check-show-archived\"" in html
 

@@ -2,8 +2,7 @@
 
 Provides utilities for checking Node.js and compiled dist assets availability,
 generating JavaScript code that dynamically imports compiled ESM modules
-(web/static/dist/*.js), and injecting module aliases into the global environment
-matching the exact imports used in web/templates/app.js.
+(web/static/dist/*.js), and injecting module aliases into the global environment.
 """
 import json
 from pathlib import Path
@@ -18,12 +17,23 @@ DIST_API = DIST_DIR / "api.js"
 DIST_CARDS = DIST_DIR / "cards.js"
 DIST_SETTINGS = DIST_DIR / "settings.js"
 DIST_MODALS = DIST_DIR / "modals.js"
-APP_JS_PATH = REPO_ROOT / "web" / "templates" / "app.js"
+DIST_RENDER = DIST_DIR / "render.js"
+DIST_STATE = DIST_DIR / "state.js"
+DIST_MAIN = DIST_DIR / "main.js"
+SRC_DIR = REPO_ROOT / "web" / "static" / "src"
 INDEX_HTML_PATH = REPO_ROOT / "web" / "templates" / "index.html"
-APP_JS = APP_JS_PATH
 INDEX_HTML = INDEX_HTML_PATH.read_text(encoding="utf-8")
 
-REQUIRED_DIST_FILES = [DIST_FILTERS, DIST_API, DIST_CARDS, DIST_SETTINGS, DIST_MODALS]
+REQUIRED_DIST_FILES = [
+    DIST_FILTERS,
+    DIST_API,
+    DIST_CARDS,
+    DIST_SETTINGS,
+    DIST_MODALS,
+    DIST_RENDER,
+    DIST_STATE,
+    DIST_MAIN,
+]
 
 
 def check_node_and_dist():
@@ -38,7 +48,7 @@ def check_node_and_dist():
 def get_module_injection_code() -> str:
     """Returns JavaScript code using ESM dynamic import to load compiled modules
 
-    and assign their exports to globalThis matching the exact aliases used in app.js:
+    and assign their exports to globalThis matching the exact aliases used across frontend modules:
     - moduleMatchLocale, moduleMatchFilter, moduleItemPassesFilters, moduleGetFilteredUnarchived
     - moduleArchiveBatch, moduleArchiveItem, moduleFetchConfig, moduleFetchSettings, moduleSaveSettings,
       moduleFetchScanProgress, moduleFetchDiscoveries, moduleRefreshCacheItem, moduleLookupMedia,
@@ -59,12 +69,14 @@ def get_module_injection_code() -> str:
       moduleFormatSearchResultNotification
     """
     return f"""
-    const [_distFilters, _distApi, _distCards, _distSettings, _distModals] = await Promise.all([
+    const [_distFilters, _distApi, _distCards, _distSettings, _distModals, _distRender, _distState] = await Promise.all([
         import({json.dumps(DIST_FILTERS.as_uri())}),
         import({json.dumps(DIST_API.as_uri())}),
         import({json.dumps(DIST_CARDS.as_uri())}),
         import({json.dumps(DIST_SETTINGS.as_uri())}),
-        import({json.dumps(DIST_MODALS.as_uri())})
+        import({json.dumps(DIST_MODALS.as_uri())}),
+        import({json.dumps(DIST_RENDER.as_uri())}),
+        import({json.dumps(DIST_STATE.as_uri())})
     ]);
 
     // filters.js exports
@@ -138,6 +150,17 @@ def get_module_injection_code() -> str:
     globalThis.moduleFormatSearchResultNotification = _distModals.formatSearchResultNotification;
     globalThis.moduleGetDemoSearchResults = _distModals.getDemoSearchResults;
     globalThis.moduleBuildAddMediaPayload = _distModals.buildAddMediaPayload;
+
+    // render.js exports
+    globalThis.moduleCreateMediaCard = _distRender.createMediaCard;
+    globalThis.moduleRenderMediaLists = _distRender.renderMediaLists;
+    globalThis.moduleToggleArchive = _distRender.toggleArchive;
+    globalThis.moduleRefreshMetadata = _distRender.refreshMetadata;
+    globalThis.moduleInvertMultiselect = _distRender.invertMultiselect;
+    globalThis.moduleApplyTabFilter = _distRender.applyTabFilter;
+
+    // state.js exports
+    globalThis.moduleState = _distState.state;
 """
 
 

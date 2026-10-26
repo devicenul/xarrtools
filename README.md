@@ -56,10 +56,11 @@ xarrtools/
 ├── web/                        # Web Backend (Flask) & Frontend Assets
 │   ├── __init__.py
 │   ├── server.py               # Flask web server and API controllers
-│   └── templates/              # Web Frontend HTML, CSS, JS
+│   ├── static/                 # Frontend TypeScript source and compiled dist assets
+│   │   └── src/                # Modular TypeScript frontend source
+│   └── templates/              # Web Frontend HTML, CSS, images
 │       ├── index.html          # Dashboard skeleton structure and overlays
 │       ├── style.css           # Premium glassmorphism styles and transitions
-│       ├── app.js              # Client state, filter events, and modal controller
 │       ├── logo_light.png      # Light theme cropped logo
 │       └── favicon_light.png   # Light theme cropped favicon
 │

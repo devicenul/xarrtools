@@ -2671,21 +2671,25 @@ def test_static_asset_serving_style_css(client):
     assert "body.light-theme .badge-new-metadata" in css_content
 
 
-def test_static_asset_serving_app_js(client):
-    """Verifies that GET /static/app.js serves JavaScript with badge rendering and archive reset logic."""
-    res = client.get("/static/app.js")
-    assert res.status_code == 200
-    assert "javascript" in res.content_type
+def test_static_asset_serving_dist_modules(client):
+    """Verifies that GET /static/dist/ modules serve JavaScript with badge rendering and archive reset logic."""
+    res_main = client.get("/static/dist/main.js")
+    assert res_main.status_code == 200
+    assert "javascript" in res_main.content_type
     
-    js_content = res.data.decode("utf-8")
-    # Badge rendering token assertions
-    assert "badge-new-metadata" in js_content
-    assert "New metadata" in js_content
-    assert "has_new_metadata" in js_content
-    # Archive toggle handler resets badge flag
-    assert "toggleArchive" in js_content
-    assert "refreshMetadata" in js_content
-    assert "renderMediaLists" in js_content
+    res_cards = client.get("/static/dist/cards.js")
+    assert res_cards.status_code == 200
+    cards_js = res_cards.data.decode("utf-8")
+    assert "badge-new-metadata" in cards_js
+    assert "New metadata" in cards_js
+    assert "has_new_metadata" in cards_js
+
+    res_render = client.get("/static/dist/render.js")
+    assert res_render.status_code == 200
+    render_js = res_render.data.decode("utf-8")
+    assert "toggleArchive" in render_js
+    assert "refreshMetadata" in render_js
+    assert "renderMediaLists" in render_js
 
 
 def test_static_asset_serving_dist_filters_js(client):
@@ -2718,41 +2722,132 @@ def test_index_html_live_render_structure(client):
     
     # Static asset links
     assert 'href="/static/style.css"' in html_content
-    assert 'src="/static/app.js"' in html_content
+    assert 'src="/static/dist/main.js"' in html_content
     assert 'name="x-api-key"' in html_content
 
 
 def test_frontend_template_file_integrity():
     """Verifies direct file existence, encoding, and CSS/JS/HTML badge consistency."""
-    web_dir = Path(__file__).resolve().parent.parent / "web" / "templates"
+    repo_dir = Path(__file__).resolve().parent.parent
+    web_dir = repo_dir / "web" / "templates"
+    src_dir = repo_dir / "web" / "static" / "src"
+    
     index_file = web_dir / "index.html"
     style_file = web_dir / "style.css"
-    app_file = web_dir / "app.js"
+    main_ts = src_dir / "main.ts"
+    cards_ts = src_dir / "cards.ts"
     
     assert index_file.is_file(), "web/templates/index.html missing"
     assert style_file.is_file(), "web/templates/style.css missing"
-    assert app_file.is_file(), "web/templates/app.js missing"
+    assert main_ts.is_file(), "web/static/src/main.ts missing"
+    assert cards_ts.is_file(), "web/static/src/cards.ts missing"
     
     style_css = style_file.read_text(encoding="utf-8")
-    app_js = app_file.read_text(encoding="utf-8")
+    cards_code = cards_ts.read_text(encoding="utf-8")
     index_html = index_file.read_text(encoding="utf-8")
     
     assert ".badge-new-metadata" in style_css
-    assert "badge-new-metadata" in app_js
-    assert "New metadata" in app_js
+    assert "badge-new-metadata" in cards_code
+    assert "New metadata" in cards_code
     assert 'id="check-show-archived"' in index_html
 
 
-def test_frontend_app_js_syntax_validation():
-    """Executes node --check to ensure web/templates/app.js has zero syntax errors."""
+def test_frontend_dist_syntax_validation():
+    """Executes node --check to ensure compiled dist files have zero syntax errors."""
     import subprocess
     import shutil
     
     node_bin = shutil.which("node")
-    if node_bin:
-        app_js_path = Path(__file__).resolve().parent.parent / "web" / "templates" / "app.js"
-        res = subprocess.run([node_bin, "--check", str(app_js_path)], capture_output=True, text=True)
-        assert res.returncode == 0, f"Syntax error in app.js:\n{res.stderr}"
+    if not node_bin:
+        pytest.skip("Node.js executable not found")
+    dist_dir = Path(__file__).resolve().parent.parent / "web" / "static" / "dist"
+    if not dist_dir.is_dir() or not any(dist_dir.glob("*.js")):
+        pytest.skip("web/static/dist not built; run 'npm run build' first")
+    
+    for js_file in dist_dir.glob("*.js"):
+        res = subprocess.run([node_bin, "--check", str(js_file)], capture_output=True, text=True)
+        assert res.returncode == 0, f"Syntax error in {js_file.name}:\n{res.stderr}"
+
+
+def test_frontend_dist_node_smoke():
+    """Smoke test: imports compiled dist modules in Node with a DOM stub without throwing."""
+    import subprocess
+    import shutil
+    import json
+    
+    node_bin = shutil.which("node")
+    if not node_bin:
+        pytest.skip("Node.js executable not found")
+    dist_dir = Path(__file__).resolve().parent.parent / "web" / "static" / "dist"
+    if not dist_dir.is_dir() or not any(dist_dir.glob("*.js")):
+        pytest.skip("web/static/dist not built; run 'npm run build' first")
+
+    smoke_script = f"""
+    globalThis.window = {{
+        confirm: () => true,
+        addEventListener: () => {{}}
+    }};
+    globalThis.document = {{
+        addEventListener: () => {{}},
+        getElementById: () => ({{
+            value: '',
+            checked: false,
+            textContent: '',
+            style: {{}},
+            classList: {{ add(){{}}, remove(){{}}, toggle(){{}}, contains(){{ return false; }} }},
+            appendChild(c){{ return c; }},
+            removeChild(c){{ return c; }},
+            insertBefore(c){{ return c; }},
+            querySelector(){{ return null; }},
+            querySelectorAll(){{ return []; }},
+            children: [],
+            childNodes: []
+        }}),
+        querySelector: () => ({{
+            getAttribute: () => 'all',
+            classList: {{ add(){{}}, remove(){{}} }}
+        }}),
+        querySelectorAll: () => [],
+        createElement: () => ({{
+            className: '',
+            innerHTML: '',
+            style: {{}},
+            classList: {{ add(){{}}, remove(){{}}, toggle(){{}}, contains(){{ return false; }} }},
+            appendChild(c){{ return c; }},
+            querySelector(){{ return null; }},
+            querySelectorAll(){{ return []; }}
+        }})
+    }};
+    globalThis.localStorage = {{
+        store: {{}},
+        getItem(k){{ return this.store[k] || null; }},
+        setItem(k, v){{ this.store[k] = String(v); }},
+        removeItem(k){{ delete this.store[k]; }}
+    }};
+    globalThis.fetch = async () => ({{ ok: true, status: 200, json: async () => ({{ status: 'success' }}) }});
+
+    (async () => {{
+        const modules = [
+            'api.js', 'cards.js', 'events.js', 'filters.js', 'main.js',
+            'modals.js', 'modals-ui.js', 'notifications.js', 'render.js',
+            'search-ui.js', 'settings.js', 'settings-ui.js', 'state.js', 'theme.js', 'types.js'
+        ];
+        for (const mod of modules) {{
+            const modUri = {json.dumps(dist_dir.as_uri())} + '/' + mod;
+            const imported = await import(modUri);
+            if (!imported) throw new Error('Failed to import ' + mod);
+        }}
+        console.log('DIST_SMOKE_TEST_SUCCESS');
+    }})().catch(err => {{
+        console.error(err);
+        process.exit(1);
+    }});
+    """
+
+    res = subprocess.run([node_bin, "--input-type=module", "-e", smoke_script], capture_output=True, text=True)
+    assert res.returncode == 0, f"Node smoke test failed:\nSTDOUT: {res.stdout}\nSTDERR: {res.stderr}"
+    assert "DIST_SMOKE_TEST_SUCCESS" in res.stdout
+
 
 
 

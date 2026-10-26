@@ -123,10 +123,10 @@ def api_client(isolated_db_environment):
         yield WrappedApiClient(c)
 
 
-# Helper function to generate DOM card representation matching app.js
+# Helper function to generate DOM card representation matching frontend templates
 def render_media_card_html(item: Dict[str, Any]) -> str:
     """
-    Simulates the client-side card rendering from web/templates/app.js.
+    Simulates the client-side card rendering from web/static/src/cards.ts.
     Generates HTML string with badges for DOM assertion.
     """
     has_new_metadata = bool(item.get("has_new_metadata", False))
@@ -771,7 +771,7 @@ class TestTier1FeatureF9WebUIBadgingAndStyling:
         assert res_css.status_code == 200
         assert b".badge-new-metadata" in res_css.data
 
-        res_js = api_client.get("/static/app.js")
+        res_js = api_client.get("/static/dist/cards.js")
         assert res_js.status_code == 200
         assert b"badge-new-metadata" in res_js.data or b"has_new_metadata" in res_js.data
 

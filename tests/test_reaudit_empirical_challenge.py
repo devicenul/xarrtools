@@ -7,7 +7,7 @@ Exhaustive tests covering:
 3. Path Normalization, Type Coercion, and Fault Tolerance.
 4. Server API Endpoints (/api/config, /api/settings, /api/add) demo & live mode state transitions.
 5. Cross-Workflow State Transitions & MRU Invariants.
-6. Direct Node.js execution harness for frontend `app.js` functions (`resolveHybridPreset`, `updateMRUCache`).
+6. Direct Node.js execution harness for frontend functions (`resolveHybridPreset`, `updateMRUCache`).
 7. CLI Interactive Prompt Flow Simulation & MRU Persistence.
 """
 
@@ -495,19 +495,16 @@ class TestCrossWorkflowStateInvariants:
 # ==============================================================================
 
 class TestFrontendJavaScriptResolutionViaNode:
-    """Empirically test web/templates/app.js resolveHybridPreset and updateMRUCache using Node.js."""
+    """Empirically test settings.js resolveHybridPreset and updateMRUCache using Node.js."""
 
     def test_node_resolve_hybrid_preset_execution(self):
-        """Execute app.js functions directly in a mock browser environment via Node.js."""
+        """Execute settings.js functions directly in a mock browser environment via Node.js."""
         check_node_and_dist()
-        app_js_path = Path(__file__).resolve().parent.parent / "web" / "templates" / "app.js"
-        assert app_js_path.exists(), "app.js not found!"
+        settings_js = Path(__file__).resolve().parent.parent / "web" / "static" / "dist" / "settings.js"
 
         runner_code = f"""
-        const fs = require('fs');
         (async () => {{
-            {get_module_injection_code()}
-            const code = fs.readFileSync({json.dumps(str(app_js_path))}, 'utf8').split('\\n').filter(l => !l.startsWith('import ')).join('\\n');
+            const {{ resolveHybridPreset: resolve, updateMRUCache: updateMRU }} = await import({json.dumps(settings_js.as_uri())});
 
             // Mock browser globals
             global.window = {{}};
@@ -525,12 +522,6 @@ class TestFrontendJavaScriptResolutionViaNode:
             }};
             global.appSettings = {{}};
             global.console = {{ log: () => {{}}, warn: () => {{}}, error: () => {{}} }};
-
-            // Evaluate app.js
-            eval(code);
-
-            const resolve = window.resolveHybridPreset;
-            const updateMRU = window.updateMRUCache;
 
             if (typeof resolve !== 'function') {{
                 throw new Error("resolveHybridPreset is not exported to window!");
@@ -605,7 +596,7 @@ class TestFrontendJavaScriptResolutionViaNode:
         """
 
         result = subprocess.run(
-            ["node", "-e", runner_code],
+            ["node", "--input-type=module", "-e", runner_code],
             capture_output=True,
             text=True,
             timeout=10

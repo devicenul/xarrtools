@@ -1,7 +1,7 @@
 """Behavioural tests for the sidebar filter JS (invert, archive-all-filtered, country/language).
 
-app.js touches the DOM at load time, so the functions under test are sliced out of the source and run
-in Node against a tiny DOM stub. Skipped when Node is not installed.
+Runs against compiled frontend dist modules in Node against a tiny DOM stub.
+Skipped when Node or dist assets are not available.
 """
 from pathlib import Path
 import json
@@ -11,61 +11,157 @@ import pytest
 
 from tests.frontend_harness import (
     check_node_and_dist,
-    get_module_injection_code,
-    slice_function,
     DIST_FILTERS,
-    APP_JS,
+    DIST_CARDS,
+    DIST_RENDER,
+    DIST_STATE,
     INDEX_HTML
 )
 
 pytestmark = pytest.mark.skipif(shutil.which("node") is None, reason="node not available")
 
-FUNCTIONS = ["getFilterState", "matchLocale", "matchFilter", "itemPassesFilters", "getFilteredUnarchived",
-             "archiveAllFiltered", "invertMultiselect", "escapeHtml", "countryName", "localeBadge"]
-
-PRELUDE = r"""
-const checks = {"check-show-returning": false, "check-show-library": false, "check-show-archived": false};
-const searchBar = {value: ""};
-let selectedGenres = new Set(), selectedNetworks = new Set(), selectedCountries = new Set(), selectedLanguages = new Set();
-let currentDiscoveries = {tv: [], movies: []};
-let activeTabName = "all";
-const notes = []; let renders = 0; let confirmAnswer = true; let fetchCalls = []; let fetchResponse = {archived: 0, failed: []};
-const boxes = {};   // option container key -> [{value, checked}]
-const buttons = {}; // btn id -> {textContent, active}
-const document = {
-  getElementById(id) {
-    if (id in checks) return {checked: checks[id]};
-    if (id.startsWith("btn-")) { return buttons[id] = buttons[id] || {textContent: "", classList: {toggle(c, on){ buttons[id].active = on; }, remove(){ buttons[id].active = false; }, add(){}}}; }
-    return null;
-  },
-  querySelector(sel) { return {getAttribute: () => activeTabName}; },
-  querySelectorAll(sel) { const key = sel.match(/#options-(\w+)-filter/)[1]; return boxes[key] || []; },
-};
-function addNotification(m, t) { notes.push([t, m]); }
-function renderMediaLists() { renders++; }
-function confirm() { return confirmAnswer; }
-function updateGenreFilterBtnText() { buttons["btn-genres-filter"] = {textContent: `Genres (${selectedGenres.size})`}; }
-function updateNetworkFilterBtnText() {}
-async function fetch(url, opts) { fetchCalls.push([url, JSON.parse(opts.body)]); return {ok: true, json: async () => fetchResponse}; }
-"""
-
 
 def run_js(body):
     check_node_and_dist()
-    app_js_text = APP_JS.read_text(encoding="utf-8")
-    sliced_code = "\n".join(slice_function(app_js_text, n) for n in FUNCTIONS)
     code = f"""
+let renders = 0;
+const notes = [];
+const boxes = {{}};
+const buttons = {{}};
+let confirmAnswer = true;
+const fetchCalls = [];
+let fetchResponse = {{ archived: 0, failed: [] }};
+
+function createMockEl(tag = "div") {{
+  return {{
+    tagName: tag.toUpperCase(),
+    className: "",
+    _innerHTML: "",
+    value: "",
+    checked: false,
+    textContent: "",
+    disabled: false,
+    style: {{}},
+    classList: {{
+      add() {{}},
+      remove() {{}},
+      toggle(cls, on) {{
+        if (on !== undefined) {{
+          if (on) this.add(cls);
+          else this.remove(cls);
+        }}
+      }},
+      contains() {{ return false; }}
+    }},
+    childNodes: [],
+    children: [],
+    get innerHTML() {{ return this._innerHTML; }},
+    set innerHTML(v) {{ this._innerHTML = String(v); }},
+    appendChild(c) {{ this.children.push(c); return c; }},
+    insertBefore(c) {{ this.childNodes.unshift(c); return c; }},
+    removeChild(c) {{ return c; }},
+    addEventListener() {{}},
+    querySelector() {{ return createMockEl(); }},
+    querySelectorAll() {{ return []; }},
+    getAttribute() {{ return null; }},
+    setAttribute() {{}},
+    removeAttribute() {{}}
+  }};
+}}
+
+const elements = {{
+  "grid-tv": {{
+    appendChild: () => {{}},
+    set innerHTML(v) {{ if (v === "") renders++; }},
+    children: []
+  }},
+  "grid-movies": {{ appendChild: () => {{}}, set innerHTML(v) {{}}, children: [] }},
+  "notifications-list": {{
+    insertBefore(item) {{
+      const type = item.className.replace("notification-item ", "").trim();
+      const m = item.innerHTML.match(/<div>(.*?)<\\/div>/);
+      notes.push([type, m ? m[1] : item.innerHTML]);
+    }},
+    querySelector: () => null,
+    childNodes: []
+  }}
+}};
+
+globalThis.window = {{
+  confirm: () => confirmAnswer
+}};
+globalThis.confirm = () => confirmAnswer;
+
+globalThis.document = {{
+  getElementById(id) {{
+    if (elements[id]) return elements[id];
+    if (id.startsWith("btn-")) {{
+      return buttons[id] = buttons[id] || {{
+        textContent: "",
+        classList: {{
+          toggle(c, on) {{ buttons[id].active = on; }},
+          remove() {{ buttons[id].active = false; }},
+          add() {{}}
+        }}
+      }};
+    }}
+    return createMockEl();
+  }},
+  querySelector(sel) {{
+    const el = createMockEl();
+    el.getAttribute = () => "all";
+    return el;
+  }},
+  querySelectorAll(sel) {{
+    const m = sel.match(/#options-(\\w+)-filter/);
+    if (m) return boxes[m[1]] || [];
+    return [];
+  }},
+  createElement(tag) {{
+    return createMockEl(tag);
+  }}
+}};
+
+globalThis.fetch = async (url, opts) => {{
+  fetchCalls.push([url, JSON.parse(opts.body)]);
+  return {{ ok: true, json: async () => fetchResponse }};
+}};
+
 (async () => {{
-{get_module_injection_code()}
-{PRELUDE}
-globalThis.fetch = fetch;
-{sliced_code}
-await (async () => {{
+  const [_distRender, _distCards, _distFilters, _distState] = await Promise.all([
+    import({json.dumps(DIST_RENDER.as_uri())}),
+    import({json.dumps(DIST_CARDS.as_uri())}),
+    import({json.dumps(DIST_FILTERS.as_uri())}),
+    import({json.dumps(DIST_STATE.as_uri())})
+  ]);
+
+  const invertMultiselect = _distRender.invertMultiselect;
+  const archiveAllFiltered = _distRender.archiveAllFiltered;
+  const getFilterState = _distRender.getFilterState;
+  const escapeHtml = _distCards.escapeHtml;
+  const countryName = _distCards.countryName;
+  const localeBadge = _distCards.localeBadge;
+  const matchLocale = _distFilters.matchLocale;
+  const matchFilter = _distFilters.matchFilter;
+  const itemPassesFilters = _distFilters.itemPassesFilters;
+  const getFilteredUnarchived = _distFilters.getFilteredUnarchived;
+  const currentDiscoveries = _distState.state.currentDiscoveries;
+  let selectedGenres = _distState.state.selectedGenres;
+  let selectedNetworks = _distState.state.selectedNetworks;
+  let selectedCountries = _distState.state.selectedCountries;
+  let selectedLanguages = _distState.state.selectedLanguages;
+
+  function updateGenreFilterBtnText() {{
+    buttons["btn-genres-filter"] = {{ textContent: `Genres (${{selectedGenres.size}})` }};
+  }}
+  function updateNetworkFilterBtnText() {{}}
+
+  await (async () => {{
 {body}
-}})();
+  }})();
 }})().catch(err => {{
-    console.error(err);
-    process.exit(1);
+  console.error(err);
+  process.exit(1);
 }});
 """
     out = subprocess.run(["node", "--no-warnings", "-e", code], capture_output=True, text=True, timeout=30)

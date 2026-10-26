@@ -2,7 +2,7 @@
 
 Verifies pure HTML-building helpers: escapeHtml, countryName, localeBadge,
 buildRatingBadgesHtml, getPosterNavigationUrl, and buildMediaCardHtml.
-Ensures byte-parity with the legacy app.js card innerHTML construction.
+Validates robust card innerHTML construction.
 """
 import json
 import re
@@ -15,7 +15,6 @@ from tests.frontend_harness import check_node_and_dist
 pytestmark = pytest.mark.skipif(shutil.which("node") is None, reason="node not available")
 
 DIST_CARDS = Path(__file__).resolve().parent.parent / "web" / "static" / "dist" / "cards.js"
-APP_JS = Path(__file__).resolve().parent.parent / "web" / "templates" / "app.js"
 
 
 def run_node_module(body: str):
@@ -226,15 +225,10 @@ def test_build_media_card_html_movie_archived():
 
 
 def test_build_media_card_html_byte_parity():
-    """Validates that cards.js buildMediaCardHtml produces byte-identical output to legacy app.js."""
-    if not APP_JS.is_file():
-        pytest.skip("web/templates/app.js not found")
-    res = run_node_module(f"""
-      const fs = await import('fs');
-      const appJsText = fs.readFileSync({json.dumps(str(APP_JS))}, 'utf8');
-      
+    """Validates that cards.js buildMediaCardHtml produces valid, complete card output."""
+    res = run_node_module("""
       const sampleItems = [
-        {{
+        {
           title: "Sample Show 1",
           year: 2026,
           network: "HBO",
@@ -255,8 +249,8 @@ def test_build_media_card_html_byte_parity():
           href: "https://metacritic.com/show/1",
           imdb_id: "tt1111111",
           tvdb_id: 12345
-        }},
-        {{
+        },
+        {
           title: "Sample Movie with 'Quotes' and Special Characters",
           year: 2025,
           network: "Universal",
@@ -277,19 +271,19 @@ def test_build_media_card_html_byte_parity():
           rating_metacritic: 45,
           rating_rt: 55,
           tmdb_id: 54321
-        }}
+        }
       ];
 
       const results = [];
-      for (const [idx, item] of sampleItems.entries()) {{
+      for (const [idx, item] of sampleItems.entries()) {
         const type = idx === 0 ? "tv" : "movie";
-        const moduleOutput = buildMediaCardHtml(item, type, {{ isAdded: Boolean(item.is_in_library), index: idx }});
-        results.push({{
+        const moduleOutput = buildMediaCardHtml(item, type, { isAdded: Boolean(item.is_in_library), index: idx });
+        results.push({
           hasTitle: moduleOutput.includes(escapeHtml(item.title)),
           hasNetwork: moduleOutput.includes(escapeHtml(item.network)),
           length: moduleOutput.length
-        }});
-      }}
+        });
+      }
       console.log(JSON.stringify(results));
     """)
     assert len(res) == 2

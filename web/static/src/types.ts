@@ -267,3 +267,11 @@ export interface CardRenderOptions {
   isAdded?: boolean;
   index?: number | string;
 }
+
+export interface SelectedItemForAdd {
+  type: string;
+  item: MediaItem;
+  raw_metadata?: unknown;
+  card?: HTMLElement | null;
+  isDemo?: boolean;
+}
