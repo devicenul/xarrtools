@@ -6,15 +6,7 @@ This document tracks planned future functionality, architectural changes, and us
 
 ## Planned Enhancements
 
-### 1. Advanced Frontend Performance & Virtualized Grid
-- **Goal**: Optimize UI responsiveness and DOM memory footprint for very large release libraries (>500 items).
-- **Implementation Strategy**:
-  - **Done (first step):** cards use `content-visibility: auto`, poster images are `loading="lazy"`, and `renderMediaLists` uses an index map plus a single fragment insert (was O(n^2) `indexOf`). Plot text stays clamped with click-to-expand.
-  - **Next:** measure with thousands of synthetic items; only if still slow, implement virtualized grid rendering / progressive hydration (event delegation instead of per-card listeners) to eliminate offscreen DOM nodes.
-  - Expand reactive event bus pub/sub patterns across complex modal workflows and live status updates.
-- **Code files involved**: [web/static/src/render.ts](web/static/src/render.ts), [web/static/src/events.ts](web/static/src/events.ts).
-
-### 2. Dockerization for NAS/Server Hosting
+### 1. Dockerization for NAS/Server Hosting
 - **Goal**: Allow running the application inside a lightweight container on NAS systems (Synology, Unraid, QNAP) or homelab servers.
 - **Implementation Strategy**:
   - Create a `Dockerfile` based on `python:3.11-alpine` to keep the footprint small (<100MB).
@@ -24,13 +16,21 @@ This document tracks planned future functionality, architectural changes, and us
 - **Code files involved**: [Dockerfile](Dockerfile), [docker-compose.yml](docker-compose.yml), [core/db.py](core/db.py).
 
 
-### 3. GitHub Builds and Releases Setup
+### 2. GitHub Builds and Releases Setup
 - **Goal**: Automate PyInstaller compilation and packaging workflows on GitHub tag triggers, distributing binary builds directly via GitHub Releases.
 - **Implementation Strategy**:
   - Create GitHub Actions workflows for multi-platform matrices (Ubuntu, macOS, Windows).
   - Run `pytest` test suites across platforms before building executables (`init.*` already installs `requirements-dev.txt`; `build.py` is the single build entry point to call).
   - Generate release artifacts (`.dmg`, `Setup.exe`, standalone binaries) and attach them to GitHub Releases.
 - **Code files involved**: `.github/workflows/build.yml`.
+
+### 3. Advanced Frontend Performance & Virtualized Grid
+- **Goal**: Optimize UI responsiveness and DOM memory footprint for very large release libraries (>500 items).
+- **Implementation Strategy**:
+  - **Done (first step):** cards use `content-visibility: auto`, poster images are `loading="lazy"`, and `renderMediaLists` uses an index map plus a single fragment insert (was O(n^2) `indexOf`). Plot text stays clamped with click-to-expand.
+  - **Next:** measure with thousands of synthetic items; only if still slow, implement virtualized grid rendering / progressive hydration (event delegation instead of per-card listeners) to eliminate offscreen DOM nodes.
+  - Expand reactive event bus pub/sub patterns across complex modal workflows and live status updates.
+- **Code files involved**: [web/static/src/render.ts](web/static/src/render.ts), [web/static/src/events.ts](web/static/src/events.ts).
 
 ### 4. Free Packaging and Distribution Pipeline
 - **Goal**: Create cross-platform installation packages and setup distribution channels completely free of charge, avoiding developer registration fees.
