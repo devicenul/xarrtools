@@ -65,6 +65,6 @@ def test_workflow_referenced_scripts_and_files_exist():
     for wf in (WORKFLOWS_DIR / "ci.yml", WORKFLOWS_DIR / "release.yml"):
         content = wf.read_text(encoding="utf-8")
         # Find references to python scripts, text requirements, Dockerfile, package files
-        for match in re.findall(r"(?:python\s+([A-Za-z0-9_.-]+\.py)|-r\s+([A-Za-z0-9_.-]+\.txt)|([A-Za-z0-9_.-]+\.json)|(Dockerfile))", content):
+        for match in re.findall(r"(?:python\s+([A-Za-z0-9_./-]+\.py)|-r\s+([A-Za-z0-9_.-]+\.txt)|([A-Za-z0-9_.-]+\.json)|(Dockerfile))", content):
             ref = next(group for group in match if group)
             assert (ROOT / ref).exists(), f"Workflow {wf.name} references non-existent file: {ref}"

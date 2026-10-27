@@ -46,7 +46,7 @@ Read this file first, then [docs/architecture.md](docs/architecture.md) (how it 
 | `web/server.py`, `web/templates/` | Flask API + single-page UI (`index.html`, `style.css`) |
 | `web/static/src/` | TypeScript frontend modules (`types.ts`, `state.ts`, `render.ts`, `cards.ts`, `filters.ts`, `api.ts`, `settings.ts`, `modals.ts`, `main.ts`) |
 | `cli/cli.py`, `gui/gui.py` | Terminal manager and pywebview shell |
-| `build.py` (+ `build.*`), `init.*`, `run.*` | Build, environment setup and launchers (sh / ps1 / bat) |
+| `scripts/` (`scripts/build.py`, `build.*`, `init.*`, `run.*`) | Build, environment setup and launchers (sh / ps1 / bat) |
 | `.github/workflows/` (`ci.yml`, `release.yml`) | GitHub Actions CI matrix, multi-arch Docker image, and release packaging |
 | `Dockerfile`, `docker-compose.yml` | Multi-stage container build and compose orchestration |
 | `requirements.txt`, `requirements-gui.txt`, `requirements-dev.txt` | Runtime, GUI-only (`pywebview`), and development dependencies |
@@ -55,15 +55,15 @@ Read this file first, then [docs/architecture.md](docs/architecture.md) (how it 
 ## Everyday commands
 
 ```bash
-./init.sh                                   # create venv, install requirements-dev.txt, create .env, init DB
-.venv/bin/python -m pytest tests -q --no-cov   # ~25 s; use the venv path printed by init.sh if it differs
+./scripts/init.sh                           # create venv, install requirements-dev.txt, create .env, init DB
+.venv/bin/python -m pytest tests -q --no-cov   # ~25 s; use the venv path printed by scripts/init.sh if it differs
 mypy core web cli gui main.py               # run static type checking (0 errors)
-./build.sh                                  # PyInstaller binary via build.py (build.ps1 / build.bat on Windows)
+./scripts/build.sh                          # PyInstaller binary via scripts/build.py (build.ps1 / build.bat on Windows)
 python main.py --server                     # run the web UI on http://localhost:5000
 ```
 
 On the Android/Linux-VM setup the venv lives in `~/.cache/projects/<name>-<hash>/venv` (shared storage has no
-symlinks); `source init.sh --env-only` (sourced, as `build.sh` does) exports `VENV_DIR`/`PROJECT_CACHE_DIR`. Run commands from the repo root.
+symlinks); `source scripts/init.sh --env-only` (sourced, as `scripts/build.sh` does) exports `VENV_DIR`/`PROJECT_CACHE_DIR`. Run commands from the repo root.
 
 ## Hard rules
 

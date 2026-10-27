@@ -4,7 +4,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parent.parent
-spec = importlib.util.spec_from_file_location("xarrtools_build", ROOT / "build.py")
+spec = importlib.util.spec_from_file_location("xarrtools_build", ROOT / "scripts" / "build.py")
 build = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(build)
 
@@ -75,12 +75,13 @@ def test_dev_requirements_and_init_scripts_use_them():
     dev = (ROOT / "requirements-dev.txt").read_text()
     for needed in ("-r requirements.txt", "pytest", "pytest-cov", "pyinstaller"):
         assert needed in dev
+    scripts_dir = ROOT / "scripts"
     for script in ("init.sh", "init.ps1", "init.bat"):
-        text = (ROOT / script).read_text()
+        text = (scripts_dir / script).read_text()
         assert "requirements-dev.txt" in text, script
         assert "package.json" in text, script
     for script in ("build.sh", "build.ps1", "build.bat"):
-        text = (ROOT / script).read_text()
+        text = (scripts_dir / script).read_text()
         assert "build.py" in text and "pip install pyinstaller" not in text.lower(), script
 
 

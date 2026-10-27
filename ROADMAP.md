@@ -13,7 +13,7 @@ This document tracks planned future functionality, architectural changes, and us
   - **Windows (WinGet & Inno Setup)**: Use `Inno Setup` to bundle the binary into a custom `Setup.exe` installer for free. Submit the application to the community-driven Windows Package Manager (`winget`) repository so users can install it via `winget install xarrtools`.
   - **SmartScreen Whitelisting**: Set up a workflow to submit new release binary hashes to the Microsoft Security Intelligence File Submission portal for free analysis, which builds reputation and clears false-positive SmartScreen warnings.
   - **Python Package (PyPI)**: Distribute the app as a standard package on PyPI, enabling installation via `pipx install xarrtools` to bypass OS code-signing limitations completely.
-- **Code files involved**: [build.py](build.py), [build.sh](build.sh), [build.bat](build.bat), [build.ps1](build.ps1).
+- **Code files involved**: [scripts/build.py](scripts/build.py), [scripts/build.sh](scripts/build.sh), [scripts/build.bat](scripts/build.bat), [scripts/build.ps1](scripts/build.ps1).
 
 ### 2. Frontend Performance Run (Large Sample Set)
 - **Goal**: Determine whether further frontend work is needed for very large release libraries by measuring, not building.
@@ -34,7 +34,7 @@ This document tracks planned future functionality, architectural changes, and us
 - **Goal**: Bundle GTK/WebKit system libraries for Linux desktop environments so the captive window works out-of-the-box on any distribution without relying on host packages.
 - **Implementation Strategy**:
   - Package `xarrtools` as an AppImage or Flatpak bundle embedding WebKitGTK and native window dependencies.
-- **Code files involved**: [build.py](build.py), [gui/gui.py](gui/gui.py).
+- **Code files involved**: [scripts/build.py](scripts/build.py), [gui/gui.py](gui/gui.py).
 
 ---
 
@@ -60,7 +60,7 @@ This document tracks planned future functionality, architectural changes, and us
 - Ready-to-use `docker-compose.yml` template with volume mounts and optional Radarr/Sonarr service definitions.
 
 ### ✓ Standardized Code Documentation & Type Annotations
-- Comprehensive PEP 257 compliant docstrings across all modules, classes, utility functions, routes, and parsing blocks in `core/`, `web/`, `cli/`, `gui/`, `main.py`, and `build.py`.
+- Comprehensive PEP 257 compliant docstrings across all modules, classes, utility functions, routes, and parsing blocks in `core/`, `web/`, `cli/`, `gui/`, `main.py`, and `scripts/build.py`.
 - Complete Python type annotations (`typing` signatures) covering parameters and returns across all application layers.
 - Contextual block and inline comments clarifying non-trivial business logic, regex pattern matching, deduplication heuristics, threading/locking boundaries, and database query optimizations.
 - Zero-error `mypy` static type checking configured in `pyproject.toml` (`[tool.mypy]`) and tracked in `requirements-dev.txt`.
@@ -86,14 +86,14 @@ This document tracks planned future functionality, architectural changes, and us
 
 ### ✓ TypeScript Frontend Modularization
 - Migrated legacy monolithic `app.js` into modular TypeScript modules under `web/static/src/` (`main.ts`, `types.ts`, `state.ts`, `filters.ts`, `render.ts`, `cards.ts`, `api.ts`, `settings.ts`, `modals.ts`, etc.) compiled to ES2020 in `web/static/dist/` via `npm run build`.
-- Integrated automated build checks in `init.*` and `build.py` with compiled assets git-ignored.
+- Integrated automated build checks in `scripts/init.*` and `scripts/build.py` with compiled assets git-ignored.
 - Established comprehensive Node-based regression testing harness verifying 100% markup and functional parity with mock DOM.
 
 ### ✓ Agent Documentation (AGENTS.md and docs/)
 - Added `AGENTS.md`, `docs/architecture.md` and `docs/decisions.md` describing purpose, architecture and design rationale, with a test that fails when documented paths or symbols disappear.
 
 ### ✓ Single Cross-Platform Build Script
-- `build.py` now holds all PyInstaller logic; `build.sh` / `build.ps1` / `build.bat` are thin wrappers, and `init.*` install `requirements-dev.txt` (pytest, pytest-cov, pyinstaller).
+- `scripts/build.py` now holds all PyInstaller logic; `scripts/build.sh` / `scripts/build.ps1` / `scripts/build.bat` are thin wrappers, and `scripts/init.*` install `requirements-dev.txt` (pytest, pytest-cov, pyinstaller).
 
 ### ✓ Bulk Archive and Filter Invert
 - "Archive all filtered" button (`POST /api/archive/batch`) and an "Invert" button on every filter dropdown.
@@ -167,7 +167,7 @@ Committed the standard GNU General Public License v3.0 to the repository root.
 
 
 ### ✓ Cross-Platform Launcher Scripts and Compilation (Windows, macOS, Linux)
-Automated launcher scripts (`run.bat` / `run.sh`) handle virtual environment setup and dependency installation on Windows, macOS, and Linux. PyInstaller compilation bundles the application into standalone single-file executables via `build.bat` and `build.sh`, with `sys._MEIPASS` path resolution for compiled asset access.
+Automated launcher scripts (`scripts/run.bat` / `scripts/run.sh`) handle virtual environment setup and dependency installation on Windows, macOS, and Linux. PyInstaller compilation bundles the application into standalone single-file executables via `scripts/build.bat` and `scripts/build.sh`, with `sys._MEIPASS` path resolution for compiled asset access.
 
 ### ✓ Comprehensive Unit and Coverage Testing
 Designed and implemented a complete testing framework using `pytest` and `pytest-cov`, currently at **~89% statement coverage** (1,070+ tests) across `core` library logic, the Flask `web` backend, and the interactive terminal `cli`, plus Node-based behavioural tests for the sidebar filter JavaScript. Utilizes mock integrations for external REST clients (Sonarr, Radarr, TMDB, TVMaze) and isolates execution to a temporary SQLite test database to ensure completely clean, isolated, and deterministic test runs.

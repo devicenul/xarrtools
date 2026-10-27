@@ -132,7 +132,7 @@ jobs:
 
       - name: Build standalone binary
         run: |
-          python build.py --version "${{ needs.gate.outputs.version }}"
+          python scripts/build.py --version "${{ needs.gate.outputs.version }}"
 
       - name: Smoke test binary (macOS / Linux)
         if: runner.os != 'Windows'

@@ -4,7 +4,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 DOCS = [ROOT / "AGENTS.md", ROOT / "docs" / "architecture.md", ROOT / "docs" / "decisions.md"]
-PATH_RE = re.compile(r"`((?:core|web|cli|gui|tests|docs)/[A-Za-z0-9_./-]+|[A-Za-z0-9_.-]+\.(?:py|sh|ps1|bat|txt|md))`")
+PATH_RE = re.compile(r"`((?:core|web|cli|gui|tests|docs|scripts)/[A-Za-z0-9_./-]+|[A-Za-z0-9_.-]+\.(?:py|sh|ps1|bat|txt|md))`")
 IGNORED = {"xarrtools.db", "custom_feeds", "setup.py"}
 
 

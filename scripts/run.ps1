@@ -10,7 +10,8 @@ $ScriptDir = $PSScriptRoot
 if (-not $ScriptDir) {
     $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Definition
 }
-Set-Location -LiteralPath $ScriptDir
+$RepoRoot = Split-Path -Parent $ScriptDir
+Set-Location -LiteralPath $RepoRoot
 
 Write-Host "=================================================="
 Write-Host "  xarrtools Auto-Startup Launcher (PowerShell)"
@@ -20,8 +21,8 @@ Write-Host "=================================================="
 & "$ScriptDir/init.ps1" -EnvOnly
 
 $VenvPython = $env:XARRTOOLS_RESOLVED_PYTHON
-$EnvFile = Join-Path $ScriptDir ".env"
-$DbFile = Join-Path $ScriptDir "xarrtools.db"
+$EnvFile = Join-Path $RepoRoot ".env"
+$DbFile = Join-Path $RepoRoot "xarrtools.db"
 
 $NeedsFullInit = (-not (Test-Path -LiteralPath $VenvPython)) -or (-not (Test-Path -LiteralPath $EnvFile)) -or (-not (Test-Path -LiteralPath $DbFile))
 

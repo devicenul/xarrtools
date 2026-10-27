@@ -6,7 +6,8 @@
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-cd "$SCRIPT_DIR"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+cd "$REPO_ROOT"
 
 echo "=================================================="
 echo "  xarrtools Unix Auto-Startup Launcher"
@@ -17,7 +18,7 @@ echo "=================================================="
 source "$SCRIPT_DIR/init.sh" --env-only
 
 # 2. Run full initialization if environment or dependencies are missing
-if [ ! -x "$VENV_DIR/bin/python" ] || [ ! -f "$SCRIPT_DIR/.env" ] || [ ! -f "$SCRIPT_DIR/xarrtools.db" ] || \
+if [ ! -x "$VENV_DIR/bin/python" ] || [ ! -f "$REPO_ROOT/.env" ] || [ ! -f "$REPO_ROOT/xarrtools.db" ] || \
    ! "$VENV_DIR/bin/python" -c "import flask, requests, bs4, rich, dotenv, waitress, defusedxml" >/dev/null 2>&1; then
     bash "$SCRIPT_DIR/init.sh"
 else

@@ -12,8 +12,8 @@
 | `slug()` is Unicode-aware | ASCII-only keys turned every Greek/Cyrillic title into `''`, making one cache row appear many times and causing false library matches. |
 | `dedupe_movies` never merges conflicting TMDB/IMDb ids | "Beast" and "The Beast" are different films. Prefix/suffix merging needs >= 8 chars and dates within 30 days. |
 | Country for movies only after enrichment | TMDB discover lists have no origin country; it needs a per-movie call. |
-| `build.py` is the single build implementation | Three scripts had drifted; wrappers only ensure the venv. |
-| No Makefile | `make` isn't available on stock Windows; per-OS differences live in `build.py`. |
+| `scripts/build.py` is the single build implementation | Three scripts had drifted; wrappers only ensure the venv. |
+| No Makefile | `make` isn't available on stock Windows; per-OS differences live in `scripts/build.py`. |
 | Tests blank the TMDB key (`tests/conftest.py`) | Tests must be offline and must never use the real credential. |
 | Credentials only in DB/`.env` | Both git-ignored; history was audited and is clean. |
 | Frontend built with TypeScript; compiled dist/ JS is not committed | Developers can install Node; checking in generated dist JS modules would create noisy, stale diffs until CI/CD builds releases. |
@@ -39,4 +39,4 @@
 | macOS arm64 + Intel binary builds (`.github/workflows/release.yml`) | Uses `macos-latest` (Apple Silicon) and `macos-15-intel` (Intel x86_64) runners to produce standalone executables for both modern and legacy Mac hardware. |
 | Linux binary captive window fallback | PyInstaller packages Python and application modules but not GTK/WebKit system libraries. If present on the host, the native captive window opens; otherwise, `main.py` falls back seamlessly to server mode (`--server`) and the user's default browser. |
 | Unsigned binary distribution with bypass guidance | Standalone release binaries avoid commercial code-signing fees. Documentation provides Gatekeeper attribute removal (`xattr -d com.apple.quarantine`) and Windows Defender SmartScreen ("Run anyway") guidance until packaging tools (Homebrew, WinGet) are set up. |
-| Stamped binary versioning (`core/version.py`, `build.py`) | Release workflows pass `--version` to `build.py`, which generates a stamped version file imported by `core/version.py` before PyInstaller compilation. This guarantees frozen executables report their version in `/api/health` and Settings without requiring environment variables. |
+| Stamped binary versioning (`core/version.py`, `scripts/build.py`) | Release workflows pass `--version` to `scripts/build.py`, which generates a stamped version file imported by `core/version.py` before PyInstaller compilation. This guarantees frozen executables report their version in `/api/health` and Settings without requiring environment variables. |

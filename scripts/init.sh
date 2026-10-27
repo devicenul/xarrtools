@@ -11,7 +11,8 @@
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-cd "$SCRIPT_DIR"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+cd "$REPO_ROOT"
 
 ENV_ONLY=0
 SKIP_DEPS=0
@@ -67,11 +68,11 @@ else
 fi
 
 # 2. Clean up broken local .venv if present (e.g., failed symlink creation on FUSE/virtiofs)
-if [ -d "$SCRIPT_DIR/.venv" ] && [ ! -x "$SCRIPT_DIR/.venv/bin/python" ] && [ ! -f "$SCRIPT_DIR/.venv/Scripts/python.exe" ]; then
+if [ -d "$REPO_ROOT/.venv" ] && [ ! -x "$REPO_ROOT/.venv/bin/python" ] && [ ! -f "$REPO_ROOT/.venv/Scripts/python.exe" ]; then
     if [ "$ENV_ONLY" -eq 0 ]; then
         echo "[Init] Removing incomplete local .venv directory..."
     fi
-    rm -rf "$SCRIPT_DIR/.venv"
+    rm -rf "$REPO_ROOT/.venv"
 fi
 
 # 3. Determine whether workspace is on shared/FUSE/virtiofs storage without symlink support
@@ -85,7 +86,7 @@ case "$PHYS_PWD" in
 esac
 
 if [ "$USE_EXT4_CACHE" -eq 0 ] && command -v df >/dev/null 2>&1; then
-    FS_TYPE="$(df -T "$SCRIPT_DIR" 2>/dev/null | awk 'NR==2 {print $2}' || true)"
+    FS_TYPE="$(df -T "$REPO_ROOT" 2>/dev/null | awk 'NR==2 {print $2}' || true)"
     case "$FS_TYPE" in
         virtiofs|fuse|fuse.*|fuseblk)
             USE_EXT4_CACHE=1
@@ -94,8 +95,8 @@ if [ "$USE_EXT4_CACHE" -eq 0 ] && command -v df >/dev/null 2>&1; then
 fi
 
 if [ "$USE_EXT4_CACHE" -eq 0 ]; then
-    TEST_LINK="$SCRIPT_DIR/.venv_symlink_probe_$$"
-    if ! ln -s "$SCRIPT_DIR" "$TEST_LINK" 2>/dev/null; then
+    TEST_LINK="$REPO_ROOT/.venv_symlink_probe_$$"
+    if ! ln -s "$REPO_ROOT" "$TEST_LINK" 2>/dev/null; then
         USE_EXT4_CACHE=1
     fi
     rm -f "$TEST_LINK" 2>/dev/null || true
@@ -103,16 +104,16 @@ fi
 
 if [ -n "${XARRTOOLS_VENV_DIR:-}" ]; then
     VENV_DIR="$XARRTOOLS_VENV_DIR"
-    PROJECT_CACHE_DIR="${PROJECT_CACHE_DIR:-$HOME/.cache/projects/$(basename "$SCRIPT_DIR")-$(compute_path_hash)}"
+    PROJECT_CACHE_DIR="${PROJECT_CACHE_DIR:-$HOME/.cache/projects/$(basename "$REPO_ROOT")-$(compute_path_hash)}"
 elif [ "$USE_EXT4_CACHE" -eq 1 ]; then
-    PROJECT_CACHE_DIR="$HOME/.cache/projects/$(basename "$SCRIPT_DIR")-$(compute_path_hash)"
+    PROJECT_CACHE_DIR="$HOME/.cache/projects/$(basename "$REPO_ROOT")-$(compute_path_hash)"
     VENV_DIR="$PROJECT_CACHE_DIR/venv"
     export PYTHONPYCACHEPREFIX="$PROJECT_CACHE_DIR/pycache"
     export PIP_CACHE_DIR="$PROJECT_CACHE_DIR/pip"
     export COVERAGE_FILE="${COVERAGE_FILE:-$PROJECT_CACHE_DIR/.coverage}"
 else
     PROJECT_CACHE_DIR=""
-    VENV_DIR="$SCRIPT_DIR/.venv"
+    VENV_DIR="$REPO_ROOT/.venv"
 fi
 
 export PROJECT_CACHE_DIR
@@ -126,7 +127,7 @@ fi
 log_init "=================================================="
 log_init "  xarrtools Project Initialization (Unix)"
 log_init "=================================================="
-log_init "[Init] Project directory : $SCRIPT_DIR"
+log_init "[Init] Project directory : $REPO_ROOT"
 log_init "[Init] Python executable : $($PYTHON_CMD --version 2>&1)"
 log_init "[Init] Virtualenv path   : $VENV_DIR"
 
@@ -154,7 +155,7 @@ if [ "$SKIP_DEPS" -eq 0 ]; then
 fi
 
 # 5b. Install frontend build dependencies (TypeScript)
-if [ "$SKIP_DEPS" -eq 0 ] && [ -f "$SCRIPT_DIR/package.json" ]; then
+if [ "$SKIP_DEPS" -eq 0 ] && [ -f "$REPO_ROOT/package.json" ]; then
     if ! command -v node >/dev/null 2>&1 || ! command -v npm >/dev/null 2>&1; then
         echo "[Error] Node.js (npm) is required to build the frontend: install it from https://nodejs.org" >&2
         exit 1
@@ -165,20 +166,20 @@ if [ "$SKIP_DEPS" -eq 0 ] && [ -f "$SCRIPT_DIR/package.json" ]; then
     else
         npm install --no-audit --no-fund 2>/dev/null || npm install --no-audit --no-fund --no-bin-links
     fi
-    if [ -f "$SCRIPT_DIR/node_modules/typescript/bin/tsc" ] && [ ! -e "$SCRIPT_DIR/node_modules/.bin/tsc" ]; then
-        mkdir -p "$SCRIPT_DIR/node_modules/.bin"
-        printf '#!/bin/sh\nexec node "$(dirname "$0")/../typescript/bin/tsc" "$@"\n' > "$SCRIPT_DIR/node_modules/.bin/tsc"
-        chmod +x "$SCRIPT_DIR/node_modules/.bin/tsc" 2>/dev/null || true
+    if [ -f "$REPO_ROOT/node_modules/typescript/bin/tsc" ] && [ ! -e "$REPO_ROOT/node_modules/.bin/tsc" ]; then
+        mkdir -p "$REPO_ROOT/node_modules/.bin"
+        printf '#!/bin/sh\nexec node "$(dirname "$0")/../typescript/bin/tsc" "$@"\n' > "$REPO_ROOT/node_modules/.bin/tsc"
+        chmod +x "$REPO_ROOT/node_modules/.bin/tsc" 2>/dev/null || true
     fi
     log_init "[Init] Compiling the TypeScript frontend (web/static/dist)..."
     npm run build --silent
 fi
 
 # 6. Generate .env configuration from template if missing
-if [ ! -f "$SCRIPT_DIR/.env" ]; then
-    if [ -f "$SCRIPT_DIR/.env.example" ]; then
+if [ ! -f "$REPO_ROOT/.env" ]; then
+    if [ -f "$REPO_ROOT/.env.example" ]; then
         echo "[Init] Creating .env configuration file from .env.example..."
-        cp "$SCRIPT_DIR/.env.example" "$SCRIPT_DIR/.env"
+        cp "$REPO_ROOT/.env.example" "$REPO_ROOT/.env"
         echo "[Note] Default .env created. You can configure Radarr/Sonarr credentials in .env or via the Web UI Settings."
     else
         echo "[Warning] .env.example not found; skipping .env creation."

@@ -6,7 +6,8 @@
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-cd "$SCRIPT_DIR"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+cd "$REPO_ROOT"
 
 echo "=================================================="
 echo "  xarrtools Compiler Script (Unix)"
@@ -23,7 +24,7 @@ fi
 
 # 2. Compile (icon/data-path/workpath selection and PyInstaller install live in build.py)
 echo ""
-if "$VENV_DIR/bin/python" "$SCRIPT_DIR/build.py"; then
+if "$VENV_DIR/bin/python" "$SCRIPT_DIR/build.py" "$@"; then
     exit 0
 else
     exit 1

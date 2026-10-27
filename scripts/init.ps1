@@ -21,7 +21,8 @@ $ScriptDir = $PSScriptRoot
 if (-not $ScriptDir) {
     $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Definition
 }
-Set-Location -LiteralPath $ScriptDir
+$RepoRoot = Split-Path -Parent $ScriptDir
+Set-Location -LiteralPath $RepoRoot
 
 $IsWin = ($env:OS -eq "Windows_NT") -or ([System.Environment]::OSVersion.Platform -eq "Win32NT")
 
@@ -61,7 +62,7 @@ if (-not $PythonCmd) {
 }
 
 # 2. Clean up broken local .venv if present
-$LocalVenv = Join-Path $ScriptDir ".venv"
+$LocalVenv = Join-Path $RepoRoot ".venv"
 $LocalWinPy = Join-Path $LocalVenv "Scripts/python.exe"
 $LocalUnixPy = Join-Path $LocalVenv "bin/python"
 
@@ -77,14 +78,14 @@ $ProjectCacheDir = ""
 $UseExt4Cache = $false
 
 if (-not $IsWin) {
-    $ResolvedPath = (Resolve-Path -LiteralPath $ScriptDir).Path
+    $ResolvedPath = (Resolve-Path -LiteralPath $RepoRoot).Path
     if ($ResolvedPath -like "/storage/emulated/*" -or $ResolvedPath -like "/mnt/shared/*") {
         $UseExt4Cache = $true
     }
     if (-not $UseExt4Cache) {
-        $TestLink = Join-Path $ScriptDir ".venv_symlink_probe_$PID"
+        $TestLink = Join-Path $RepoRoot ".venv_symlink_probe_$PID"
         try {
-            New-Item -ItemType SymbolicLink -Path $TestLink -Target $ScriptDir -ErrorAction Stop | Out-Null
+            New-Item -ItemType SymbolicLink -Path $TestLink -Target $RepoRoot -ErrorAction Stop | Out-Null
             Remove-Item -LiteralPath $TestLink -Force -ErrorAction SilentlyContinue
         } catch {
             $UseExt4Cache = $true
@@ -95,7 +96,7 @@ if (-not $IsWin) {
 if ($env:XARRTOOLS_VENV_DIR) {
     $VenvDir = $env:XARRTOOLS_VENV_DIR
 } elseif ($UseExt4Cache) {
-    $ResolvedPath = (Resolve-Path -LiteralPath $ScriptDir).Path
+    $ResolvedPath = (Resolve-Path -LiteralPath $RepoRoot).Path
     if ($ResolvedPath.StartsWith("/storage/emulated/10")) {
         $ResolvedPath = "/mnt/shared" + $ResolvedPath.Substring(20)
     }
@@ -103,7 +104,7 @@ if ($env:XARRTOOLS_VENV_DIR) {
     $Bytes = [System.Text.Encoding]::UTF8.GetBytes($ResolvedPath + "`n")
     $HashBytes = $Sha1.ComputeHash($Bytes)
     $PathHash = ([System.BitConverter]::ToString($HashBytes).Replace("-", "").ToLower()).Substring(0, 8)
-    $ProjectName = Split-Path -Leaf $ScriptDir
+    $ProjectName = Split-Path -Leaf $RepoRoot
     $HomeDir = if ($env:HOME) { $env:HOME } else { [Environment]::GetFolderPath("UserProfile") }
     $ProjectCacheDir = Join-Path $HomeDir ".cache/projects/$ProjectName-$PathHash"
     $VenvDir = Join-Path $ProjectCacheDir "venv"
@@ -139,7 +140,7 @@ if ($EnvOnly) {
 Write-Host "=================================================="
 Write-Host "  xarrtools Project Initialization (PowerShell)"
 Write-Host "=================================================="
-Write-Host "[Init] Project directory : $ScriptDir"
+Write-Host "[Init] Project directory : $RepoRoot"
 Write-Host "[Init] Virtualenv path   : $VenvDir"
 
 if ($ProjectCacheDir) {
@@ -181,7 +182,7 @@ if (-not $SkipDeps) {
 }
 
 # 5b. Install frontend build dependencies
-$PackageJson = Join-Path $ScriptDir "package.json"
+$PackageJson = Join-Path $RepoRoot "package.json"
 if ((-not $SkipDeps) -and (Test-Path -LiteralPath $PackageJson)) {
     $NodeCmd = Get-Command "node" -ErrorAction SilentlyContinue
     $NpmCmd = Get-Command "npm" -ErrorAction SilentlyContinue
@@ -207,8 +208,8 @@ if ((-not $SkipDeps) -and (Test-Path -LiteralPath $PackageJson)) {
 }
 
 # 6. Generate .env configuration from template if missing
-$EnvFile = Join-Path $ScriptDir ".env"
-$EnvExample = Join-Path $ScriptDir ".env.example"
+$EnvFile = Join-Path $RepoRoot ".env"
+$EnvExample = Join-Path $RepoRoot ".env.example"
 
 if (-not (Test-Path -LiteralPath $EnvFile)) {
     if (Test-Path -LiteralPath $EnvExample) {

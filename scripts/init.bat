@@ -9,7 +9,7 @@ setlocal EnableDelayedExpansion
 :: the local SQLite database schema.
 :: ==============================================================================
 
-pushd "%~dp0"
+pushd "%~dp0.."
 
 set "NO_PAUSE=0"
 set "SKIP_DEPS=0"

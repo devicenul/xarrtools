@@ -103,14 +103,14 @@ If you want to run directly from the repository:
 
 1. **Prerequisites**: Python 3.10+ (or 3.12) and Node.js 20+.
 2. **Initialize the environment**:
-   - **Linux / macOS**: `./init.sh`
-   - **Windows (Command Prompt)**: `init.bat`
-   - **Windows (PowerShell)**: `./init.ps1`
+   - **Linux / macOS**: `./scripts/init.sh`
+   - **Windows (Command Prompt)**: `scripts\init.bat`
+   - **Windows (PowerShell)**: `./scripts/init.ps1`
    This sets up the Python virtual environment, installs runtime and development dependencies, creates your `.env` configuration file if needed, initializes the database, and compiles the frontend TypeScript assets.
 3. **Launch the application**:
-   - **Desktop window**: `./run.sh` (or `python main.py`)
-   - **Web server**: `./run.sh --server` (or `python main.py --server`)
-   - **Terminal CLI**: `./run.sh --cli` (or `python main.py --cli`)
+   - **Desktop window**: `./scripts/run.sh` (or `python main.py`)
+   - **Web server**: `./scripts/run.sh --server` (or `python main.py --server`)
+   - **Terminal CLI**: `./scripts/run.sh --cli` (or `python main.py --cli`)
 
 Helpful startup flags for `main.py`:
 - `--gui` / `-g`: Launch the desktop window (default).
@@ -272,7 +272,7 @@ Contributions are welcome! If you want to build or modify xarrtools locally:
 
 ```bash
 # Setup environment and install dev dependencies
-./init.sh
+./scripts/init.sh
 
 # Run the full test suite
 .venv/bin/python -m pytest tests -q --no-cov
@@ -284,7 +284,7 @@ mypy core web cli gui main.py
 npm run build
 
 # Build a standalone single-file PyInstaller binary
-./build.sh
+./scripts/build.sh
 ```
 
 ---

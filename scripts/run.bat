@@ -5,7 +5,7 @@ setlocal EnableDelayedExpansion
 :: xarrtools Windows Auto-Startup Launcher (run.bat)
 :: ==============================================================================
 
-pushd "%~dp0"
+pushd "%~dp0.."
 
 echo ==================================================
 echo   xarrtools Auto-Startup Launcher

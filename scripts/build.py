@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Cross-platform PyInstaller build for xarrtools (the single source of truth for build.sh/.ps1/.bat).
 
-Run with the project's virtualenv Python, e.g. ``.venv/bin/python build.py``. The build.* wrappers
+Run with the project's virtualenv Python, e.g. ``.venv/bin/python scripts/build.py``. The build.* wrappers
 make sure the environment exists (via init.*) and then call this script.
 """
 import importlib.util
@@ -12,7 +12,7 @@ import sys
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-ROOT = Path(__file__).resolve().parent
+ROOT = Path(__file__).resolve().parent.parent
 TEMPLATES = "web/templates"
 
 

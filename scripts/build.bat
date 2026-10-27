@@ -5,7 +5,7 @@ setlocal EnableDelayedExpansion
 :: xarrtools Compiler Script (Windows)
 :: ==============================================================================
 
-pushd "%~dp0"
+pushd "%~dp0.."
 
 echo ==================================================
 echo   xarrtools Compiler Script (Windows)
@@ -31,7 +31,7 @@ if not exist "%VENV_DIR%\Scripts\python.exe" (
 
 :: 2. Compile (icon/data-path/workpath selection and PyInstaller install live in build.py)
 echo.
-"%VENV_DIR%\Scripts\python.exe" build.py
+"%VENV_DIR%\Scripts\python.exe" "%~dp0build.py" %*
 set "BUILD_EXIT=%ERRORLEVEL%"
 
 if not defined CI pause

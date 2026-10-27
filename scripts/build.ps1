@@ -10,7 +10,8 @@ $ScriptDir = $PSScriptRoot
 if (-not $ScriptDir) {
     $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Definition
 }
-Set-Location -LiteralPath $ScriptDir
+$RepoRoot = Split-Path -Parent $ScriptDir
+Set-Location -LiteralPath $RepoRoot
 
 Write-Host "=================================================="
 Write-Host "  xarrtools Compiler Script (PowerShell)"
@@ -28,7 +29,7 @@ if (-not (Test-Path -LiteralPath $VenvPython)) {
 
 # 2. Compile (icon/data-path/workpath selection and PyInstaller install live in build.py)
 Write-Host ""
-& $VenvPython (Join-Path $ScriptDir 'build.py')
+& $VenvPython (Join-Path $ScriptDir 'build.py') @args
 if ($LASTEXITCODE -ne 0) {
     exit 1
 }
