@@ -829,6 +829,6 @@ class TestM4ExtremeBoundaryInputs:
         eval_res = core.metadata.evaluate_metadata(raw_list_cast_item)
         assert eval_res["fields"]["cast"]["is_missing"] is False
 
-        # DB layer directly binding raw list to SQLite parameter raises ProgrammingError
-        with pytest.raises(sqlite3.ProgrammingError, match="type 'list' is not supported"):
+        # DB layer directly binding raw list to SQLite parameter raises ProgrammingError (or InterfaceError in Python <= 3.10)
+        with pytest.raises((sqlite3.ProgrammingError, sqlite3.InterfaceError)):
             core.db.add_cached_item("tv", raw_list_cast_item)
