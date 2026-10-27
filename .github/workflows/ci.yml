@@ -48,6 +48,7 @@ jobs:
         with:
           node-version: 20
           cache: "npm"
+          cache-dependency-path: "src/xarrtools/web/package-lock.json"
 
       - name: Install Python dependencies
         run: |
@@ -55,6 +56,7 @@ jobs:
           pip install -e ".[dev]"
 
       - name: Build frontend
+        working-directory: src/xarrtools/web
         run: |
           npm ci
           npm run build

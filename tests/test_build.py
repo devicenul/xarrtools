@@ -126,7 +126,9 @@ def test_build_frontend_builds_when_sources_present(tmp_path):
         assert build.build_frontend(tmp_path) is True
         assert mock_call.call_count == 2
         assert mock_call.call_args_list[0].args[0] == ["/usr/bin/npm", "install", "--no-audit", "--no-fund"]
+        assert mock_call.call_args_list[0].kwargs.get("cwd") == str(tmp_path / "src" / "xarrtools" / "web")
         assert mock_call.call_args_list[1].args[0] == ["/usr/bin/npm", "run", "build"]
+        assert mock_call.call_args_list[1].kwargs.get("cwd") == str(tmp_path / "src" / "xarrtools" / "web")
 
 
 def test_main_call_order_frontend_before_pyinstaller():

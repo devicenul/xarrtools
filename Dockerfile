@@ -1,9 +1,9 @@
 # Stage 1: Build TypeScript frontend
 FROM node:20-alpine AS frontend-builder
-WORKDIR /build
-COPY package.json package-lock.json tsconfig.json ./
+WORKDIR /build/src/xarrtools/web
+COPY src/xarrtools/web/package.json src/xarrtools/web/package-lock.json src/xarrtools/web/tsconfig.json ./
 RUN npm ci
-COPY src/xarrtools/web/static/src ./src/xarrtools/web/static/src
+COPY src/xarrtools/web/static/src ./static/src
 RUN npm run build
 
 # Stage 2: Runtime environment

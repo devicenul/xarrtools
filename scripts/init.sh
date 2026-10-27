@@ -152,24 +152,25 @@ if [ "$SKIP_DEPS" -eq 0 ]; then
 fi
 
 # 5b. Install frontend build dependencies (TypeScript)
-if [ "$SKIP_DEPS" -eq 0 ] && [ -f "$REPO_ROOT/package.json" ]; then
+WEB_DIR="$REPO_ROOT/src/xarrtools/web"
+if [ "$SKIP_DEPS" -eq 0 ] && [ -f "$WEB_DIR/package.json" ]; then
     if ! command -v node >/dev/null 2>&1 || ! command -v npm >/dev/null 2>&1; then
         echo "[Error] Node.js (npm) is required to build the frontend: install it from https://nodejs.org" >&2
         exit 1
     fi
     log_init "[Init] Installing frontend dependencies from package.json..."
     if [ -n "$PROJECT_CACHE_DIR" ]; then
-        npm_config_cache="$PROJECT_CACHE_DIR/npm" npm install --no-audit --no-fund 2>/dev/null || npm_config_cache="$PROJECT_CACHE_DIR/npm" npm install --no-audit --no-fund --no-bin-links
+        npm_config_cache="$PROJECT_CACHE_DIR/npm" npm --prefix "$WEB_DIR" install --no-audit --no-fund 2>/dev/null || npm_config_cache="$PROJECT_CACHE_DIR/npm" npm --prefix "$WEB_DIR" install --no-audit --no-fund --no-bin-links
     else
-        npm install --no-audit --no-fund 2>/dev/null || npm install --no-audit --no-fund --no-bin-links
+        npm --prefix "$WEB_DIR" install --no-audit --no-fund 2>/dev/null || npm --prefix "$WEB_DIR" install --no-audit --no-fund --no-bin-links
     fi
-    if [ -f "$REPO_ROOT/node_modules/typescript/bin/tsc" ] && [ ! -e "$REPO_ROOT/node_modules/.bin/tsc" ]; then
-        mkdir -p "$REPO_ROOT/node_modules/.bin"
-        printf '#!/bin/sh\nexec node "$(dirname "$0")/../typescript/bin/tsc" "$@"\n' > "$REPO_ROOT/node_modules/.bin/tsc"
-        chmod +x "$REPO_ROOT/node_modules/.bin/tsc" 2>/dev/null || true
+    if [ -f "$WEB_DIR/node_modules/typescript/bin/tsc" ] && [ ! -e "$WEB_DIR/node_modules/.bin/tsc" ]; then
+        mkdir -p "$WEB_DIR/node_modules/.bin"
+        printf '#!/bin/sh\nexec node "$(dirname "$0")/../typescript/bin/tsc" "$@"\n' > "$WEB_DIR/node_modules/.bin/tsc"
+        chmod +x "$WEB_DIR/node_modules/.bin/tsc" 2>/dev/null || true
     fi
     log_init "[Init] Compiling the TypeScript frontend (src/xarrtools/web/static/dist)..."
-    npm run build --silent
+    npm --prefix "$WEB_DIR" run build --silent
 fi
 
 # 6. Generate .env configuration from template if missing

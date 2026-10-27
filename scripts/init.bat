@@ -91,7 +91,8 @@ if "!SKIP_DEPS!"=="0" (
 
 :: 4b. Install frontend build dependencies
 if "!SKIP_DEPS!"=="0" (
-    if exist "package.json" (
+    set "WEB_DIR=%REPO_ROOT%\src\xarrtools\web"
+    if exist "!WEB_DIR!\package.json" (
         set "NODE_MISSING=0"
         where node >nul 2>nul
         if errorlevel 1 set "NODE_MISSING=1"
@@ -104,7 +105,7 @@ if "!SKIP_DEPS!"=="0" (
             exit /b 1
         )
         echo [Init] Installing frontend dependencies from package.json...
-        call npm install --no-audit --no-fund
+        call npm --prefix "!WEB_DIR!" install --no-audit --no-fund
         if errorlevel 1 (
             echo [Error] Failed to install frontend dependencies.
             if "!NO_PAUSE!"=="0" pause
@@ -112,7 +113,7 @@ if "!SKIP_DEPS!"=="0" (
             exit /b 1
         )
         echo [Init] Compiling the TypeScript frontend ^(src/xarrtools/web/static/dist^)...
-        call npm run build --silent
+        call npm --prefix "!WEB_DIR!" run build --silent
         if errorlevel 1 (
             echo [Error] Frontend build failed.
             if "!NO_PAUSE!"=="0" pause

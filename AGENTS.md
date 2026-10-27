@@ -44,6 +44,7 @@ Read this file first, then [docs/architecture.md](docs/architecture.md) (how it 
 | `src/xarrtools/core/version.py` | Application version definition and release build stamping |
 | `src/xarrtools/core/client.py`, `src/xarrtools/core/config.py` | Radarr/Sonarr API clients; settings/.env access |
 | `src/xarrtools/web/server.py`, `src/xarrtools/web/templates/` | Flask API + single-page UI (`index.html`, `style.css`) |
+| `src/xarrtools/web/package.json`, `src/xarrtools/web/tsconfig.json` | Frontend package configuration, TypeScript dependencies and compiler settings |
 | `src/xarrtools/web/static/src/` | TypeScript frontend modules (`types.ts`, `state.ts`, `render.ts`, `cards.ts`, `filters.ts`, `api.ts`, `settings.ts`, `modals.ts`, `main.ts`) |
 | `src/xarrtools/cli/cli.py`, `src/xarrtools/gui/gui.py` | Terminal manager and pywebview shell |
 | `scripts/` (`scripts/build.py`, `build.*`, `init.*`, `run.*`) | Build, environment setup and launchers (sh / ps1 / bat) |

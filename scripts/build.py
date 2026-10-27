@@ -103,7 +103,8 @@ def build_frontend(root: Optional[Path] = None) -> bool:
         True if frontend compiled successfully or wasn't needed, False on failure.
     """
     base = Path(root) if root is not None else ROOT
-    src_dir = base / "src" / "xarrtools" / "web" / "static" / "src"
+    web_dir = base / "src" / "xarrtools" / "web"
+    src_dir = web_dir / "static" / "src"
     if not src_dir.is_dir():
         return True
     has_sources = any(p.is_file() and p.suffix in {".ts", ".js", ".tsx"} for p in src_dir.rglob("*"))
@@ -115,13 +116,13 @@ def build_frontend(root: Optional[Path] = None) -> bool:
         print("[Error] Node.js (npm) is required to build the frontend: install it from https://nodejs.org", file=sys.stderr)
         return False
 
-    node_modules = base / "node_modules"
+    node_modules = web_dir / "node_modules"
     if not node_modules.is_dir():
         print("Installing frontend dependencies (npm install)...")
-        res = subprocess.call([npm, "install", "--no-audit", "--no-fund"], cwd=str(base))
+        res = subprocess.call([npm, "install", "--no-audit", "--no-fund"], cwd=str(web_dir))
         if res != 0:
             # Fall back to --no-bin-links for environments with limited symlink support (e.g. Android shared mount)
-            res = subprocess.call([npm, "install", "--no-audit", "--no-fund", "--no-bin-links"], cwd=str(base))
+            res = subprocess.call([npm, "install", "--no-audit", "--no-fund", "--no-bin-links"], cwd=str(web_dir))
         if res != 0:
             print("[Error] npm install failed.", file=sys.stderr)
             return False
@@ -139,7 +140,7 @@ def build_frontend(root: Optional[Path] = None) -> bool:
             pass
 
     print("Building frontend (npm run build)...")
-    if subprocess.call([npm, "run", "build"], cwd=str(base)) != 0:
+    if subprocess.call([npm, "run", "build"], cwd=str(web_dir)) != 0:
         print("[Error] npm run build failed.", file=sys.stderr)
         return False
     return True

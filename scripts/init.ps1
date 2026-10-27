@@ -175,7 +175,8 @@ if (-not $SkipDeps) {
 }
 
 # 5b. Install frontend build dependencies
-$PackageJson = Join-Path $RepoRoot "package.json"
+$WebDir = Join-Path $RepoRoot "src" "xarrtools" "web"
+$PackageJson = Join-Path $WebDir "package.json"
 if ((-not $SkipDeps) -and (Test-Path -LiteralPath $PackageJson)) {
     $NodeCmd = Get-Command "node" -ErrorAction SilentlyContinue
     $NpmCmd = Get-Command "npm" -ErrorAction SilentlyContinue
@@ -187,13 +188,13 @@ if ((-not $SkipDeps) -and (Test-Path -LiteralPath $PackageJson)) {
     if ($ProjectCacheDir) {
         $env:npm_config_cache = Join-Path $ProjectCacheDir "npm"
     }
-    & npm install --no-audit --no-fund
+    & npm --prefix $WebDir install --no-audit --no-fund
     if ($LASTEXITCODE -ne 0) {
         Write-Error "[Error] Failed to install frontend dependencies."
         exit 1
     }
     Write-Host "[Init] Compiling the TypeScript frontend (src/xarrtools/web/static/dist)..."
-    & npm run build --silent
+    & npm --prefix $WebDir run build --silent
     if ($LASTEXITCODE -ne 0) {
         Write-Error "[Error] Frontend build failed."
         exit 1

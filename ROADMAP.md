@@ -90,7 +90,7 @@ This document tracks planned future functionality, architectural changes, and us
 - Settings UI dedicated Scheduler tab with instant Run Now trigger, status metrics, and periodic frontend polling badge/toast in `web/static/src/main.ts`.
 
 ### ✓ TypeScript Frontend Modularization
-- Migrated legacy monolithic `app.js` into modular TypeScript modules under `web/static/src/` (`main.ts`, `types.ts`, `state.ts`, `filters.ts`, `render.ts`, `cards.ts`, `api.ts`, `settings.ts`, `modals.ts`, etc.) compiled to ES2020 in `web/static/dist/` via `npm run build`.
+- Migrated legacy monolithic `app.js` into modular TypeScript modules under `web/static/src/` (`main.ts`, `types.ts`, `state.ts`, `filters.ts`, `render.ts`, `cards.ts`, `api.ts`, `settings.ts`, `modals.ts`, etc.) compiled to ES2020 in `web/static/dist/` via `npm run build` in `src/xarrtools/web/`.
 - Integrated automated build checks in `scripts/init.*` and `scripts/build.py` with compiled assets git-ignored.
 - Established comprehensive Node-based regression testing harness verifying 100% markup and functional parity with mock DOM.
 

@@ -53,6 +53,7 @@ posters/
 
 # Node (only used for ad-hoc JS syntax checks / tests)
 node_modules/
+src/xarrtools/web/node_modules/
 
 # Compiled frontend output (TypeScript migration; built by init/build, not committed)
 src/xarrtools/web/static/dist/

@@ -281,7 +281,7 @@ Contributions are welcome! If you want to build or modify xarrtools locally:
 mypy src/xarrtools
 
 # Compile the modular TypeScript frontend
-npm run build
+npm --prefix src/xarrtools/web run build
 
 # Build a standalone single-file PyInstaller binary
 ./scripts/build.sh

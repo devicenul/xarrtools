@@ -9,6 +9,7 @@ __pycache__
 .coverage
 htmlcov
 node_modules
+src/xarrtools/web/node_modules
 src/xarrtools/web/static/dist
 build
 dist
