@@ -14,12 +14,12 @@ from tests.frontend_harness import check_node_and_dist
 
 pytestmark = pytest.mark.skipif(shutil.which("node") is None, reason="node not available")
 
-DIST_CARDS = Path(__file__).resolve().parent.parent / "web" / "static" / "dist" / "cards.js"
+DIST_CARDS = Path(__file__).resolve().parent.parent / "src" / "xarrtools" / "web" / "static" / "dist" / "cards.js"
 
 
 def run_node_module(body: str):
     if not DIST_CARDS.is_file():
-        pytest.skip("web/static/dist/cards.js not found; run 'npm run build' first")
+        pytest.skip("src/xarrtools/web/static/dist/cards.js not found; run 'npm run build' first")
     code = f"""
 import {{
   escapeHtml,

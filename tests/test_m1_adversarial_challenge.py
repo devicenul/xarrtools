@@ -17,16 +17,16 @@ from unittest.mock import patch, MagicMock
 import pytest
 
 # Isolate DB
-import core.db
+import xarrtools.core.db; from xarrtools import core
 fd, temp_db_path = tempfile.mkstemp(suffix=".db")
 os.close(fd)
 core.db.DB_PATH = Path(temp_db_path)
 core.db.init_db()
 
 with patch("threading.Thread"):
-    from web.server import app, get_clients
-from core.client import RadarrClient, SonarrClient, ArrAPIError, BaseArrClient
-from core.config import config, Config
+    from xarrtools.web.server import app, get_clients
+from xarrtools.core.client import RadarrClient, SonarrClient, ArrAPIError, BaseArrClient
+from xarrtools.core.config import config, Config
 
 
 @pytest.fixture(autouse=True)
@@ -123,7 +123,7 @@ def test_server_config_api_strictly_omits_language_profiles(auth_client):
     mock_sonarr.get_root_folders.return_value = [{"id": 1, "path": "/data/tv"}]
     mock_sonarr.get_quality_profiles.return_value = [{"id": 1, "name": "HD-1080p"}]
 
-    with patch("web.server.get_clients", return_value=(mock_radarr, mock_sonarr)):
+    with patch("xarrtools.web.server.get_clients", return_value=(mock_radarr, mock_sonarr)):
         res = auth_client.get("/api/config")
         assert res.status_code == 200
         data = res.get_json()
@@ -186,7 +186,7 @@ def test_add_media_mru_isolation_and_live_updates(auth_client):
     mock_sonarr = MagicMock()
     mock_sonarr.add_series.return_value = {"id": 200, "title": "Dark"}
 
-    with patch("web.server.get_clients", return_value=(mock_radarr, mock_sonarr)):
+    with patch("xarrtools.web.server.get_clients", return_value=(mock_radarr, mock_sonarr)):
         # 1. Add Movie
         movie_req = {
             "type": "movie",
@@ -348,7 +348,7 @@ def test_add_media_missing_parameters_validation(auth_client):
 
 def test_add_media_unconfigured_clients(auth_client):
     """Test POST /api/add when clients are not configured."""
-    with patch("web.server.get_clients", return_value=(None, None)):
+    with patch("xarrtools.web.server.get_clients", return_value=(None, None)):
         res_tv = auth_client.post("/api/add", json={
             "type": "tv",
             "raw_metadata": {"title": "Test TV"},
@@ -373,7 +373,7 @@ def test_add_media_arr_api_error_handling(auth_client):
     mock_sonarr = MagicMock()
     mock_sonarr.add_series.side_effect = ArrAPIError("Sonarr API HTTP Error 400: Path does not exist", status_code=400)
 
-    with patch("web.server.get_clients", return_value=(None, mock_sonarr)):
+    with patch("xarrtools.web.server.get_clients", return_value=(None, mock_sonarr)):
         res = auth_client.post("/api/add", json={
             "type": "tv",
             "raw_metadata": {"title": "Failing TV", "tvdbId": 123},

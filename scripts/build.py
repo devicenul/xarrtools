@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 ROOT = Path(__file__).resolve().parent.parent
-TEMPLATES = "web/templates"
+TEMPLATES = "src/xarrtools/web/templates"
 
 
 def build_settings(
@@ -44,7 +44,7 @@ def build_settings(
         sep = ":"
     workpath = str(Path(cache_dir) / "pyinstaller-build") if cache_dir else None
     if dist_exists is None:
-        dist_exists = (ROOT / "web" / "static" / "dist").is_dir()
+        dist_exists = (ROOT / "src" / "xarrtools" / "web" / "static" / "dist").is_dir()
     return {"icon": icon, "separator": sep, "binary": binary, "workpath": workpath, "dist_exists": dist_exists}
 
 
@@ -63,23 +63,23 @@ def pyinstaller_args(settings: Dict[str, Any], dist_exists: Optional[bool] = Non
         "--name", "xarrtools",
         f"--icon={settings['icon']}",
         "--collect-submodules", "webview",
-        "--add-data", f"{TEMPLATES}{settings['separator']}{TEMPLATES}"
+        "--add-data", f"{TEMPLATES}{settings['separator']}xarrtools/web/templates"
     ]
     has_dist = dist_exists if dist_exists is not None else settings.get("dist_exists", False)
     if has_dist:
-        args += ["--add-data", f"web/static/dist{settings['separator']}web/static/dist"]
+        args += ["--add-data", f"src/xarrtools/web/static/dist{settings['separator']}xarrtools/web/static/dist"]
     if settings.get("workpath"):
         args += ["--workpath", settings["workpath"]]
-    return args + ["main.py"]
+    return args + ["src/xarrtools/main.py"]
 
 
 def stamp_version(version: Optional[str] = None) -> Optional[str]:
-    """Writes core/_version.py if a version is specified via argument or XARRTOOLS_VERSION."""
+    """Writes src/xarrtools/core/_version.py if a version is specified via argument or XARRTOOLS_VERSION."""
     ver = version or os.environ.get("XARRTOOLS_VERSION")
     if not ver:
         return None
     ver_clean = ver.lstrip("v")
-    version_file = ROOT / "core" / "_version.py"
+    version_file = ROOT / "src" / "xarrtools" / "core" / "_version.py"
     version_file.write_text(f'"""Stamped release version."""\n__version__ = "{ver_clean}"\n', encoding="utf-8")
     print(f"Stamped application version: {ver_clean}")
     return ver_clean
@@ -103,7 +103,7 @@ def build_frontend(root: Optional[Path] = None) -> bool:
         True if frontend compiled successfully or wasn't needed, False on failure.
     """
     base = Path(root) if root is not None else ROOT
-    src_dir = base / "web" / "static" / "src"
+    src_dir = base / "src" / "xarrtools" / "web" / "static" / "src"
     if not src_dir.is_dir():
         return True
     has_sources = any(p.is_file() and p.suffix in {".ts", ".js", ".tsx"} for p in src_dir.rglob("*"))

@@ -8,11 +8,11 @@ from pathlib import Path
 from unittest.mock import patch, MagicMock
 import pytest
 
-import core.db
-from core.config import config
-from core.client import RadarrClient, SonarrClient
-from cli.cli import resolve_preset_index, select_from_list
-from web.server import app
+import xarrtools.core.db; from xarrtools import core
+from xarrtools.core.config import config
+from xarrtools.core.client import RadarrClient, SonarrClient
+from xarrtools.cli.cli import resolve_preset_index, select_from_list
+from xarrtools.web.server import app
 
 @pytest.fixture
 def isolated_db():

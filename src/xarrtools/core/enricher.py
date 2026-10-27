@@ -12,10 +12,10 @@ import requests
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
-from core.client import ArrAPIError, RadarrClient, SonarrClient
-from core.config import config
-from core.metadata import is_cast_missing
-from core.tmdb import get_movie_enrichment
+from xarrtools.core.client import ArrAPIError, RadarrClient, SonarrClient
+from xarrtools.core.config import config
+from xarrtools.core.metadata import is_cast_missing
+from xarrtools.core.tmdb import get_movie_enrichment
 
 logger = logging.getLogger("xarrtools.enricher")
 
@@ -182,7 +182,7 @@ def enrich_tv_show(title: str, year: int, sonarr_client: Optional[SonarrClient] 
             if tvdb_id:
                 data["tvdbId"] = tvdb_id
 
-            from core.locales import country_code, language_name
+            from xarrtools.core.locales import country_code, language_name
             data["language"] = language_name(maze_data.get("language"))
             _net = maze_data.get("network") or maze_data.get("webChannel") or {}
             data["country"] = country_code((_net.get("country") or {}).get("code"))

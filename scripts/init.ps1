@@ -199,7 +199,7 @@ if ((-not $SkipDeps) -and (Test-Path -LiteralPath $PackageJson)) {
         Write-Error "[Error] Failed to install frontend dependencies."
         exit 1
     }
-    Write-Host "[Init] Compiling the TypeScript frontend (web/static/dist)..."
+    Write-Host "[Init] Compiling the TypeScript frontend (src/xarrtools/web/static/dist)..."
     & npm run build --silent
     if ($LASTEXITCODE -ne 0) {
         Write-Error "[Error] Frontend build failed."
@@ -225,7 +225,8 @@ if (-not (Test-Path -LiteralPath $EnvFile)) {
 
 # 7. Initialize SQLite database schema and prune expired cache
 Write-Host "[Init] Initializing SQLite database schema (xarrtools.db)..."
-& $VenvPython -c "from core.db import init_db, clean_expired_cache; init_db(); clean_expired_cache()"
+$env:PYTHONPATH = (Join-Path $RepoRoot "src") + $(if ($env:PYTHONPATH) { [IO.Path]::PathSeparator + $env:PYTHONPATH } else { "" })
+& $VenvPython -c "from xarrtools.core.db import init_db, clean_expired_cache; init_db(); clean_expired_cache()"
 if ($LASTEXITCODE -ne 0) {
     Write-Error "[Error] Failed to initialize SQLite database schema."
     exit 1

@@ -45,7 +45,8 @@ if errorlevel 1 (
 echo.
 echo Booting xarrtools...
 echo --------------------------------------------------
-"%VENV_DIR%\Scripts\python.exe" main.py %*
+set "PYTHONPATH=%REPO_ROOT%\src;%PYTHONPATH%"
+"%VENV_DIR%\Scripts\python.exe" -m xarrtools %*
 set "APP_EXIT_CODE=%ERRORLEVEL%"
 echo --------------------------------------------------
 echo Application closed.

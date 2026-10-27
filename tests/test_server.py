@@ -8,7 +8,7 @@ from unittest.mock import patch, MagicMock
 
 # 1. Isolate the database path BEFORE importing web.server
 # This prevents initialization/modification of the production database during imports or test runs.
-import core.db
+import xarrtools.core.db; from xarrtools import core
 fd, temp_db_path = tempfile.mkstemp(suffix=".db")
 os.close(fd)
 core.db.DB_PATH = Path(temp_db_path)
@@ -18,7 +18,7 @@ core.db.init_db()
 
 # 2. Intercept and mock the background Thread start so it does not run continuously in tests
 with patch("threading.Thread") as mock_thread:
-    from web.server import (
+    from xarrtools.web.server import (
         app,
         scan_progress,
         scan_progress_lock,
@@ -28,7 +28,7 @@ with patch("threading.Thread") as mock_thread:
         start_server
     )
 
-from core.client import ArrAPIError
+from xarrtools.core.client import ArrAPIError
 
 @pytest.fixture(autouse=True)
 def cleanup_db():
@@ -42,7 +42,7 @@ def cleanup_db():
     # Reset default settings
     core.db.init_db()
     core.db.set_setting("api_key", "test_api_key")
-    from core.config import config
+    from xarrtools.core.config import config
     config.refresh()
     yield
     # Clean up temp file at the very end of the test suite if needed,
@@ -57,12 +57,12 @@ def client():
             self.client = client
             
         def _get_api_key(self):
-            from core.db import get_setting, set_setting
+            from xarrtools.core.db import get_setting, set_setting
             key = get_setting("api_key", "")
             if not key:
                 key = "test_api_key"
                 set_setting("api_key", key)
-                from core.config import config
+                from xarrtools.core.config import config
                 config.refresh()
             return key
             
@@ -91,7 +91,7 @@ def client():
         yield TestClientAPIKeyWrapper(client)
 
 def test_index_endpoint(client):
-    with patch("web.server.render_template") as mock_render:
+    with patch("xarrtools.web.server.render_template") as mock_render:
         mock_render.return_value = "Mock Index HTML"
         res = client.get("/")
         assert res.status_code == 200
@@ -107,7 +107,7 @@ def test_get_server_config_endpoint_configured(client):
     mock_sonarr.get_root_folders.return_value = [{"path": "/tv"}]
     mock_sonarr.get_quality_profiles.return_value = [{"id": 2, "name": "720p"}]
 
-    with patch("web.server.get_clients", return_value=(mock_radarr, mock_sonarr)):
+    with patch("xarrtools.web.server.get_clients", return_value=(mock_radarr, mock_sonarr)):
         res = client.get("/api/config")
         assert res.status_code == 200
         data = res.get_json()
@@ -126,14 +126,14 @@ def test_get_server_config_endpoint_not_configured_or_errors(client):
     mock_sonarr_err = MagicMock()
     mock_sonarr_err.get_root_folders.side_effect = Exception("Sonarr offline")
 
-    with patch("web.server.get_clients", return_value=(mock_radarr_err, mock_sonarr_err)):
+    with patch("xarrtools.web.server.get_clients", return_value=(mock_radarr_err, mock_sonarr_err)):
         res = client.get("/api/config")
         assert res.status_code == 200
         data = res.get_json()
         assert data["radarr"]["configured"] is False
         assert data["sonarr"]["configured"] is False
 
-    with patch("web.server.get_clients", return_value=(None, None)):
+    with patch("xarrtools.web.server.get_clients", return_value=(None, None)):
         res = client.get("/api/config")
         assert res.status_code == 200
         data = res.get_json()
@@ -141,13 +141,13 @@ def test_get_server_config_endpoint_not_configured_or_errors(client):
         assert data["sonarr"]["configured"] is False
 
 def test_manage_settings_endpoint_get(client):
-    with patch("web.server.get_all_settings", return_value={"test_key": "test_val"}):
+    with patch("xarrtools.web.server.get_all_settings", return_value={"test_key": "test_val"}):
         res = client.get("/api/settings")
         assert res.status_code == 200
         assert res.get_json() == {"test_key": "test_val"}
 
 def test_manage_settings_endpoint_post(client):
-    with patch("web.server.set_setting") as mock_set:
+    with patch("xarrtools.web.server.set_setting") as mock_set:
         res = client.post("/api/settings", json={"key1": "val1", "key2": "val2"})
         assert res.status_code == 200
         assert res.get_json() == {"status": "success", "message": "Settings saved successfully."}
@@ -164,7 +164,7 @@ def test_archive_media_endpoint_missing_params(client):
     assert res.status_code == 400
 
 def test_archive_media_endpoint_success(client):
-    with patch("web.server.archive_cached_item") as mock_archive:
+    with patch("xarrtools.web.server.archive_cached_item") as mock_archive:
         res = client.post("/api/archive", json={
             "type": "movie",
             "title": "Inception",
@@ -177,7 +177,7 @@ def test_archive_media_endpoint_success(client):
         mock_archive.assert_called_once_with("movie", "Inception", 2010, True, {"meta": "data"})
 
 def test_archive_media_endpoint_error(client):
-    with patch("web.server.archive_cached_item", side_effect=Exception("DB connection error")):
+    with patch("xarrtools.web.server.archive_cached_item", side_effect=Exception("DB connection error")):
         res = client.post("/api/archive", json={"type": "movie", "title": "Inception"})
         assert res.status_code == 500
         assert "DB connection error" in res.get_json()["message"]
@@ -186,7 +186,7 @@ def test_archive_batch_endpoint_validation_and_results(client):
     assert client.post("/api/archive/batch", json={}).status_code == 400
     assert client.post("/api/archive/batch", json={"items": "nope"}).status_code == 400
 
-    with patch("web.server.archive_cached_item") as mock_archive:
+    with patch("xarrtools.web.server.archive_cached_item") as mock_archive:
         res = client.post("/api/archive/batch", json={"archive": True, "items": [
             {"type": "movie", "title": "A", "year": 2026, "raw_item": {"x": 1}},
             {"type": "tv", "title": "B", "year": 2026},
@@ -199,7 +199,7 @@ def test_archive_batch_endpoint_validation_and_results(client):
     def flaky(type_, title, *a):
         if title == "Bad":
             raise Exception("boom")
-    with patch("web.server.archive_cached_item", side_effect=flaky):
+    with patch("xarrtools.web.server.archive_cached_item", side_effect=flaky):
         res = client.post("/api/archive/batch", json={"items": [
             {"type": "movie", "title": "Good", "year": 1}, {"type": "movie", "title": "Bad", "year": 1},
             {"title": "no type"}]})
@@ -207,13 +207,13 @@ def test_archive_batch_endpoint_validation_and_results(client):
     assert body["status"] == "partial" and body["archived"] == 1
     assert {f["title"] for f in body["failed"]} == {"Bad", "no type"}
 
-    with patch("web.server.archive_cached_item", side_effect=Exception("down")):
+    with patch("xarrtools.web.server.archive_cached_item", side_effect=Exception("down")):
         res = client.post("/api/archive/batch", json={"items": [{"type": "movie", "title": "X", "year": 1}]})
     assert res.status_code == 500 and res.get_json()["status"] == "error"
 
 
 def test_archive_batch_endpoint_persists_to_db(client):
-    from core.db import add_cached_item, get_cached_item
+    from xarrtools.core.db import add_cached_item, get_cached_item
     for t in ("Batch One", "Batch Two"):
         add_cached_item("movie", {"title": t, "year": 2026, "plot": "Plot", "date_obj": "2026-12-01"})
     res = client.post("/api/archive/batch", json={"archive": True, "items": [
@@ -225,34 +225,34 @@ def test_archive_batch_endpoint_persists_to_db(client):
 
 
 def test_cache_stats_endpoint(client):
-    with patch("web.server.get_cache_stats", return_value={"total_rows": 42}):
+    with patch("xarrtools.web.server.get_cache_stats", return_value={"total_rows": 42}):
         res = client.get("/api/cache/stats")
         assert res.status_code == 200
         assert res.get_json() == {"total_rows": 42}
 
-    with patch("web.server.get_cache_stats", side_effect=Exception("Failed")):
+    with patch("xarrtools.web.server.get_cache_stats", side_effect=Exception("Failed")):
         res = client.get("/api/cache/stats")
         assert res.status_code == 500
 
 def test_cache_prune_endpoint(client):
-    with patch("web.server.clean_expired_cache") as mock_prune:
+    with patch("xarrtools.web.server.clean_expired_cache") as mock_prune:
         res = client.post("/api/cache/prune")
         assert res.status_code == 200
         assert "Manual cache pruning completed" in res.get_json()["message"]
         mock_prune.assert_called_once()
 
-    with patch("web.server.clean_expired_cache", side_effect=Exception("Failed")):
+    with patch("xarrtools.web.server.clean_expired_cache", side_effect=Exception("Failed")):
         res = client.post("/api/cache/prune")
         assert res.status_code == 500
 
 def test_cache_clear_endpoint(client):
-    with patch("web.server.clear_all_cache") as mock_clear:
+    with patch("xarrtools.web.server.clear_all_cache") as mock_clear:
         res = client.post("/api/cache/clear")
         assert res.status_code == 200
         assert "All cached discoveries wiped" in res.get_json()["message"]
         mock_clear.assert_called_once()
 
-    with patch("web.server.clear_all_cache", side_effect=Exception("Failed")):
+    with patch("xarrtools.web.server.clear_all_cache", side_effect=Exception("Failed")):
         res = client.post("/api/cache/clear")
         assert res.status_code == 500
 
@@ -274,14 +274,14 @@ def test_discover_releases_already_running(client):
         update_scan_progress("idle", "Idle", 0, 0)
 
 def test_discover_releases_scrape_failure(client):
-    with patch("web.server.get_discoveries", side_effect=Exception("Scraper timed out")):
+    with patch("xarrtools.web.server.get_discoveries", side_effect=Exception("Scraper timed out")):
         res = client.get("/api/discover")
         assert res.status_code == 500
         assert "Failed to scrape releases" in res.get_json()["message"]
 
 def test_discover_releases_skip_scrape_no_clients(client):
     # Populate cache table with items
-    from core.db import add_cached_item
+    from xarrtools.core.db import add_cached_item
     tv_date = datetime.now().strftime("%Y-%m-%d")
     movie_date = datetime.now().strftime("%Y-%m-%d")
     item_tv = {
@@ -300,7 +300,7 @@ def test_discover_releases_skip_scrape_no_clients(client):
     add_cached_item("movie", item_movie)
 
     # When no clients are configured, it should return cached status directly
-    with patch("web.server.get_clients", return_value=(None, None)):
+    with patch("xarrtools.web.server.get_clients", return_value=(None, None)):
         res = client.get("/api/discover?skip_scrape=true&past_months=12&future_months=12")
         assert res.status_code == 200
         data = res.get_json()
@@ -313,7 +313,7 @@ def test_discover_releases_skip_scrape_no_clients(client):
 
 def test_discover_releases_skip_scrape_with_clients_sync(client):
     # Setup cache
-    from core.db import add_cached_item
+    from xarrtools.core.db import add_cached_item
     tv_date = datetime.now().strftime("%Y-%m-%d")
     movie_date = datetime.now().strftime("%Y-%m-%d")
     item_tv = {
@@ -337,7 +337,7 @@ def test_discover_releases_skip_scrape_with_clients_sync(client):
     mock_sonarr = MagicMock()
     mock_sonarr.get_library.return_value = [{"tvdbId": 11, "imdbId": "tt11", "title": "Show B", "year": 2025}]
 
-    with patch("web.server.get_clients", return_value=(mock_radarr, mock_sonarr)):
+    with patch("xarrtools.web.server.get_clients", return_value=(mock_radarr, mock_sonarr)):
         # Run discover with skip_scrape
         res = client.get("/api/discover?skip_scrape=true&past_months=12&future_months=12")
         assert res.status_code == 200
@@ -368,10 +368,10 @@ def test_discover_releases_live_scrape_and_enrich(client):
     mock_sonarr.get_library.return_value = []
 
     # Mock get_discoveries
-    with patch("web.server.get_discoveries", return_value=(tv_raw, movie_raw)):
+    with patch("xarrtools.web.server.get_discoveries", return_value=(tv_raw, movie_raw)):
         # Mock enrichment calls
-        with patch("web.server.enrich_tv_show") as mock_enrich_tv, \
-             patch("web.server.enrich_movie") as mock_enrich_movie:
+        with patch("xarrtools.web.server.enrich_tv_show") as mock_enrich_tv, \
+             patch("xarrtools.web.server.enrich_movie") as mock_enrich_movie:
              
             mock_enrich_tv.return_value = {
                 "title": "Show Live", "year": 2026, "plot": "Enriched TV Plot", "cast": "Cast TV",
@@ -398,7 +398,7 @@ def test_discover_releases_live_scrape_and_enrich(client):
 
 def test_discover_releases_live_scrape_valid_cache_hit(client):
     # If the item is already in the cache database and cache is complete, it shouldn't enrich again
-    from core.db import add_cached_item
+    from xarrtools.core.db import add_cached_item
     tv_date = datetime.now().strftime("%Y-%m-%d")
     item_tv = {
         "title": "Show Hits", "year": datetime.now().year, "plot": "TV Desc", "cast": "TV Cast",
@@ -419,8 +419,8 @@ def test_discover_releases_live_scrape_valid_cache_hit(client):
     }]
     movie_raw = []
 
-    with patch("web.server.get_discoveries", return_value=(tv_raw, movie_raw)):
-        with patch("core.enricher.enrich_tv_show") as mock_enrich_tv:
+    with patch("xarrtools.web.server.get_discoveries", return_value=(tv_raw, movie_raw)):
+        with patch("xarrtools.core.enricher.enrich_tv_show") as mock_enrich_tv:
             res = client.get("/api/discover?skip_scrape=false")
             assert res.status_code == 200
             data = res.get_json()
@@ -436,9 +436,9 @@ def test_discover_releases_live_scrape_enrich_exception_fallback(client):
         "title": "Movie Fails", "date_obj": datetime.now(), "description": "Scraped Movie Plot", "date_str": "2026-05-30"
     }]
 
-    with patch("web.server.get_discoveries", return_value=(tv_raw, movie_raw)):
-        with patch("web.server.enrich_tv_show", side_effect=Exception("Enrichment failed")), \
-             patch("web.server.enrich_movie", side_effect=Exception("Enrichment failed")):
+    with patch("xarrtools.web.server.get_discoveries", return_value=(tv_raw, movie_raw)):
+        with patch("xarrtools.web.server.enrich_tv_show", side_effect=Exception("Enrichment failed")), \
+             patch("xarrtools.web.server.enrich_movie", side_effect=Exception("Enrichment failed")):
              
             res = client.get("/api/discover?skip_scrape=false")
             assert res.status_code == 200
@@ -464,8 +464,8 @@ def test_cache_refresh_item_endpoint_tv_success(client):
     mock_sonarr = MagicMock()
     mock_sonarr.get_library.return_value = [{"tvdbId": 123, "imdbId": "tt123", "title": "Refreshed Show", "year": 2026}]
     
-    with patch("web.server.get_clients", return_value=(None, mock_sonarr)), \
-         patch("web.server.enrich_tv_show") as mock_enrich_tv:
+    with patch("xarrtools.web.server.get_clients", return_value=(None, mock_sonarr)), \
+         patch("xarrtools.web.server.enrich_tv_show") as mock_enrich_tv:
          
         mock_enrich_tv.return_value = {
             "title": "Refreshed Show", "year": 2026, "plot": "New Plot", "cast": "Cast",
@@ -474,7 +474,7 @@ def test_cache_refresh_item_endpoint_tv_success(client):
         }
         
         # Inject existing cached row to check if is_archived and other attributes are preserved
-        from core.db import add_cached_item
+        from xarrtools.core.db import add_cached_item
         add_cached_item("tv", {
             "title": "Refreshed Show", "year": 2026, "plot": "Old Plot", "cast": "Cast",
             "genres": ["Drama"], "trailer": "Trailer", "poster_url": "http://poster.jpg",
@@ -494,8 +494,8 @@ def test_cache_refresh_item_endpoint_movie_success(client):
     mock_radarr = MagicMock()
     mock_radarr.get_library.return_value = [{"tmdbId": 456, "imdbId": "tt456", "title": "Refreshed Movie", "year": 2026}]
     
-    with patch("web.server.get_clients", return_value=(mock_radarr, None)), \
-         patch("web.server.enrich_movie") as mock_enrich_movie:
+    with patch("xarrtools.web.server.get_clients", return_value=(mock_radarr, None)), \
+         patch("xarrtools.web.server.enrich_movie") as mock_enrich_movie:
          
         mock_enrich_movie.return_value = {
             "title": "Refreshed Movie", "year": 2026, "plot": "New Plot", "cast": "Cast",
@@ -510,7 +510,7 @@ def test_cache_refresh_item_endpoint_movie_success(client):
         assert data["plot"] == "New Plot"
 
 def test_cache_refresh_item_endpoint_failure(client):
-    with patch("web.server.enrich_tv_show", side_effect=Exception("Offline")):
+    with patch("xarrtools.web.server.enrich_tv_show", side_effect=Exception("Offline")):
         res = client.post("/api/cache/refresh", json={"type": "tv", "title": "Fail Show", "year": 2026})
         assert res.status_code == 500
 
@@ -526,7 +526,7 @@ def test_lookup_media_endpoint_invalid_type(client):
     assert res.status_code == 400
 
 def test_lookup_media_endpoint_not_configured(client):
-    with patch("web.server.get_clients", return_value=(None, None)):
+    with patch("xarrtools.web.server.get_clients", return_value=(None, None)):
         res = client.get("/api/lookup?type=tv&title=test")
         assert res.status_code == 400
         assert "Sonarr server is not configured" in res.get_json()["message"]
@@ -541,7 +541,7 @@ def test_lookup_media_endpoint_success(client):
     mock_sonarr = MagicMock()
     mock_sonarr.lookup_series.return_value = [{"title": "Found Series"}]
 
-    with patch("web.server.get_clients", return_value=(mock_radarr, mock_sonarr)):
+    with patch("xarrtools.web.server.get_clients", return_value=(mock_radarr, mock_sonarr)):
         res = client.get("/api/lookup?type=tv&title=test")
         assert res.status_code == 200
         assert res.get_json()["results"] == [{"title": "Found Series"}]
@@ -553,7 +553,7 @@ def test_lookup_media_endpoint_success(client):
 def test_lookup_media_endpoint_failure(client):
     mock_sonarr = MagicMock()
     mock_sonarr.lookup_series.side_effect = Exception("Lookup failed")
-    with patch("web.server.get_clients", return_value=(None, mock_sonarr)):
+    with patch("xarrtools.web.server.get_clients", return_value=(None, mock_sonarr)):
         res = client.get("/api/lookup?type=tv&title=test")
         assert res.status_code == 500
 
@@ -562,7 +562,7 @@ def test_add_media_endpoint_missing_params(client):
     assert res.status_code == 400
 
 def test_add_media_endpoint_demo_sandbox(client):
-    from core.db import get_setting
+    from xarrtools.core.db import get_setting
     # TV Demo Sandbox
     res = client.post("/api/add", json={
         "type": "tv", "raw_metadata": {"title": "Demo Show", "year": 2026, "imdbId": "tt123"},
@@ -596,7 +596,7 @@ def test_add_media_endpoint_demo_sandbox(client):
     assert get_setting("radarr_mru_root_folder") == "/movies_demo"
 
 def test_add_media_endpoint_live_errors_not_configured(client):
-    with patch("web.server.get_clients", return_value=(None, None)):
+    with patch("xarrtools.web.server.get_clients", return_value=(None, None)):
         res = client.post("/api/add", json={
             "type": "tv", "raw_metadata": {"title": "Show"}, "folder": "/tv", "profile_id": 1
         })
@@ -610,7 +610,7 @@ def test_add_media_endpoint_live_errors_not_configured(client):
         assert "Radarr server is not configured" in res.get_json()["message"]
 
 def test_add_media_endpoint_live_success(client):
-    from core.db import get_setting
+    from xarrtools.core.db import get_setting
     mock_radarr = MagicMock()
     mock_radarr.add_movie.return_value = {"title": "Live Movie", "year": 2026, "imdbId": "tt456"}
     
@@ -618,11 +618,11 @@ def test_add_media_endpoint_live_success(client):
     mock_sonarr.add_series.return_value = {"title": "Live Series", "year": 2026, "imdbId": "tt123"}
 
     # Insert cache row for movie and show to test update_cached_library_status inside add_media
-    from core.db import add_cached_item
+    from xarrtools.core.db import add_cached_item
     add_cached_item("tv", {"title": "Live Series", "year": 2026, "imdbId": "tt123", "plot": "Plot", "is_in_library": False, "is_archived": False})
     add_cached_item("movie", {"title": "Live Movie", "year": 2026, "imdbId": "tt456", "plot": "Plot", "is_in_library": False, "is_archived": False})
 
-    with patch("web.server.get_clients", return_value=(mock_radarr, mock_sonarr)):
+    with patch("xarrtools.web.server.get_clients", return_value=(mock_radarr, mock_sonarr)):
         # Add TV Show
         res = client.post("/api/add", json={
             "type": "tv", "raw_metadata": {"title": "Live Series", "year": 2026},
@@ -672,7 +672,7 @@ def test_add_media_endpoint_arr_api_error(client):
     mock_radarr = MagicMock()
     mock_radarr.add_movie.side_effect = ArrAPIError("API Error adding movie")
     
-    with patch("web.server.get_clients", return_value=(mock_radarr, None)):
+    with patch("xarrtools.web.server.get_clients", return_value=(mock_radarr, None)):
         res = client.post("/api/add", json={
             "type": "movie", "raw_metadata": {"title": "Live Movie", "year": 2026},
             "folder": "/movies", "profile_id": 2
@@ -680,17 +680,17 @@ def test_add_media_endpoint_arr_api_error(client):
         assert res.status_code == 500
         assert "API Error adding movie" in res.get_json()["message"]
 
-@patch("web.server.time.sleep")
+@patch("xarrtools.web.server.time.sleep")
 def test_background_poster_healer_no_rows(mock_sleep):
     # With no rows in the database cache, it will break immediately
     background_poster_healer()
 
-@patch("web.server.time.sleep")
-@patch("core.enricher.enrich_tv_show")
-@patch("core.enricher.enrich_movie")
+@patch("xarrtools.web.server.time.sleep")
+@patch("xarrtools.core.enricher.enrich_tv_show")
+@patch("xarrtools.core.enricher.enrich_movie")
 def test_background_poster_healer_with_rows(mock_enrich_movie, mock_enrich_tv, mock_sleep):
     # Insert a TV show row with null poster URL
-    from core.db import get_db_connection
+    from xarrtools.core.db import get_db_connection
     conn = get_db_connection()
     conn.execute(
         "INSERT INTO cache (type, title, year, imdb_id, poster_url, description, cast, genres, trailer, network, is_in_library, is_archived, added_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
@@ -722,10 +722,10 @@ def test_background_poster_healer_with_rows(mock_enrich_movie, mock_enrich_tv, m
     conn.close()
     assert row["poster_url"] == "http://new-poster.jpg"
 
-@patch("web.server.time.sleep")
-@patch("core.enricher.enrich_movie")
+@patch("xarrtools.web.server.time.sleep")
+@patch("xarrtools.core.enricher.enrich_movie")
 def test_background_poster_healer_movie(mock_enrich_movie, mock_sleep):
-    from core.db import get_db_connection
+    from xarrtools.core.db import get_db_connection
     conn = get_db_connection()
     conn.execute(
         "INSERT INTO cache (type, title, year, imdb_id, poster_url, description, cast, genres, trailer, network, is_in_library, is_archived, added_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
@@ -755,8 +755,8 @@ def test_background_poster_healer_movie(mock_enrich_movie, mock_sleep):
     conn.close()
     assert row["poster_url"] == "http://movie-poster.jpg"
 
-@patch("web.server.time.sleep")
-@patch("web.server.get_clients")
+@patch("xarrtools.web.server.time.sleep")
+@patch("xarrtools.web.server.get_clients")
 def test_background_poster_healer_exception(mock_get_clients, mock_sleep):
     # Mock get_clients to return None clients to prevent config DB queries at the start
     mock_get_clients.return_value = (None, None)
@@ -774,34 +774,34 @@ def test_background_poster_healer_exception(mock_get_clients, mock_sleep):
             raise Exception("DB Error")
         return mock_conn
     
-    with patch("core.db.get_db_connection", side_effect=side_effect):
+    with patch("xarrtools.core.db.get_db_connection", side_effect=side_effect):
         background_poster_healer()
     
     assert calls == 2
 
 
 
-@patch("web.server.app.run")
+@patch("xarrtools.web.server.app.run")
 @patch("waitress.serve")
 def test_start_server_production(mock_serve, mock_run):
     start_server(1234, debug=False)
     mock_serve.assert_called_once_with(app, host="127.0.0.1", port=1234, threads=8)
     mock_run.assert_not_called()
 
-@patch("web.server.app.run")
+@patch("xarrtools.web.server.app.run")
 @patch("waitress.serve", side_effect=ImportError("No waitress"))
 def test_start_server_fallback(mock_serve, mock_run):
     start_server(1234, debug=False)
     mock_run.assert_called_once_with(host="127.0.0.1", port=1234, debug=False)
 
-@patch("web.server.app.run")
+@patch("xarrtools.web.server.app.run")
 def test_start_server_debug(mock_run):
     start_server(1234, debug=True)
     mock_run.assert_called_once_with(host="127.0.0.1", port=1234, debug=True)
 
-@patch("web.server.config")
-@patch("web.server.RadarrClient")
-@patch("web.server.SonarrClient")
+@patch("xarrtools.web.server.config")
+@patch("xarrtools.web.server.RadarrClient")
+@patch("xarrtools.web.server.SonarrClient")
 def test_get_clients_both_configured(mock_sonarr, mock_radarr, mock_config):
     mock_config.validate_radarr.return_value = True
     mock_config.validate_sonarr.return_value = True
@@ -816,7 +816,7 @@ def test_get_clients_both_configured(mock_sonarr, mock_radarr, mock_config):
     mock_radarr.assert_called_once_with("http://radarr", "key1")
     mock_sonarr.assert_called_once_with("http://sonarr", "key2")
 
-@patch("web.server.config")
+@patch("xarrtools.web.server.config")
 def test_get_clients_various_configurations(mock_config):
     # 1. Radarr unconfigured, Sonarr unconfigured
     mock_config.validate_radarr.return_value = False
@@ -850,7 +850,7 @@ def test_get_clients_library_fetch_exceptions(client):
     mock_sonarr = MagicMock()
     mock_sonarr.get_library.side_effect = Exception("Sonarr fail")
     
-    with patch("web.server.get_clients", return_value=(mock_radarr, mock_sonarr)):
+    with patch("xarrtools.web.server.get_clients", return_value=(mock_radarr, mock_sonarr)):
         res = client.get("/api/discover?skip_scrape=true")
         assert res.status_code == 200
 
@@ -871,13 +871,13 @@ def test_get_clients_library_fetch_missing_fields(client):
         {"tvdbId": 203, "imdbId": None, "title": "No imdb Show", "year": 2026},
     ]
     
-    with patch("web.server.get_clients", return_value=(mock_radarr, mock_sonarr)):
+    with patch("xarrtools.web.server.get_clients", return_value=(mock_radarr, mock_sonarr)):
         res = client.get("/api/discover?skip_scrape=true")
         assert res.status_code == 200
 
 def test_api_discover_caching_and_sync_edge_cases(client):
     # Set default match ignore year = False (0) to hit year difference logic
-    from core.db import add_cached_item, set_setting
+    from xarrtools.core.db import add_cached_item, set_setting
     set_setting("default_match_ignore_year", "0")
     
     # 1. Incomplete TV show (added 2 days ago, missing poster/ratings/ids)
@@ -921,9 +921,9 @@ def test_api_discover_caching_and_sync_edge_cases(client):
     ]
     
     # Mock discoveries and enrichments (which run because caches are incomplete)
-    with patch("web.server.get_discoveries", return_value=(tv_raw, movie_raw)):
-        with patch("web.server.enrich_tv_show") as mock_enrich_tv, \
-             patch("web.server.enrich_movie") as mock_enrich_movie:
+    with patch("xarrtools.web.server.get_discoveries", return_value=(tv_raw, movie_raw)):
+        with patch("xarrtools.web.server.enrich_tv_show") as mock_enrich_tv, \
+             patch("xarrtools.web.server.enrich_movie") as mock_enrich_movie:
              
             mock_enrich_tv.return_value = {
                 "title": "Show Incomplete", "year": 2026, "plot": "", "cast": "TV Cast",
@@ -940,7 +940,7 @@ def test_api_discover_caching_and_sync_edge_cases(client):
             assert res.status_code == 200
 
 def test_api_discover_skip_scrape_complete_cache_sync(client):
-    from core.db import add_cached_item, set_setting
+    from xarrtools.core.db import add_cached_item, set_setting
     
     # Add complete items in cache with is_in_library = False
     item_tv = {
@@ -978,7 +978,7 @@ def test_api_discover_skip_scrape_complete_cache_sync(client):
     mock_radarr = MagicMock()
     mock_radarr.get_library.return_value = [{"tmdbId": 650, "imdbId": "tt650", "title": "Movie Complete Skip", "year": 2026}]
     
-    with patch("web.server.get_clients", return_value=(mock_radarr, mock_sonarr)):
+    with patch("xarrtools.web.server.get_clients", return_value=(mock_radarr, mock_sonarr)):
         # 1. ignore_year = True
         set_setting("default_match_ignore_year", "1")
         res = client.get("/api/discover?skip_scrape=true&past_months=12&future_months=12")
@@ -990,7 +990,7 @@ def test_api_discover_skip_scrape_complete_cache_sync(client):
         assert res.status_code == 200
 
 def test_api_discover_complete_cache_library_sync(client):
-    from core.db import add_cached_item, set_setting
+    from xarrtools.core.db import add_cached_item, set_setting
     # 1. ignore_year = False
     set_setting("default_match_ignore_year", "0")
     
@@ -1027,8 +1027,8 @@ def test_api_discover_complete_cache_library_sync(client):
     tv_raw = [{"title": "Show Complete", "date_obj": datetime(2026, 5, 30), "description": "TV Plot", "date_str": "May 30", "is_returning": False}]
     movie_raw = [{"title": "Movie Complete", "date_obj": datetime(2026, 5, 30), "description": "Movie Plot", "date_str": "May 30"}]
     
-    with patch("web.server.get_clients", return_value=(mock_radarr, mock_sonarr)):
-        with patch("web.server.get_discoveries", return_value=(tv_raw, movie_raw)):
+    with patch("xarrtools.web.server.get_clients", return_value=(mock_radarr, mock_sonarr)):
+        with patch("xarrtools.web.server.get_discoveries", return_value=(tv_raw, movie_raw)):
             res = client.get("/api/discover?skip_scrape=false")
             assert res.status_code == 200
             data = res.get_json()
@@ -1039,8 +1039,8 @@ def test_api_discover_complete_cache_library_sync(client):
     set_setting("default_match_ignore_year", "1")
     # TV Show matched by title ignoring year
     mock_sonarr.get_library.return_value = [{"tvdbId": None, "imdbId": None, "title": "Show Complete", "year": 2020}]
-    with patch("web.server.get_clients", return_value=(mock_radarr, mock_sonarr)):
-        with patch("web.server.get_discoveries", return_value=(tv_raw, movie_raw)):
+    with patch("xarrtools.web.server.get_clients", return_value=(mock_radarr, mock_sonarr)):
+        with patch("xarrtools.web.server.get_discoveries", return_value=(tv_raw, movie_raw)):
             res = client.get("/api/discover?skip_scrape=false")
             assert res.status_code == 200
 
@@ -1058,7 +1058,7 @@ def test_api_cache_refresh_exceptions_and_edge_cases(client):
     mock_sonarr.get_library.side_effect = Exception("Sonarr library error")
     
     # Seed cache with existing
-    from core.db import add_cached_item
+    from xarrtools.core.db import add_cached_item
     add_cached_item("tv", {
         "title": "Show Ref", "year": 2025, "plot": "TV Desc", "cast": "TV Cast",
         "genres": ["Drama"], "trailer": "TV Trailer", "poster_url": "http://tv/poster.jpg",
@@ -1066,8 +1066,8 @@ def test_api_cache_refresh_exceptions_and_edge_cases(client):
         "is_archived": True
     })
     
-    with patch("web.server.get_clients", return_value=(None, mock_sonarr)):
-        with patch("web.server.enrich_tv_show") as mock_enrich_tv:
+    with patch("xarrtools.web.server.get_clients", return_value=(None, mock_sonarr)):
+        with patch("xarrtools.web.server.enrich_tv_show") as mock_enrich_tv:
             mock_enrich_tv.return_value = {
                 "title": "Show Ref", "year": 2025, "plot": "Enriched plot", "cast": "Cast",
                 "genres": [], "trailer": "", "tvdbId": 11, "imdbId": "tt11", "network": "Hulu",
@@ -1089,8 +1089,8 @@ def test_api_cache_refresh_exceptions_and_edge_cases(client):
         "is_archived": True
     })
     
-    with patch("web.server.get_clients", return_value=(mock_radarr, None)):
-        with patch("web.server.enrich_movie") as mock_enrich_movie:
+    with patch("xarrtools.web.server.get_clients", return_value=(mock_radarr, None)):
+        with patch("xarrtools.web.server.enrich_movie") as mock_enrich_movie:
             mock_enrich_movie.return_value = {
                 "title": "Movie Ref", "year": 2025, "plot": "Enriched plot", "cast": "Cast",
                 "genres": [], "trailer": "", "tmdbId": 22, "imdbId": "tt22", "network": "Paramount",
@@ -1100,8 +1100,8 @@ def test_api_cache_refresh_exceptions_and_edge_cases(client):
             assert res.status_code == 200
 
     # 4.5 Refresh item that does NOT exist in cache (covers existing is None branches)
-    with patch("web.server.get_clients", return_value=(None, None)):
-        with patch("web.server.enrich_tv_show") as mock_enrich_tv:
+    with patch("xarrtools.web.server.get_clients", return_value=(None, None)):
+        with patch("xarrtools.web.server.enrich_tv_show") as mock_enrich_tv:
             mock_enrich_tv.return_value = {
                 "title": "New TV Show Ref", "year": 2025, "plot": "Enriched plot", "cast": "Cast",
                 "genres": [], "trailer": "", "tvdbId": 11, "imdbId": "tt11", "network": "Hulu",
@@ -1111,7 +1111,7 @@ def test_api_cache_refresh_exceptions_and_edge_cases(client):
             assert res.status_code == 200
             
     # 5. Top-level Exception returns 500
-    with patch("web.server.get_clients", side_effect=Exception("Top level fail")):
+    with patch("xarrtools.web.server.get_clients", side_effect=Exception("Top level fail")):
         old_propagate = app.config.get("PROPAGATE_EXCEPTIONS")
         app.config["PROPAGATE_EXCEPTIONS"] = False
         try:
@@ -1124,7 +1124,7 @@ def test_api_cache_refresh_exceptions_and_edge_cases(client):
                 del app.config["PROPAGATE_EXCEPTIONS"]
 
 def test_api_cache_refresh_successful_library_sync(client):
-    from core.db import add_cached_item, set_setting
+    from xarrtools.core.db import add_cached_item, set_setting
     
     # TV show refresh
     mock_sonarr = MagicMock()
@@ -1137,8 +1137,8 @@ def test_api_cache_refresh_successful_library_sync(client):
         "is_archived": False
     })
     
-    with patch("web.server.get_clients", return_value=(None, mock_sonarr)):
-        with patch("web.server.enrich_tv_show") as mock_enrich_tv:
+    with patch("xarrtools.web.server.get_clients", return_value=(None, mock_sonarr)):
+        with patch("xarrtools.web.server.enrich_tv_show") as mock_enrich_tv:
             mock_enrich_tv.return_value = {
                 "title": "Show Refresh Sync", "year": 2026, "plot": "Enriched", "cast": "Cast",
                 "genres": [], "trailer": "", "tvdbId": 700, "imdbId": "tt700", "network": "Hulu",
@@ -1166,8 +1166,8 @@ def test_api_cache_refresh_successful_library_sync(client):
         "is_archived": False
     })
     
-    with patch("web.server.get_clients", return_value=(mock_radarr, None)):
-        with patch("web.server.enrich_movie") as mock_enrich_movie:
+    with patch("xarrtools.web.server.get_clients", return_value=(mock_radarr, None)):
+        with patch("xarrtools.web.server.enrich_movie") as mock_enrich_movie:
             mock_enrich_movie.return_value = {
                 "title": "Movie Refresh Sync", "year": 2026, "plot": "Enriched", "cast": "Cast",
                 "genres": [], "trailer": "", "tmdbId": 800, "imdbId": "tt800", "network": "Paramount",
@@ -1201,7 +1201,7 @@ def test_api_add_edge_cases(client):
     assert "Successfully added" in res.get_json()["message"]
     
     # 2.5 Demo mode - item DOES exist in cache (covers existing True branch)
-    from core.db import add_cached_item
+    from xarrtools.core.db import add_cached_item
     add_cached_item("tv", {
         "title": "Demo Show Existing", "year": 2026, "plot": "TV Desc", "cast": "TV Cast",
         "genres": ["Drama"], "trailer": "TV Trailer", "poster_url": "http://tv/poster.jpg",
@@ -1218,7 +1218,7 @@ def test_api_add_edge_cases(client):
     assert res.status_code == 200
     
     # 3. Demo mode - exception block
-    with patch("web.server.get_cached_item", side_effect=Exception("Database locked")):
+    with patch("xarrtools.web.server.get_cached_item", side_effect=Exception("Database locked")):
         res = client.post("/api/add", json={
             "type": "tv",
             "raw_metadata": {"title": "Demo Show New", "year": 2026, "imdbId": "tt99"},
@@ -1231,7 +1231,7 @@ def test_api_add_edge_cases(client):
     # 4. Standard mode - tv item NOT in cache
     mock_sonarr = MagicMock()
     mock_sonarr.add_series.return_value = {"title": "TV Series New", "year": 2026, "imdbId": "tt10"}
-    with patch("web.server.get_clients", return_value=(None, mock_sonarr)):
+    with patch("xarrtools.web.server.get_clients", return_value=(None, mock_sonarr)):
         res = client.post("/api/add", json={
             "type": "tv",
             "raw_metadata": {"title": "TV Series New", "year": 2026, "imdbId": "tt10"},
@@ -1243,7 +1243,7 @@ def test_api_add_edge_cases(client):
     # 5. Standard mode - movie item NOT in cache
     mock_radarr = MagicMock()
     mock_radarr.add_movie.return_value = {"title": "Movie New", "year": 2026, "imdbId": "tt20"}
-    with patch("web.server.get_clients", return_value=(mock_radarr, None)):
+    with patch("xarrtools.web.server.get_clients", return_value=(mock_radarr, None)):
         res = client.post("/api/add", json={
             "type": "movie",
             "raw_metadata": {"title": "Movie New", "year": 2026, "imdbId": "tt20"},
@@ -1256,7 +1256,7 @@ def test_background_poster_healer_pytest_env_reload():
     # Verify reloading web.server starts the healer thread when PYTEST_CURRENT_TEST is absent.
     import importlib
     import os
-    import web.server
+    import xarrtools.web.server; from xarrtools import web
     
     old_env = os.environ.get("PYTEST_CURRENT_TEST")
     env_copy = os.environ.copy()
@@ -1266,7 +1266,7 @@ def test_background_poster_healer_pytest_env_reload():
     try:
         with patch("threading.Thread") as mock_thread:
             import importlib
-            import web.server
+            import xarrtools.web.server; from xarrtools import web
             importlib.reload(web.server)
             assert mock_thread.call_count >= 1
             assert mock_thread.call_args[1]["target"] == web.server.background_poster_healer
@@ -1275,7 +1275,7 @@ def test_background_poster_healer_pytest_env_reload():
             os.environ["PYTEST_CURRENT_TEST"] = old_env
 
 def test_api_discover_various_sync_and_incomplete_cases(client):
-    from core.db import add_cached_item, set_setting
+    from xarrtools.core.db import add_cached_item, set_setting
     
     # 1. TV show incomplete cache missing added_at
     item_tv_no_added_at = {
@@ -1340,10 +1340,10 @@ def test_api_discover_various_sync_and_incomplete_cases(client):
 
     # 4. We will run skip_scrape = False with clients = (None, None) to hit lines 403, 525, 449, 572
     # And we'll mock enrichment functions
-    with patch("web.server.get_clients", return_value=(None, None)):
-        with patch("web.server.get_discoveries", return_value=(tv_raw, movie_raw)):
-            with patch("web.server.enrich_tv_show") as mock_enrich_tv, \
-                 patch("web.server.enrich_movie") as mock_enrich_movie:
+    with patch("xarrtools.web.server.get_clients", return_value=(None, None)):
+        with patch("xarrtools.web.server.get_discoveries", return_value=(tv_raw, movie_raw)):
+            with patch("xarrtools.web.server.enrich_tv_show") as mock_enrich_tv, \
+                 patch("xarrtools.web.server.enrich_movie") as mock_enrich_movie:
                  
                 mock_enrich_tv.return_value = {
                     "title": "Show No Added At", "year": 2026, "plot": "", "cast": "Cast",
@@ -1370,10 +1370,10 @@ def test_api_discover_various_sync_and_incomplete_cases(client):
     mock_sonarr.get_library.return_value = [{"tvdbId": None, "imdbId": None, "title": "Show Live Sync", "year": 2025}]
     mock_radarr.get_library.return_value = [{"tmdbId": None, "imdbId": None, "title": "Movie Live Sync", "year": 2025}]
     
-    with patch("web.server.get_clients", return_value=(mock_radarr, mock_sonarr)):
-        with patch("web.server.get_discoveries", return_value=(tv_raw_2, movie_raw_2)):
-            with patch("web.server.enrich_tv_show") as mock_enrich_tv, \
-                 patch("web.server.enrich_movie") as mock_enrich_movie:
+    with patch("xarrtools.web.server.get_clients", return_value=(mock_radarr, mock_sonarr)):
+        with patch("xarrtools.web.server.get_discoveries", return_value=(tv_raw_2, movie_raw_2)):
+            with patch("xarrtools.web.server.enrich_tv_show") as mock_enrich_tv, \
+                 patch("xarrtools.web.server.enrich_movie") as mock_enrich_movie:
                  
                 mock_enrich_tv.return_value = {
                     "title": "Show Live Sync", "year": 2026, "plot": "Plot", "cast": "Cast",
@@ -1391,7 +1391,7 @@ def test_api_discover_various_sync_and_incomplete_cases(client):
                 assert res.status_code == 200
 
 def test_api_cache_refresh_existing_returning_none(client):
-    from core.db import add_cached_item
+    from xarrtools.core.db import add_cached_item
     # Seed cache TV show without is_returning
     add_cached_item("tv", {
         "title": "Show No Returning", "year": 2026, "plot": "TV Desc", "cast": "TV Cast",
@@ -1406,8 +1406,8 @@ def test_api_cache_refresh_existing_returning_none(client):
     conn.commit()
     conn.close()
     
-    with patch("web.server.get_clients", return_value=(None, None)):
-        with patch("web.server.enrich_tv_show") as mock_enrich_tv:
+    with patch("xarrtools.web.server.get_clients", return_value=(None, None)):
+        with patch("xarrtools.web.server.enrich_tv_show") as mock_enrich_tv:
             mock_enrich_tv.return_value = {
                 "title": "Show No Returning", "year": 2026, "plot": "Enriched plot", "cast": "Cast",
                 "genres": [], "trailer": "", "tvdbId": 11, "imdbId": "tt11", "network": "Hulu",
@@ -1421,7 +1421,7 @@ def test_discover_recently_updated_branch_coverage(client):
     # Tests lines 367-368 and 489-490 (recently_updated = True)
     # We need a cached item that has a poster but is incomplete (missing rating/ids),
     # and has a recent added_at timestamp.
-    from core.db import add_cached_item, get_cached_item
+    from xarrtools.core.db import add_cached_item, get_cached_item
     from datetime import datetime, timedelta
     
     tv_date = datetime.now().strftime("%Y-%m-%d")
@@ -1462,10 +1462,10 @@ def test_discover_recently_updated_branch_coverage(client):
     mock_sonarr = MagicMock()
     mock_sonarr.get_library.return_value = []
     
-    with patch("web.server.get_clients", return_value=(mock_radarr, mock_sonarr)):
-        with patch("web.server.get_discoveries", return_value=(tv_raw, movie_raw)):
-            with patch("web.server.enrich_tv_show") as mock_enrich_tv, \
-                 patch("web.server.enrich_movie") as mock_enrich_movie:
+    with patch("xarrtools.web.server.get_clients", return_value=(mock_radarr, mock_sonarr)):
+        with patch("xarrtools.web.server.get_discoveries", return_value=(tv_raw, movie_raw)):
+            with patch("xarrtools.web.server.enrich_tv_show") as mock_enrich_tv, \
+                 patch("xarrtools.web.server.enrich_movie") as mock_enrich_movie:
                 res = client.get("/api/discover?skip_scrape=false")
                 assert res.status_code == 200
                 data = res.get_json()
@@ -1479,7 +1479,7 @@ def test_discover_recently_updated_branch_coverage(client):
 
 def test_discover_cached_no_added_at_movie(client):
     # Tests line 486->494: cached item has no added_at (or is None)
-    from core.db import add_cached_item
+    from xarrtools.core.db import add_cached_item
     tv_date = datetime.now().strftime("%Y-%m-%d")
     item_movie = {
         "title": "NoAddedAt Movie", "year": datetime.now().year, "plot": "Movie Desc", "cast": "Movie Cast",
@@ -1500,9 +1500,9 @@ def test_discover_cached_no_added_at_movie(client):
     mock_radarr = MagicMock()
     mock_radarr.get_library.return_value = []
     
-    with patch("web.server.get_clients", return_value=(mock_radarr, None)):
-        with patch("web.server.get_discoveries", return_value=((), movie_raw)):
-            with patch("core.enricher.enrich_movie") as mock_enrich_movie:
+    with patch("xarrtools.web.server.get_clients", return_value=(mock_radarr, None)):
+        with patch("xarrtools.web.server.get_discoveries", return_value=((), movie_raw)):
+            with patch("xarrtools.core.enricher.enrich_movie") as mock_enrich_movie:
                 res = client.get("/api/discover?skip_scrape=false")
                 assert res.status_code == 200
                 mock_enrich_movie.assert_not_called()
@@ -1510,8 +1510,8 @@ def test_discover_cached_no_added_at_movie(client):
 
 def test_discover_cached_movie_title_library_match(client):
     # Tests line 513->519 (title library match for cached movies with ignore_year = True and False)
-    from core.db import add_cached_item
-    from core.db import set_setting
+    from xarrtools.core.db import add_cached_item
+    from xarrtools.core.db import set_setting
     tv_date = datetime.now().strftime("%Y-%m-%d")
     
     # 1. Test ignore_year = True
@@ -1529,8 +1529,8 @@ def test_discover_cached_movie_title_library_match(client):
     mock_radarr = MagicMock()
     mock_radarr.get_library.return_value = [{"tmdbId": None, "imdbId": None, "title": "MatchTitle Movie", "year": 2020}]
     
-    with patch("web.server.get_clients", return_value=(mock_radarr, None)):
-        with patch("web.server.get_discoveries", return_value=((), movie_raw)):
+    with patch("xarrtools.web.server.get_clients", return_value=(mock_radarr, None)):
+        with patch("xarrtools.web.server.get_discoveries", return_value=((), movie_raw)):
             res = client.get("/api/discover?skip_scrape=false")
             assert res.status_code == 200
             data = res.get_json()
@@ -1540,8 +1540,8 @@ def test_discover_cached_movie_title_library_match(client):
     set_setting("default_match_ignore_year", "0")
     # Year difference <= 1
     mock_radarr.get_library.return_value = [{"tmdbId": None, "imdbId": None, "title": "MatchTitle Movie", "year": 2025}]
-    with patch("web.server.get_clients", return_value=(mock_radarr, None)):
-        with patch("web.server.get_discoveries", return_value=((), movie_raw)):
+    with patch("xarrtools.web.server.get_clients", return_value=(mock_radarr, None)):
+        with patch("xarrtools.web.server.get_discoveries", return_value=((), movie_raw)):
             res = client.get("/api/discover?skip_scrape=false")
             assert res.status_code == 200
             data = res.get_json()
@@ -1549,15 +1549,15 @@ def test_discover_cached_movie_title_library_match(client):
 
     # Year difference > 1
     # Reset cached in-library status for this test step since it was set to True in previous step
-    import core.db
+    import xarrtools.core.db; from xarrtools import core
     conn = core.db.get_db_connection()
     conn.execute("UPDATE cache SET is_in_library = 0")
     conn.commit()
     conn.close()
     
     mock_radarr.get_library.return_value = [{"tmdbId": None, "imdbId": None, "title": "MatchTitle Movie", "year": 2020}]
-    with patch("web.server.get_clients", return_value=(mock_radarr, None)):
-        with patch("web.server.get_discoveries", return_value=((), movie_raw)):
+    with patch("xarrtools.web.server.get_clients", return_value=(mock_radarr, None)):
+        with patch("xarrtools.web.server.get_discoveries", return_value=((), movie_raw)):
             res = client.get("/api/discover?skip_scrape=false")
             assert res.status_code == 200
             data = res.get_json()
@@ -1566,7 +1566,7 @@ def test_discover_cached_movie_title_library_match(client):
 
 def test_discover_unconfigured_cache_exists_and_fallback(client):
     # Tests line 572: movie live enrichment with no radarr client but cached item exists
-    from core.db import add_cached_item
+    from xarrtools.core.db import add_cached_item
     tv_date = datetime.now().strftime("%Y-%m-%d")
     
     # We create an incomplete cache item (missing poster_url) so it triggers live enrichment
@@ -1580,9 +1580,9 @@ def test_discover_unconfigured_cache_exists_and_fallback(client):
     
     movie_raw = [{"title": "Unconfigured Movie", "date_obj": datetime(2026, 1, 1), "description": "Scraped Movie Plot", "date_str": tv_date}]
     
-    with patch("web.server.get_clients", return_value=(None, None)):
-        with patch("web.server.get_discoveries", return_value=((), movie_raw)):
-            with patch("core.enricher.enrich_movie") as mock_enrich_movie:
+    with patch("xarrtools.web.server.get_clients", return_value=(None, None)):
+        with patch("xarrtools.web.server.get_discoveries", return_value=((), movie_raw)):
+            with patch("xarrtools.core.enricher.enrich_movie") as mock_enrich_movie:
                 mock_enrich_movie.return_value = {
                     "title": "Unconfigured Movie", "year": 2026, "plot": "Enriched Movie Plot", "cast": "Cast Movie",
                     "genres": ["Drama"], "trailer": "Movie Trailer", "poster_url": "http://movie/poster.jpg",
@@ -1605,9 +1605,9 @@ def test_discover_movies_enrichment_exception_imdb_branches(client):
         {"title": "Fail3 Movie", "date_obj": datetime(2026, 1, 1), "description": "Desc 3", "date_str": tv_date, "imdbId": ""}
     ]
     
-    with patch("web.server.get_clients", return_value=(None, None)):
-        with patch("web.server.get_discoveries", return_value=((), movie_raw)):
-            with patch("core.enricher.enrich_movie", side_effect=Exception("Failed")):
+    with patch("xarrtools.web.server.get_clients", return_value=(None, None)):
+        with patch("xarrtools.web.server.get_discoveries", return_value=((), movie_raw)):
+            with patch("xarrtools.core.enricher.enrich_movie", side_effect=Exception("Failed")):
                 res = client.get("/api/discover?skip_scrape=false")
                 assert res.status_code == 200
                 data = res.get_json()
@@ -1619,7 +1619,7 @@ def test_discover_movies_enrichment_exception_imdb_branches(client):
 
 def test_cache_refresh_existing_returning_missing_key(client):
     # Tests line 633->637: existing dict doesn't have the key "is_returning"
-    from core.db import add_cached_item
+    from xarrtools.core.db import add_cached_item
     
     # We mock get_cached_item to return a dictionary without "is_returning" key
     mock_existing = {
@@ -1628,9 +1628,9 @@ def test_cache_refresh_existing_returning_missing_key(client):
         "is_in_library": False, "is_archived": False
     }
     
-    with patch("web.server.get_cached_item", return_value=mock_existing):
-        with patch("web.server.get_clients", return_value=(None, None)):
-            with patch("web.server.enrich_tv_show") as mock_enrich_tv:
+    with patch("xarrtools.web.server.get_cached_item", return_value=mock_existing):
+        with patch("xarrtools.web.server.get_clients", return_value=(None, None)):
+            with patch("xarrtools.web.server.enrich_tv_show") as mock_enrich_tv:
                 mock_enrich_tv.return_value = {
                     "title": "Show No Key", "year": 2026, "plot": "Enriched plot", "cast": "Cast",
                     "genres": [], "trailer": "", "tvdbId": 11, "imdbId": "tt11", "network": "Hulu",
@@ -1649,7 +1649,7 @@ def test_cache_refresh_tv_library_sync_edge_cases(client):
     # 2. Duplicate titles (hits 661->663 False)
     # 3. A show with no year (hits 663->658 False)
     # 4. A list of shows not matching (hits 666->672 False)
-    from core.db import set_setting
+    from xarrtools.core.db import set_setting
     set_setting("default_match_ignore_year", "1")
     
     mock_sonarr = MagicMock()
@@ -1661,8 +1661,8 @@ def test_cache_refresh_tv_library_sync_edge_cases(client):
         {"tvdbId": None, "imdbId": None, "title": "NotMatching TV", "year": 2026} # hits 666->672 False
     ]
     
-    with patch("web.server.get_clients", return_value=(None, mock_sonarr)):
-        with patch("web.server.enrich_tv_show") as mock_enrich_tv:
+    with patch("xarrtools.web.server.get_clients", return_value=(None, mock_sonarr)):
+        with patch("xarrtools.web.server.enrich_tv_show") as mock_enrich_tv:
             mock_enrich_tv.return_value = {
                 "title": "Show Match", "year": 2026, "plot": "Enriched plot", "cast": "Cast",
                 "genres": [], "trailer": "", "tvdbId": 11, "imdbId": "tt11", "network": "Hulu",
@@ -1683,8 +1683,8 @@ def test_cache_refresh_movie_library_sync_edge_cases_and_fallback(client):
     #   3. A movie with no year (hits 715->710 False)
     #   4. A list of movies not matching (hits 718->724 False)
     # - And radarr_client is None to test line 728 fallback
-    from core.db import set_setting
-    from core.db import add_cached_item
+    from xarrtools.core.db import set_setting
+    from xarrtools.core.db import add_cached_item
     set_setting("default_match_ignore_year", "1")
     
     # 1. Test library sync edge cases
@@ -1697,8 +1697,8 @@ def test_cache_refresh_movie_library_sync_edge_cases_and_fallback(client):
         {"tmdbId": None, "imdbId": None, "title": "NotMatching Movie", "year": 2026} # hits 718->724 False
     ]
     
-    with patch("web.server.get_clients", return_value=(mock_radarr, None)):
-        with patch("web.server.enrich_movie") as mock_enrich_movie:
+    with patch("xarrtools.web.server.get_clients", return_value=(mock_radarr, None)):
+        with patch("xarrtools.web.server.enrich_movie") as mock_enrich_movie:
             mock_enrich_movie.return_value = {
                 "title": "Movie Match", "year": 2026, "plot": "Enriched plot", "cast": "Cast",
                 "genres": [], "trailer": "", "tmdbId": 11, "imdbId": "tt11", "network": "Hulu",
@@ -1717,8 +1717,8 @@ def test_cache_refresh_movie_library_sync_edge_cases_and_fallback(client):
         "is_archived": False
     })
     
-    with patch("web.server.get_clients", return_value=(None, None)):
-        with patch("web.server.enrich_movie") as mock_enrich_movie:
+    with patch("xarrtools.web.server.get_clients", return_value=(None, None)):
+        with patch("xarrtools.web.server.enrich_movie") as mock_enrich_movie:
             mock_enrich_movie.return_value = {
                 "title": "Fallback Movie", "year": 2026, "plot": "Enriched Movie Plot", "cast": "Cast Movie",
                 "genres": ["Drama"], "trailer": "Movie Trailer", "poster_url": "http://movie/poster.jpg",
@@ -1733,7 +1733,7 @@ def test_cache_refresh_movie_library_sync_edge_cases_and_fallback(client):
 
 def test_discover_live_scrape_tv_title_library_match(client):
     # Tests line 443: TV title library match during live scrape with ignore_year = True and False
-    from core.db import set_setting
+    from xarrtools.core.db import set_setting
     
     tv_raw = [{"title": "MatchTitle TV", "date_obj": datetime(2026, 1, 1), "description": "Scraped TV Plot", "date_str": "May 30", "is_returning": False}]
     
@@ -1742,9 +1742,9 @@ def test_discover_live_scrape_tv_title_library_match(client):
     mock_sonarr = MagicMock()
     mock_sonarr.get_library.return_value = [{"tvdbId": None, "imdbId": None, "title": "MatchTitle TV", "year": 2020}]
     
-    with patch("web.server.get_clients", return_value=(None, mock_sonarr)):
-        with patch("web.server.get_discoveries", return_value=(tv_raw, ())):
-            with patch("web.server.enrich_tv_show") as mock_enrich_tv:
+    with patch("xarrtools.web.server.get_clients", return_value=(None, mock_sonarr)):
+        with patch("xarrtools.web.server.get_discoveries", return_value=(tv_raw, ())):
+            with patch("xarrtools.web.server.enrich_tv_show") as mock_enrich_tv:
                 mock_enrich_tv.return_value = {
                     "title": "MatchTitle TV", "year": 2026, "plot": "Plot", "cast": "Cast",
                     "genres": [], "trailer": "", "tvdbId": 11, "imdbId": "tt11", "network": "Hulu",
@@ -1759,9 +1759,9 @@ def test_discover_live_scrape_tv_title_library_match(client):
     set_setting("default_match_ignore_year", "0")
     # Year difference <= 1
     mock_sonarr.get_library.return_value = [{"tvdbId": None, "imdbId": None, "title": "MatchTitle TV", "year": 2025}]
-    with patch("web.server.get_clients", return_value=(None, mock_sonarr)):
-        with patch("web.server.get_discoveries", return_value=(tv_raw, ())):
-            with patch("web.server.enrich_tv_show") as mock_enrich_tv:
+    with patch("xarrtools.web.server.get_clients", return_value=(None, mock_sonarr)):
+        with patch("xarrtools.web.server.get_discoveries", return_value=(tv_raw, ())):
+            with patch("xarrtools.web.server.enrich_tv_show") as mock_enrich_tv:
                 mock_enrich_tv.return_value = {
                     "title": "MatchTitle TV", "year": 2026, "plot": "Plot", "cast": "Cast",
                     "genres": [], "trailer": "", "tvdbId": 11, "imdbId": "tt11", "network": "Hulu",
@@ -1774,16 +1774,16 @@ def test_discover_live_scrape_tv_title_library_match(client):
 
     # Year difference > 1
     # Reset cached in-library status for this test step since it was set to True in previous step
-    import core.db
+    import xarrtools.core.db; from xarrtools import core
     conn = core.db.get_db_connection()
     conn.execute("UPDATE cache SET is_in_library = 0")
     conn.commit()
     conn.close()
     
     mock_sonarr.get_library.return_value = [{"tvdbId": None, "imdbId": None, "title": "MatchTitle TV", "year": 2020}]
-    with patch("web.server.get_clients", return_value=(None, mock_sonarr)):
-        with patch("web.server.get_discoveries", return_value=(tv_raw, ())):
-            with patch("web.server.enrich_tv_show") as mock_enrich_tv:
+    with patch("xarrtools.web.server.get_clients", return_value=(None, mock_sonarr)):
+        with patch("xarrtools.web.server.get_discoveries", return_value=(tv_raw, ())):
+            with patch("xarrtools.web.server.enrich_tv_show") as mock_enrich_tv:
                 mock_enrich_tv.return_value = {
                     "title": "MatchTitle TV", "year": 2026, "plot": "Plot", "cast": "Cast",
                     "genres": [], "trailer": "", "tvdbId": 11, "imdbId": "tt11", "network": "Hulu",
@@ -1797,7 +1797,7 @@ def test_discover_live_scrape_tv_title_library_match(client):
 
 def test_discover_live_scrape_movie_title_library_match(client):
     # Tests line 566: Movie title library match during live scrape with ignore_year = True and False
-    from core.db import set_setting
+    from xarrtools.core.db import set_setting
     
     movie_raw = [{"title": "MatchTitle Movie", "date_obj": datetime(2026, 1, 1), "description": "Scraped Movie Plot", "date_str": "May 30"}]
     
@@ -1806,9 +1806,9 @@ def test_discover_live_scrape_movie_title_library_match(client):
     mock_radarr = MagicMock()
     mock_radarr.get_library.return_value = [{"tmdbId": None, "imdbId": None, "title": "MatchTitle Movie", "year": 2020}]
     
-    with patch("web.server.get_clients", return_value=(mock_radarr, None)):
-        with patch("web.server.get_discoveries", return_value=((), movie_raw)):
-            with patch("web.server.enrich_movie") as mock_enrich_movie:
+    with patch("xarrtools.web.server.get_clients", return_value=(mock_radarr, None)):
+        with patch("xarrtools.web.server.get_discoveries", return_value=((), movie_raw)):
+            with patch("xarrtools.web.server.enrich_movie") as mock_enrich_movie:
                 mock_enrich_movie.return_value = {
                     "title": "MatchTitle Movie", "year": 2026, "plot": "Plot", "cast": "Cast",
                     "genres": [], "trailer": "", "tmdbId": 11, "imdbId": "tt11", "network": "Hulu",
@@ -1823,9 +1823,9 @@ def test_discover_live_scrape_movie_title_library_match(client):
     set_setting("default_match_ignore_year", "0")
     # Year difference <= 1
     mock_radarr.get_library.return_value = [{"tmdbId": None, "imdbId": None, "title": "MatchTitle Movie", "year": 2025}]
-    with patch("web.server.get_clients", return_value=(mock_radarr, None)):
-        with patch("web.server.get_discoveries", return_value=((), movie_raw)):
-            with patch("web.server.enrich_movie") as mock_enrich_movie:
+    with patch("xarrtools.web.server.get_clients", return_value=(mock_radarr, None)):
+        with patch("xarrtools.web.server.get_discoveries", return_value=((), movie_raw)):
+            with patch("xarrtools.web.server.enrich_movie") as mock_enrich_movie:
                 mock_enrich_movie.return_value = {
                     "title": "MatchTitle Movie", "year": 2026, "plot": "Plot", "cast": "Cast",
                     "genres": [], "trailer": "", "tmdbId": 11, "imdbId": "tt11", "network": "Hulu",
@@ -1838,16 +1838,16 @@ def test_discover_live_scrape_movie_title_library_match(client):
 
     # Year difference > 1
     # Reset cached in-library status for this test step since it was set to True in previous step
-    import core.db
+    import xarrtools.core.db; from xarrtools import core
     conn = core.db.get_db_connection()
     conn.execute("UPDATE cache SET is_in_library = 0")
     conn.commit()
     conn.close()
     
     mock_radarr.get_library.return_value = [{"tmdbId": None, "imdbId": None, "title": "MatchTitle Movie", "year": 2020}]
-    with patch("web.server.get_clients", return_value=(mock_radarr, None)):
-        with patch("web.server.get_discoveries", return_value=((), movie_raw)):
-            with patch("web.server.enrich_movie") as mock_enrich_movie:
+    with patch("xarrtools.web.server.get_clients", return_value=(mock_radarr, None)):
+        with patch("xarrtools.web.server.get_discoveries", return_value=((), movie_raw)):
+            with patch("xarrtools.web.server.enrich_movie") as mock_enrich_movie:
                 mock_enrich_movie.return_value = {
                     "title": "MatchTitle Movie", "year": 2026, "plot": "Plot", "cast": "Cast",
                     "genres": [], "trailer": "", "tmdbId": 11, "imdbId": "tt11", "network": "Hulu",
@@ -1870,7 +1870,7 @@ def test_start_background_healer_thread():
         del os.environ["PYTEST_CURRENT_TEST"]
     try:
         with patch("threading.Thread") as mock_thread:
-            import web.server
+            import xarrtools.web.server; from xarrtools import web
             importlib.reload(web.server)
             assert mock_thread.call_count >= 1
     finally:
@@ -1881,7 +1881,7 @@ def test_discover_recently_updated_false_branch(client):
     # Tests lines 368 (False branch) and 488 (False branch) (recently_updated = False)
     # We need a cached item that has a poster but is incomplete (missing rating/ids),
     # and has a database entry older than 24 hours (e.g. 48 hours ago).
-    from core.db import add_cached_item
+    from xarrtools.core.db import add_cached_item
     from datetime import datetime, timedelta
     
     tv_date = datetime.now().strftime("%Y-%m-%d")
@@ -1911,10 +1911,10 @@ def test_discover_recently_updated_false_branch(client):
     tv_raw = [{"title": "Old TV", "date_obj": datetime.now(), "description": "Scraped TV Plot", "date_str": tv_date, "is_returning": False}]
     movie_raw = [{"title": "Old Movie", "date_obj": datetime.now(), "description": "Scraped Movie Plot", "date_str": tv_date}]
     
-    with patch("web.server.get_clients", return_value=(None, None)):
-        with patch("web.server.get_discoveries", return_value=(tv_raw, movie_raw)):
-            with patch("web.server.enrich_tv_show") as mock_enrich_tv, \
-                 patch("web.server.enrich_movie") as mock_enrich_movie:
+    with patch("xarrtools.web.server.get_clients", return_value=(None, None)):
+        with patch("xarrtools.web.server.get_discoveries", return_value=(tv_raw, movie_raw)):
+            with patch("xarrtools.web.server.enrich_tv_show") as mock_enrich_tv, \
+                 patch("xarrtools.web.server.enrich_movie") as mock_enrich_movie:
                  
                 mock_enrich_tv.return_value = {
                     "title": "Old TV", "year": 2026, "plot": "Plot", "cast": "Cast",
@@ -2013,7 +2013,7 @@ def test_custom_feed_endpoints(client):
     }
 
     mock_json = '{"results": [{"title": "Inception", "release_year": "2010"}, {"title": "Interstellar", "release_year": "2014"}]}'
-    with patch("web.server.safe_fetch_feed", return_value=mock_json) as mock_fetch:
+    with patch("xarrtools.web.server.safe_fetch_feed", return_value=mock_json) as mock_fetch:
         response = client.post("/api/feeds/test", json=test_payload)
         assert response.status_code == 200
         data = response.get_json()
@@ -2103,7 +2103,7 @@ def test_custom_feed_endpoints(client):
 
 def test_discover_returns_date_obj_and_add_only(client):
     # Setup cache
-    from core.db import add_cached_item
+    from xarrtools.core.db import add_cached_item
     tv_date = "2026-06-01"
     item_tv = {
         "title": "Show C", "year": 2026, "plot": "TV Desc", "cast": "TV Cast",
@@ -2122,7 +2122,7 @@ def test_discover_returns_date_obj_and_add_only(client):
     # Test api/add with search_now=False
     mock_sonarr = MagicMock()
     mock_sonarr.add_series.return_value = {"title": "Live Series", "year": 2026, "imdbId": "tt123"}
-    with patch("web.server.get_clients", return_value=(None, mock_sonarr)):
+    with patch("xarrtools.web.server.get_clients", return_value=(None, mock_sonarr)):
         res_add = client.post("/api/add", json={
             "type": "tv",
             "raw_metadata": {"title": "Live Series", "year": 2026},
@@ -2140,7 +2140,7 @@ def test_discover_returns_date_obj_and_add_only(client):
         )
 
 def test_is_incomplete_metadata_and_suppression(client):
-    from web.server import is_incomplete_metadata
+    from xarrtools.web.server import is_incomplete_metadata
     
     # 1. Test helper logic
     assert not is_incomplete_metadata({"title": "Gladiator II", "cast": "Cast details not available.", "plot": "No plot summary available."})
@@ -2157,7 +2157,7 @@ def test_is_incomplete_metadata_and_suppression(client):
         {"title": "Valid Movie", "overview": "Plot summary is here.", "imdbId": "tt111"},
         {"title": "Unknown", "overview": "No plot summary available.", "imdbId": ""}
     ]
-    with patch("web.server.get_clients", return_value=(mock_radarr, None)):
+    with patch("xarrtools.web.server.get_clients", return_value=(mock_radarr, None)):
         res = client.get("/api/lookup?type=movie&title=test")
         assert res.status_code == 200
         results = res.get_json()["results"]
@@ -2179,7 +2179,7 @@ def test_custom_feed_test_discovery(client):
     }
     
     # Mocking: first HTTPS request fails, second HTTP request succeeds
-    with patch("web.server.safe_fetch_feed") as mock_fetch:
+    with patch("xarrtools.web.server.safe_fetch_feed") as mock_fetch:
         mock_fetch.side_effect = [
             ValueError("Connection refused for HTTPS"),
             "<rss><channel><item><title>Feed Discovery Movie</title></item></channel></rss>",
@@ -2200,7 +2200,7 @@ def test_custom_feed_test_discovery(client):
         mock_fetch.assert_any_call("http://test-feed.local/rss", headers={})
 
 def test_link_library_endpoint(client):
-    from core.db import add_cached_item, get_cached_item
+    from xarrtools.core.db import add_cached_item, get_cached_item
     
     # 1. Test validation error (missing fields)
     response = client.post("/api/link_library", json={"type": "movie"})
@@ -2258,8 +2258,8 @@ def test_link_library_endpoint(client):
 
 
 def test_default_settings_and_mru_persistence(client):
-    from core.config import config
-    from core.db import get_setting
+    from xarrtools.core.config import config
+    from xarrtools.core.db import get_setting
 
     settings_payload = {
         "radarr_default_quality_profile": "10",
@@ -2298,8 +2298,8 @@ def test_default_settings_and_mru_persistence(client):
 
 
 def test_add_media_mru_persistence_tv_and_movie(client):
-    from core.config import config
-    from core.db import get_setting
+    from xarrtools.core.config import config
+    from xarrtools.core.db import get_setting
 
     # 1. Demo movie addition sets MRU
     res = client.post("/api/add", json={
@@ -2343,7 +2343,7 @@ def test_sonarr_language_profiles_removed_from_config_api(client):
     mock_sonarr.get_root_folders.return_value = [{"path": "/tv"}]
     mock_sonarr.get_quality_profiles.return_value = [{"id": 2, "name": "Any"}]
 
-    with patch("web.server.get_clients", return_value=(mock_radarr, mock_sonarr)):
+    with patch("xarrtools.web.server.get_clients", return_value=(mock_radarr, mock_sonarr)):
         res = client.get("/api/config")
         assert res.status_code == 200
         data = res.get_json()
@@ -2358,7 +2358,7 @@ def test_sonarr_language_profiles_removed_from_config_api(client):
 
 def test_api_discover_skip_scrape_has_new_metadata_serialization(client):
     """Verifies that GET /api/discover with skip_scrape=true includes has_new_metadata boolean."""
-    from core.db import add_cached_item
+    from xarrtools.core.db import add_cached_item
     tv_date = datetime.now().strftime("%Y-%m-%d")
     movie_date = datetime.now().strftime("%Y-%m-%d")
     
@@ -2407,7 +2407,7 @@ def test_api_discover_skip_scrape_has_new_metadata_serialization(client):
     }
     add_cached_item("movie", item_movie_normal)
 
-    with patch("web.server.get_clients", return_value=(None, None)):
+    with patch("xarrtools.web.server.get_clients", return_value=(None, None)):
         res = client.get("/api/discover?skip_scrape=true&past_months=12&future_months=12")
         assert res.status_code == 200
         data = res.get_json()
@@ -2453,10 +2453,10 @@ def test_api_discover_live_scrape_auto_archiving_low_metadata(client):
         {"title": "Rich Meta Movie", "date_obj": tv_date, "description": "Great Plot", "date_str": "2026-05-30", "imdbId": "tt992"}
     ]
 
-    with patch("web.server.get_clients", return_value=(None, None)), \
-         patch("web.server.get_discoveries", return_value=(tv_raw, movie_raw)), \
-         patch("web.server.enrich_tv_show") as mock_enrich_tv, \
-         patch("web.server.enrich_movie") as mock_enrich_movie:
+    with patch("xarrtools.web.server.get_clients", return_value=(None, None)), \
+         patch("xarrtools.web.server.get_discoveries", return_value=(tv_raw, movie_raw)), \
+         patch("xarrtools.web.server.enrich_tv_show") as mock_enrich_tv, \
+         patch("xarrtools.web.server.enrich_movie") as mock_enrich_movie:
 
         mock_enrich_tv.side_effect = [
             # TV 1 Enrichment -> missing network and cast
@@ -2522,7 +2522,7 @@ def test_api_discover_live_scrape_auto_archiving_low_metadata(client):
 
 def test_api_cache_refresh_smart_auto_unarchiving(client):
     """Verifies that POST /api/cache/refresh automatically unarchives previously archived items and sets has_new_metadata=True."""
-    from core.db import add_cached_item
+    from xarrtools.core.db import add_cached_item
 
     # 1. Seed TV show as low-metadata auto-archived
     add_cached_item("tv", {
@@ -2538,9 +2538,9 @@ def test_api_cache_refresh_smart_auto_unarchiving(client):
         "is_in_library": False, "date_str": "2026-05-30"
     })
 
-    with patch("web.server.get_clients", return_value=(None, None)), \
-         patch("web.server.enrich_tv_show") as mock_enrich_tv, \
-         patch("web.server.enrich_movie") as mock_enrich_movie:
+    with patch("xarrtools.web.server.get_clients", return_value=(None, None)), \
+         patch("xarrtools.web.server.enrich_tv_show") as mock_enrich_tv, \
+         patch("xarrtools.web.server.enrich_movie") as mock_enrich_movie:
 
         # Mock rich enrichment on refresh
         mock_enrich_tv.return_value = {
@@ -2584,7 +2584,7 @@ def test_api_cache_refresh_smart_auto_unarchiving(client):
 
 def test_api_cache_refresh_retains_archived_if_metadata_still_low(client):
     """Verifies that POST /api/cache/refresh keeps item archived if refreshed metadata is still low."""
-    from core.db import add_cached_item
+    from xarrtools.core.db import add_cached_item
 
     add_cached_item("tv", {
         "title": "Still Low Show", "year": 2026, "plot": "No plot summary available.",
@@ -2592,8 +2592,8 @@ def test_api_cache_refresh_retains_archived_if_metadata_still_low(client):
         "is_in_library": False, "date_str": "2026-05-30"
     })
 
-    with patch("web.server.get_clients", return_value=(None, None)), \
-         patch("web.server.enrich_tv_show") as mock_enrich_tv:
+    with patch("xarrtools.web.server.get_clients", return_value=(None, None)), \
+         patch("xarrtools.web.server.enrich_tv_show") as mock_enrich_tv:
 
         # Enrichment still missing core fields
         mock_enrich_tv.return_value = {
@@ -2617,7 +2617,7 @@ def test_api_cache_refresh_retains_archived_if_metadata_still_low(client):
 
 def test_api_archive_resets_has_new_metadata_flag(client):
     """Verifies that POST /api/archive resets has_new_metadata=False when an item is re-archived."""
-    from core.db import add_cached_item
+    from xarrtools.core.db import add_cached_item
 
     # Seed an item that was smart-unarchived (has_new_metadata = 1, is_archived = 0)
     add_cached_item("tv", {
@@ -2729,18 +2729,18 @@ def test_index_html_live_render_structure(client):
 def test_frontend_template_file_integrity():
     """Verifies direct file existence, encoding, and CSS/JS/HTML badge consistency."""
     repo_dir = Path(__file__).resolve().parent.parent
-    web_dir = repo_dir / "web" / "templates"
-    src_dir = repo_dir / "web" / "static" / "src"
+    web_dir = repo_dir / "src" / "xarrtools" / "web" / "templates"
+    src_dir = repo_dir / "src" / "xarrtools" / "web" / "static" / "src"
     
     index_file = web_dir / "index.html"
     style_file = web_dir / "style.css"
     main_ts = src_dir / "main.ts"
     cards_ts = src_dir / "cards.ts"
     
-    assert index_file.is_file(), "web/templates/index.html missing"
-    assert style_file.is_file(), "web/templates/style.css missing"
-    assert main_ts.is_file(), "web/static/src/main.ts missing"
-    assert cards_ts.is_file(), "web/static/src/cards.ts missing"
+    assert index_file.is_file(), "src/xarrtools/web/templates/index.html missing"
+    assert style_file.is_file(), "src/xarrtools/web/templates/style.css missing"
+    assert main_ts.is_file(), "src/xarrtools/web/static/src/main.ts missing"
+    assert cards_ts.is_file(), "src/xarrtools/web/static/src/cards.ts missing"
     
     style_css = style_file.read_text(encoding="utf-8")
     cards_code = cards_ts.read_text(encoding="utf-8")
@@ -2760,9 +2760,9 @@ def test_frontend_dist_syntax_validation():
     node_bin = shutil.which("node")
     if not node_bin:
         pytest.skip("Node.js executable not found")
-    dist_dir = Path(__file__).resolve().parent.parent / "web" / "static" / "dist"
+    dist_dir = Path(__file__).resolve().parent.parent / "src" / "xarrtools" / "web" / "static" / "dist"
     if not dist_dir.is_dir() or not any(dist_dir.glob("*.js")):
-        pytest.skip("web/static/dist not built; run 'npm run build' first")
+        pytest.skip("src/xarrtools/web/static/dist not built; run 'npm run build' first")
     
     for js_file in dist_dir.glob("*.js"):
         res = subprocess.run([node_bin, "--check", str(js_file)], capture_output=True, text=True, encoding="utf-8")
@@ -2778,9 +2778,9 @@ def test_frontend_dist_node_smoke():
     node_bin = shutil.which("node")
     if not node_bin:
         pytest.skip("Node.js executable not found")
-    dist_dir = Path(__file__).resolve().parent.parent / "web" / "static" / "dist"
+    dist_dir = Path(__file__).resolve().parent.parent / "src" / "xarrtools" / "web" / "static" / "dist"
     if not dist_dir.is_dir() or not any(dist_dir.glob("*.js")):
-        pytest.skip("web/static/dist not built; run 'npm run build' first")
+        pytest.skip("src/xarrtools/web/static/dist not built; run 'npm run build' first")
 
     smoke_script = f"""
     globalThis.window = {{

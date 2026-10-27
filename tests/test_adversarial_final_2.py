@@ -9,10 +9,10 @@ import subprocess
 from bs4 import BeautifulSoup
 from unittest.mock import patch, MagicMock
 
-import core.db
-from core.config import config
-from core.db import get_setting, set_setting, init_db, get_db_connection
-from cli.cli import resolve_preset_index, select_from_list
+import xarrtools.core.db; from xarrtools import core
+from xarrtools.core.config import config
+from xarrtools.core.db import get_setting, set_setting, init_db, get_db_connection
+from xarrtools.cli.cli import resolve_preset_index, select_from_list
 from tests.frontend_harness import check_node_and_dist, get_module_injection_code
 
 
@@ -204,7 +204,7 @@ class TestChallenge2EmptyOptionsLists:
     def test_web_resolve_hybrid_preset_via_node_harness(self):
         """Run Node.js execution to stress-test resolveHybridPreset directly from settings.js."""
         check_node_and_dist()
-        settings_js = Path(__file__).resolve().parent.parent / "web" / "static" / "dist" / "settings.js"
+        settings_js = Path(__file__).resolve().parent.parent / "src" / "xarrtools" / "web" / "static" / "dist" / "settings.js"
         
         js_code = f"""
         (async () => {{
@@ -281,7 +281,7 @@ class TestChallenge3HtmlJsIntegrity:
     def test_javascript_syntax_cleanliness(self):
         """Execute node --check on compiled dist files to verify valid JS syntax."""
         check_node_and_dist()
-        dist_dir = os.path.abspath("web/static/dist")
+        dist_dir = os.path.abspath("src/xarrtools/web/static/dist")
         for f in os.listdir(dist_dir):
             if f.endswith(".js"):
                 res = subprocess.run(["node", "--check", os.path.join(dist_dir, f)], capture_output=True, text=True, encoding="utf-8")
@@ -289,7 +289,7 @@ class TestChallenge3HtmlJsIntegrity:
 
     def test_html_syntax_and_unique_ids(self):
         """Parse index.html with BeautifulSoup and ensure valid structure and no duplicate element IDs."""
-        html_path = os.path.abspath("web/templates/index.html")
+        html_path = os.path.abspath("src/xarrtools/web/templates/index.html")
         with open(html_path, "r", encoding="utf-8") as f:
             content = f.read()
 
@@ -308,7 +308,7 @@ class TestChallenge3HtmlJsIntegrity:
 
     def test_settings_modal_element_ids_exist_in_dom(self):
         """Verify that all settings selectors exist in index.html."""
-        html_path = os.path.abspath("web/templates/index.html")
+        html_path = os.path.abspath("src/xarrtools/web/templates/index.html")
         with open(html_path, "r", encoding="utf-8") as f:
             soup = BeautifulSoup(f.read(), "html.parser")
 
@@ -337,8 +337,8 @@ class TestChallenge3HtmlJsIntegrity:
 
     def test_language_profile_deprecation_complete_removal(self):
         """Verify that no language profile UI elements or deprecated identifiers exist in HTML or TS modules."""
-        html_path = os.path.abspath("web/templates/index.html")
-        src_dir = Path(__file__).resolve().parent.parent / "web" / "static" / "src"
+        html_path = os.path.abspath("src/xarrtools/web/templates/index.html")
+        src_dir = Path(__file__).resolve().parent.parent / "src" / "xarrtools" / "web" / "static" / "src"
 
         with open(html_path, "r", encoding="utf-8") as f:
             html_content = f.read()
@@ -356,4 +356,4 @@ class TestChallenge3HtmlJsIntegrity:
 
         for token in deprecated_tokens:
             assert token not in html_content, f"Deprecated token '{token}' found in index.html"
-            assert token not in ts_content, f"Deprecated token '{token}' found in web/static/src/*.ts"
+            assert token not in ts_content, f"Deprecated token '{token}' found in src/xarrtools/web/static/src/*.ts"

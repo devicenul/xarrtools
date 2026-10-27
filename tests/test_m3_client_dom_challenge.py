@@ -20,8 +20,8 @@ import pytest
 
 from tests.frontend_harness import check_node_and_dist, get_module_injection_code
 
-STYLE_CSS_PATH = Path(__file__).resolve().parent.parent / "web" / "templates" / "style.css"
-INDEX_HTML_PATH = Path(__file__).resolve().parent.parent / "web" / "templates" / "index.html"
+STYLE_CSS_PATH = Path(__file__).resolve().parent.parent / "src" / "xarrtools" / "web" / "templates" / "style.css"
+INDEX_HTML_PATH = Path(__file__).resolve().parent.parent / "src" / "xarrtools" / "web" / "templates" / "index.html"
 
 
 def run_node_harness(script_code: str) -> dict:

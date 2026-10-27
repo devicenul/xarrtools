@@ -16,8 +16,8 @@ from typing import List, Dict, Any
 
 import pytest
 
-import core.db
-from core.metadata import evaluate_item_state_transition, should_auto_archive
+import xarrtools.core.db; from xarrtools import core
+from xarrtools.core.metadata import evaluate_item_state_transition, should_auto_archive
 
 
 @pytest.fixture

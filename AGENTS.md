@@ -23,29 +23,29 @@ Read this file first, then [docs/architecture.md](docs/architecture.md) (how it 
 - **The user's decisions win.** A manual archive is sticky: new metadata never resurfaces it.
 - **Works offline-ish and everywhere.** Windows/macOS/Linux/Android-VM, no required API keys (TMDB is optional).
 - **Small, dependency-light.** Flask + requests + BeautifulSoup + SQLite. The frontend is modular
-  TypeScript (`web/static/src/*.ts`), compiled to `web/static/dist/` via `npm run build` during setup, with
+  TypeScript (`src/xarrtools/web/static/src/*.ts`), compiled to `src/xarrtools/web/static/dist/` via `npm run build` during setup, with
   compiled output git-ignored (no checked-in generated JS) until CI/CD publishes releases.
 
 ## Repo map
 
 | Path | Purpose |
 |---|---|
-| `main.py` | Entry point: `--gui` (default), `--server`, `--cli` |
-| `core/scraper.py` | Feed scrapers (Metacritic, DVDs, TVmaze, TMDB), `get_discoveries`, `dedupe_movies` |
-| `core/enricher.py` | `enrich_tv_show` (TVmaze, Sonarr, Wikipedia cast fallback) and `enrich_movie` (Radarr, TMDB, Wikipedia fallback) |
-| `core/tmdb.py` | TMDB client: chunked discovery and per-movie enrichment |
-| `core/db.py` | SQLite schema, migrations, cache CRUD, settings, backup/restore |
-| `core/backup.py` | Full archive ZIP export/import, manifest integrity, and backup checksum verification |
-| `core/posters.py` | Local poster disk cache, metadata sidecars, and SSRF-safe download helpers |
-| `core/metadata.py` | Missing-metadata rules and the auto-archive state machine |
-| `core/locales.py` | Language/country normalisation and the Unicode-aware `slug()` title key |
-| `core/scheduler.py` | Background refresh calculation helpers, due-check, and time-of-day parsing |
-| `core/logging_setup.py` | Central logging setup, credential redaction filter/formatter, rotation (max 2 files) |
-| `core/version.py` | Application version definition and release build stamping |
-| `core/client.py`, `core/config.py` | Radarr/Sonarr API clients; settings/.env access |
-| `web/server.py`, `web/templates/` | Flask API + single-page UI (`index.html`, `style.css`) |
-| `web/static/src/` | TypeScript frontend modules (`types.ts`, `state.ts`, `render.ts`, `cards.ts`, `filters.ts`, `api.ts`, `settings.ts`, `modals.ts`, `main.ts`) |
-| `cli/cli.py`, `gui/gui.py` | Terminal manager and pywebview shell |
+| `src/xarrtools/main.py` | Entry point: `--gui` (default), `--server`, `--cli` |
+| `src/xarrtools/core/scraper.py` | Feed scrapers (Metacritic, DVDs, TVmaze, TMDB), `get_discoveries`, `dedupe_movies` |
+| `src/xarrtools/core/enricher.py` | `enrich_tv_show` (TVmaze, Sonarr, Wikipedia cast fallback) and `enrich_movie` (Radarr, TMDB, Wikipedia fallback) |
+| `src/xarrtools/core/tmdb.py` | TMDB client: chunked discovery and per-movie enrichment |
+| `src/xarrtools/core/db.py` | SQLite schema, migrations, cache CRUD, settings, backup/restore |
+| `src/xarrtools/core/backup.py` | Full archive ZIP export/import, manifest integrity, and backup checksum verification |
+| `src/xarrtools/core/posters.py` | Local poster disk cache, metadata sidecars, and SSRF-safe download helpers |
+| `src/xarrtools/core/metadata.py` | Missing-metadata rules and the auto-archive state machine |
+| `src/xarrtools/core/locales.py` | Language/country normalisation and the Unicode-aware `slug()` title key |
+| `src/xarrtools/core/scheduler.py` | Background refresh calculation helpers, due-check, and time-of-day parsing |
+| `src/xarrtools/core/logging_setup.py` | Central logging setup, credential redaction filter/formatter, rotation (max 2 files) |
+| `src/xarrtools/core/version.py` | Application version definition and release build stamping |
+| `src/xarrtools/core/client.py`, `src/xarrtools/core/config.py` | Radarr/Sonarr API clients; settings/.env access |
+| `src/xarrtools/web/server.py`, `src/xarrtools/web/templates/` | Flask API + single-page UI (`index.html`, `style.css`) |
+| `src/xarrtools/web/static/src/` | TypeScript frontend modules (`types.ts`, `state.ts`, `render.ts`, `cards.ts`, `filters.ts`, `api.ts`, `settings.ts`, `modals.ts`, `main.ts`) |
+| `src/xarrtools/cli/cli.py`, `src/xarrtools/gui/gui.py` | Terminal manager and pywebview shell |
 | `scripts/` (`scripts/build.py`, `build.*`, `init.*`, `run.*`) | Build, environment setup and launchers (sh / ps1 / bat) |
 | `.github/workflows/` (`ci.yml`, `release.yml`) | GitHub Actions CI matrix, multi-arch Docker image, and release packaging |
 | `Dockerfile`, `docker-compose.yml` | Multi-stage container build and compose orchestration |
@@ -57,9 +57,9 @@ Read this file first, then [docs/architecture.md](docs/architecture.md) (how it 
 ```bash
 ./scripts/init.sh                           # create venv, install requirements-dev.txt, create .env, init DB
 .venv/bin/python -m pytest tests -q --no-cov   # ~25 s; use the venv path printed by scripts/init.sh if it differs
-mypy core web cli gui main.py               # run static type checking (0 errors)
+mypy src/xarrtools                          # run static type checking (0 errors)
 ./scripts/build.sh                          # PyInstaller binary via scripts/build.py (build.ps1 / build.bat on Windows)
-python main.py --server                     # run the web UI on http://localhost:5000
+python -m xarrtools --server                # run the web UI on http://localhost:5000
 ```
 
 On the Android/Linux-VM setup the venv lives in `~/.cache/projects/<name>-<hash>/venv` (shared storage has no

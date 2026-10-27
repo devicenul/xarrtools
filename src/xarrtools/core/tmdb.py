@@ -13,7 +13,7 @@ import requests
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
-from core.locales import country_code, language_name, slug
+from xarrtools.core.locales import country_code, language_name, slug
 
 logger = logging.getLogger("xarrtools.tmdb")
 
@@ -37,7 +37,7 @@ class TMDBError(Exception):
 
 def get_api_key() -> str:
     """Returns the configured TMDB credential ('' when not set)."""
-    from core.config import config
+    from xarrtools.core.config import config
     return config.tmdb_api_key
 
 

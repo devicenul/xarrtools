@@ -11,12 +11,12 @@ from unittest.mock import patch
 # writes, imports) whenever they ran on their own, or before their own module-level DB_PATH override was
 # applied. conftest.py is imported before any test module, so redirect ``core.db.DB_PATH`` to a throwaway
 # location *here*, for the whole session, and fail loudly if the real file is ever modified.
-import core.db  # noqa: E402  (importing core.db has no database side effects)
+import xarrtools.core.db as core_db  # noqa: E402  (importing core.db has no database side effects)
 
-REAL_DB_PATH: Path = Path(core.db.DB_PATH)
+REAL_DB_PATH: Path = Path(core_db.DB_PATH)
 _SESSION_TMP = tempfile.TemporaryDirectory(prefix="xarrtools-tests-")
 SESSION_DB_PATH: Path = Path(_SESSION_TMP.name) / "xarrtools.db"
-core.db.DB_PATH = SESSION_DB_PATH
+core_db.DB_PATH = SESSION_DB_PATH
 # Keep the log directory out of the repo too (it defaults to <db dir>/logs).
 os.environ.setdefault("XARRTOOLS_LOG_DIR", str(Path(_SESSION_TMP.name) / "logs"))
 
@@ -38,11 +38,11 @@ def _never_use_real_db():
     Test modules may point ``DB_PATH`` at their own temp file; that is fine. Anything resolving to the real
     database is redirected to the session temp DB before the test runs.
     """
-    if Path(core.db.DB_PATH).resolve() == REAL_DB_PATH.resolve():
-        core.db.DB_PATH = SESSION_DB_PATH
+    if Path(core_db.DB_PATH).resolve() == REAL_DB_PATH.resolve():
+        core_db.DB_PATH = SESSION_DB_PATH
     yield
-    if Path(core.db.DB_PATH).resolve() == REAL_DB_PATH.resolve():
-        core.db.DB_PATH = SESSION_DB_PATH
+    if Path(core_db.DB_PATH).resolve() == REAL_DB_PATH.resolve():
+        core_db.DB_PATH = SESSION_DB_PATH
 
 
 def pytest_sessionfinish(session, exitstatus):
@@ -59,5 +59,5 @@ def _no_real_tmdb_key():
 
     Tests that exercise TMDB patch ``core.tmdb.get_api_key`` themselves (an inner patch wins).
     """
-    with patch("core.tmdb.get_api_key", return_value=""):
+    with patch("xarrtools.core.tmdb.get_api_key", return_value=""):
         yield

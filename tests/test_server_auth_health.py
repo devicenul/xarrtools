@@ -4,7 +4,7 @@ import os
 import pytest
 from unittest.mock import patch
 
-from web.server import app
+from xarrtools.web.server import app
 
 
 @pytest.fixture
@@ -36,7 +36,7 @@ def test_health_check_endpoint_success(client):
 
 def test_health_check_endpoint_db_failure(client):
     """GET /api/health returns 503 if the database query fails."""
-    with patch("web.server.get_db_connection", side_effect=Exception("DB down")):
+    with patch("xarrtools.web.server.get_db_connection", side_effect=Exception("DB down")):
         res = client.get("/api/health")
         assert res.status_code == 503
         data = res.get_json()
@@ -102,7 +102,7 @@ def test_routes_gated_when_basic_auth_set(client):
         assert res_good_settings.status_code == 200
 
         # 5. POST /api/settings requires both Basic Auth and X-API-Key
-        from core.db import get_setting
+        from xarrtools.core.db import get_setting
         api_key = get_setting("api_key")
         
         # Valid basic auth + valid API key
@@ -117,7 +117,7 @@ def test_routes_gated_when_basic_auth_set(client):
 
 def test_auth_password_redacted_in_logging():
     """XARRTOOLS_AUTH_PASSWORD is masked by the redacting logging filter."""
-    from core.logging_setup import redact_sensitive_data
+    from xarrtools.core.logging_setup import redact_sensitive_data
     with patch.dict(os.environ, {"XARRTOOLS_AUTH_PASSWORD": "supersecretpassword123"}):
         text = "User logged in with password supersecretpassword123 and continued"
         redacted = redact_sensitive_data(text)

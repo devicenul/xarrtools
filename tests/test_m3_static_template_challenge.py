@@ -10,15 +10,15 @@ import pytest
 from flask import Flask
 
 from tests.frontend_harness import check_node_and_dist, get_module_injection_code
-import core.db
-from core.config import config
-from web.server import app
+import xarrtools.core.db; from xarrtools import core
+from xarrtools.core.config import config
+from xarrtools.web.server import app
 
 
 @pytest.fixture(autouse=True)
 def reset_db_settings():
     """Resets api_key and clean state for tests."""
-    from core.db import get_setting, set_setting
+    from xarrtools.core.db import get_setting, set_setting
     orig_api_key = get_setting("api_key", "")
     set_setting("api_key", "test_api_key_challenge_12345")
     config.refresh()
@@ -183,7 +183,7 @@ def test_index_template_rendering_varied_queries(client):
 
 def test_index_template_api_key_injection_and_escaping(client):
     """Tests Jinja2 api_key interpolation in meta tag, including special chars escaping."""
-    from core.db import set_setting
+    from xarrtools.core.db import set_setting
     
     # Standard hex key
     set_setting("api_key", "deadbeef12345678")
@@ -206,7 +206,7 @@ def test_index_template_api_key_injection_and_escaping(client):
 
 def test_index_template_auto_generates_api_key_if_empty(client):
     """Tests that index route generates a fresh api_key if not set."""
-    from core.db import set_setting
+    from xarrtools.core.db import set_setting
     set_setting("api_key", "")
     config.refresh()
     
@@ -225,7 +225,7 @@ def test_index_template_auto_generates_api_key_if_empty(client):
 
 def test_css_stylesheet_syntax_and_balanced_braces():
     """Parses style.css to guarantee balanced braces, valid rules, and complete syntax."""
-    css_path = Path(__file__).resolve().parent.parent / "web" / "templates" / "style.css"
+    css_path = Path(__file__).resolve().parent.parent / "src" / "xarrtools" / "web" / "templates" / "style.css"
     assert css_path.is_file()
     css_text = css_path.read_text(encoding="utf-8")
     
@@ -316,7 +316,7 @@ def test_css_malformed_syntax_detector():
 
 def test_css_badge_styles_completeness():
     """Verifies all required badging rules for both Dark and Light themes."""
-    css_path = Path(__file__).resolve().parent.parent / "web" / "templates" / "style.css"
+    css_path = Path(__file__).resolve().parent.parent / "src" / "xarrtools" / "web" / "templates" / "style.css"
     css_text = css_path.read_text(encoding="utf-8")
     
     # Required CSS selector declarations
@@ -337,7 +337,7 @@ def test_css_badge_styles_completeness():
 
 def test_css_responsive_breakpoints():
     """Verifies standard responsive media queries exist in style.css."""
-    css_path = Path(__file__).resolve().parent.parent / "web" / "templates" / "style.css"
+    css_path = Path(__file__).resolve().parent.parent / "src" / "xarrtools" / "web" / "templates" / "style.css"
     css_text = css_path.read_text(encoding="utf-8")
     
     assert "@media" in css_text
@@ -353,7 +353,7 @@ def test_compiled_dist_syntax_via_node():
     node_bin = shutil.which("node")
     if not node_bin:
         pytest.skip("Node.js executable not found")
-    dist_dir = Path(__file__).resolve().parent.parent / "web" / "static" / "dist"
+    dist_dir = Path(__file__).resolve().parent.parent / "src" / "xarrtools" / "web" / "static" / "dist"
     if not dist_dir.is_dir() or not any(dist_dir.glob("*.js")):
         pytest.skip("Frontend dist assets missing; run 'npm run build' first")
     for js_file in dist_dir.glob("*.js"):
@@ -366,7 +366,7 @@ def test_compiled_dist_template_interpolation_node_ast():
     node_bin = shutil.which("node")
     if not node_bin:
         pytest.skip("Node.js executable not found")
-    cards_js = Path(__file__).resolve().parent.parent / "web" / "static" / "dist" / "cards.js"
+    cards_js = Path(__file__).resolve().parent.parent / "src" / "xarrtools" / "web" / "static" / "dist" / "cards.js"
     if not cards_js.is_file():
         pytest.skip("cards.js missing; run 'npm run build' first")
     
@@ -383,8 +383,8 @@ def test_compiled_dist_template_interpolation_node_ast():
 
 def test_frontend_has_new_metadata_interpolation_logic():
     """Validates the exact rendering token and conditions for 'New metadata' badging in TS modules."""
-    cards_ts = (Path(__file__).resolve().parent.parent / "web" / "static" / "src" / "cards.ts").read_text(encoding="utf-8")
-    render_ts = (Path(__file__).resolve().parent.parent / "web" / "static" / "src" / "render.ts").read_text(encoding="utf-8")
+    cards_ts = (Path(__file__).resolve().parent.parent / "src" / "xarrtools" / "web" / "static" / "src" / "cards.ts").read_text(encoding="utf-8")
+    render_ts = (Path(__file__).resolve().parent.parent / "src" / "xarrtools" / "web" / "static" / "src" / "render.ts").read_text(encoding="utf-8")
     
     # 1. Check template string contains the ternary for has_new_metadata
     expected_pattern = r'item\.has_new_metadata\s*\?\s*[\'"`]<span class="badge badge-new-metadata">New metadata</span>[\'"`]\s*:\s*[\'"`][\'"`]'
@@ -401,8 +401,8 @@ def test_frontend_has_new_metadata_interpolation_logic():
 
 def test_dom_ids_parity_between_html_and_js():
     """Guarantees that every getElementById in web/static/src/*.ts has a corresponding id in index.html."""
-    index_html = (Path(__file__).resolve().parent.parent / "web" / "templates" / "index.html").read_text(encoding="utf-8")
-    src_dir = Path(__file__).resolve().parent.parent / "web" / "static" / "src"
+    index_html = (Path(__file__).resolve().parent.parent / "src" / "xarrtools" / "web" / "templates" / "index.html").read_text(encoding="utf-8")
+    src_dir = Path(__file__).resolve().parent.parent / "src" / "xarrtools" / "web" / "static" / "src"
     
     ids_in_ts = set()
     for ts_file in src_dir.glob("*.ts"):
@@ -420,7 +420,7 @@ def test_js_rating_badges_html_matrix():
     node_bin = shutil.which("node")
     if not node_bin:
         pytest.skip("Node.js executable not found")
-    cards_js = Path(__file__).resolve().parent.parent / "web" / "static" / "dist" / "cards.js"
+    cards_js = Path(__file__).resolve().parent.parent / "src" / "xarrtools" / "web" / "static" / "dist" / "cards.js"
     if not cards_js.is_file():
         pytest.skip("cards.js missing; run 'npm run build' first")
     
@@ -504,7 +504,7 @@ def test_js_filter_and_archived_visibility_simulation():
 def test_api_discover_and_card_rendering_simulation(client):
     """Simulates smart unarchiving flow and card rendering with has_new_metadata=True."""
     from datetime import datetime, timedelta
-    from core.db import add_cached_item
+    from xarrtools.core.db import add_cached_item
     
     today = datetime.now()
     date_obj = (today - timedelta(days=5)).strftime("%Y-%m-%d")
@@ -579,7 +579,7 @@ def test_api_discover_and_card_rendering_simulation(client):
 def test_api_archive_and_card_rendering_badge_removal_simulation(client):
     """Simulates archiving an item with has_new_metadata=True, ensuring badge disappears."""
     from datetime import datetime, timedelta
-    from core.db import add_cached_item, set_setting
+    from xarrtools.core.db import add_cached_item, set_setting
     
     today = datetime.now()
     date_obj = (today - timedelta(days=5)).strftime("%Y-%m-%d")

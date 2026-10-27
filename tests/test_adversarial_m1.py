@@ -17,16 +17,16 @@ import pytest
 import requests
 
 # Isolate database for adversarial tests
-import core.db
+import xarrtools.core.db; from xarrtools import core
 fd, temp_db_path = tempfile.mkstemp(suffix=".db")
 os.close(fd)
 core.db.DB_PATH = Path(temp_db_path)
 core.db.init_db()
 
 with patch("threading.Thread"):
-    from web.server import app, get_clients
-from core.client import RadarrClient, SonarrClient, ArrAPIError
-from core.config import config
+    from xarrtools.web.server import app, get_clients
+from xarrtools.core.client import RadarrClient, SonarrClient, ArrAPIError
+from xarrtools.core.config import config
 
 
 @pytest.fixture(autouse=True)
@@ -108,7 +108,7 @@ class TestBoundaryConditionsAddAPI:
         assert data["status"] == "error"
 
     def test_add_api_unconfigured_radarr_returns_400(self, client):
-        with patch("web.server.get_clients", return_value=(None, None)):
+        with patch("xarrtools.web.server.get_clients", return_value=(None, None)):
             res = client.post("/api/add", json={
                 "type": "movie",
                 "raw_metadata": {"title": "Movie"},
@@ -119,7 +119,7 @@ class TestBoundaryConditionsAddAPI:
             assert "Radarr server is not configured" in res.get_json()["message"]
 
     def test_add_api_unconfigured_sonarr_returns_400(self, client):
-        with patch("web.server.get_clients", return_value=(None, None)):
+        with patch("xarrtools.web.server.get_clients", return_value=(None, None)):
             res = client.post("/api/add", json={
                 "type": "tv",
                 "raw_metadata": {"title": "Show"},
@@ -132,7 +132,7 @@ class TestBoundaryConditionsAddAPI:
     def test_add_api_upstream_error_handling(self, client):
         mock_radarr = MagicMock()
         mock_radarr.add_movie.side_effect = ArrAPIError("Movie folder does not exist", status_code=400)
-        with patch("web.server.get_clients", return_value=(mock_radarr, None)):
+        with patch("xarrtools.web.server.get_clients", return_value=(mock_radarr, None)):
             res = client.post("/api/add", json={
                 "type": "movie",
                 "raw_metadata": {"title": "Movie"},
@@ -149,7 +149,7 @@ class TestBoundaryConditionsAddAPI:
         mock_sonarr = MagicMock()
         mock_sonarr.add_series.return_value = {"id": 2, "title": "Show"}
 
-        with patch("web.server.get_clients", return_value=(mock_radarr, mock_sonarr)):
+        with patch("xarrtools.web.server.get_clients", return_value=(mock_radarr, mock_sonarr)):
             # Test movie flags
             client.post("/api/add", json={
                 "type": "movie",
@@ -383,7 +383,7 @@ class TestSonarrLanguageProfileDeprecation:
         mock_sonarr.get_root_folders.return_value = [{"path": "/tv"}]
         mock_sonarr.get_quality_profiles.return_value = [{"id": 1, "name": "HD"}]
 
-        with patch("web.server.get_clients", return_value=(None, mock_sonarr)):
+        with patch("xarrtools.web.server.get_clients", return_value=(None, mock_sonarr)):
             res = client.get("/api/config")
             assert res.status_code == 200
             data = res.get_json()
@@ -394,7 +394,7 @@ class TestSonarrLanguageProfileDeprecation:
         mock_sonarr = MagicMock()
         mock_sonarr.add_series.return_value = {"id": 10, "title": "Show"}
 
-        with patch("web.server.get_clients", return_value=(None, mock_sonarr)):
+        with patch("xarrtools.web.server.get_clients", return_value=(None, mock_sonarr)):
             res = client.post("/api/add", json={
                 "type": "tv",
                 "raw_metadata": {"title": "Show", "year": 2024},

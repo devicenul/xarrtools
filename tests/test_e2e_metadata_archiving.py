@@ -27,9 +27,9 @@ import pytest
 # Database & Environment Isolation Fixtures
 # ---------------------------------------------------------------------------
 
-import core.db
-import core.metadata
-from core.metadata import (
+import xarrtools.core.db; from xarrtools import core
+import xarrtools.core.metadata; from xarrtools import core
+from xarrtools.core.metadata import (
     MISSING_CAST_STRINGS,
     MISSING_NETWORK_STRINGS,
     MISSING_PLOT_STRINGS,
@@ -50,9 +50,9 @@ core.db.DB_PATH = Path(_temp_db_path)
 core.db.init_db()
 
 with patch("threading.Thread"):
-    from web.server import app, sync_library_cache
+    from xarrtools.web.server import app, sync_library_cache
 
-from cli.cli import handle_discovery_workflow, console, run_cli
+from xarrtools.cli.cli import handle_discovery_workflow, console, run_cli
 
 
 @pytest.fixture(autouse=True)
@@ -69,7 +69,7 @@ def isolated_db_environment(tmp_path):
     core.db.set_setting("default_match_ignore_year", "1")
     core.db.set_setting("default_show_archived", "0")
 
-    from core.config import config
+    from xarrtools.core.config import config
     config.refresh()
 
     yield db_file
@@ -80,7 +80,7 @@ def isolated_db_environment(tmp_path):
 @pytest.fixture(autouse=True)
 def mock_external_clients():
     """Mocks web.server.get_clients to return (None, None) by default for fast, isolated tests."""
-    with patch("web.server.get_clients", return_value=(None, None)):
+    with patch("xarrtools.web.server.get_clients", return_value=(None, None)):
         yield
 
 
@@ -758,7 +758,7 @@ class TestTier1FeatureF9WebUIBadgingAndStyling:
         assert '<span class="badge badge-library">In Library</span>' in card_html
 
     def test_f9_04_css_file_contains_badge_new_metadata_styling(self):
-        css_path = Path(__file__).resolve().parent.parent / "web" / "templates" / "style.css"
+        css_path = Path(__file__).resolve().parent.parent / "src" / "xarrtools" / "web" / "templates" / "style.css"
         assert css_path.exists()
         css_content = css_path.read_text(encoding="utf-8")
 
@@ -782,12 +782,12 @@ class TestTier1FeatureF9WebUIBadgingAndStyling:
 class TestTier1FeatureF10CLITagAndStatusDisplay:
     """Tests CLI formatting and rendering of [New metadata] and (Archived) tags."""
 
-    @patch("cli.cli.config")
-    @patch("cli.cli.Prompt.ask")
-    @patch("cli.cli.console.print")
-    @patch("cli.cli.get_discoveries")
-    @patch("cli.cli.enrich_tv_show")
-    @patch("cli.cli.enrich_movie")
+    @patch("xarrtools.cli.cli.config")
+    @patch("xarrtools.cli.cli.Prompt.ask")
+    @patch("xarrtools.cli.cli.console.print")
+    @patch("xarrtools.cli.cli.get_discoveries")
+    @patch("xarrtools.cli.cli.enrich_tv_show")
+    @patch("xarrtools.cli.cli.enrich_movie")
     def test_f10_01_cli_shows_new_metadata_tag(
         self, mock_enrich_movie, mock_enrich_tv, mock_get_disc, mock_print, mock_ask, mock_config
     ):
@@ -809,12 +809,12 @@ class TestTier1FeatureF10CLITagAndStatusDisplay:
         assert any("[New metadata]" in t for t in printed_texts)
         assert any("Fresh Discovery" in t for t in printed_texts)
 
-    @patch("cli.cli.config")
-    @patch("cli.cli.Prompt.ask")
-    @patch("cli.cli.console.print")
-    @patch("cli.cli.get_discoveries")
-    @patch("cli.cli.enrich_tv_show")
-    @patch("cli.cli.enrich_movie")
+    @patch("xarrtools.cli.cli.config")
+    @patch("xarrtools.cli.cli.Prompt.ask")
+    @patch("xarrtools.cli.cli.console.print")
+    @patch("xarrtools.cli.cli.get_discoveries")
+    @patch("xarrtools.cli.cli.enrich_tv_show")
+    @patch("xarrtools.cli.cli.enrich_movie")
     def test_f10_02_cli_shows_archived_tag(
         self, mock_enrich_movie, mock_enrich_tv, mock_get_disc, mock_print, mock_ask, mock_config
     ):
@@ -836,12 +836,12 @@ class TestTier1FeatureF10CLITagAndStatusDisplay:
         assert any("(Archived)" in t for t in printed_texts)
         assert any("Hidden Gem" in t for t in printed_texts)
 
-    @patch("cli.cli.config")
-    @patch("cli.cli.Prompt.ask")
-    @patch("cli.cli.console.print")
-    @patch("cli.cli.get_discoveries")
-    @patch("cli.cli.enrich_tv_show")
-    @patch("cli.cli.enrich_movie")
+    @patch("xarrtools.cli.cli.config")
+    @patch("xarrtools.cli.cli.Prompt.ask")
+    @patch("xarrtools.cli.cli.console.print")
+    @patch("xarrtools.cli.cli.get_discoveries")
+    @patch("xarrtools.cli.cli.enrich_tv_show")
+    @patch("xarrtools.cli.cli.enrich_movie")
     def test_f10_03_cli_standard_item_shows_normal_status(
         self, mock_enrich_movie, mock_enrich_tv, mock_get_disc, mock_print, mock_ask, mock_config
     ):
@@ -864,10 +864,10 @@ class TestTier1FeatureF10CLITagAndStatusDisplay:
         assert not any("Standard Movie" in t and "[New metadata]" in t for t in printed_texts)
         assert not any("Standard Movie" in t and "(Archived)" in t for t in printed_texts)
 
-    @patch("cli.cli.config")
-    @patch("cli.cli.Prompt.ask")
-    @patch("cli.cli.console.print")
-    @patch("cli.cli.get_discoveries")
+    @patch("xarrtools.cli.cli.config")
+    @patch("xarrtools.cli.cli.Prompt.ask")
+    @patch("xarrtools.cli.cli.console.print")
+    @patch("xarrtools.cli.cli.get_discoveries")
     def test_f10_04_cli_empty_releases_returns_cleanly(
         self, mock_get_disc, mock_print, mock_ask, mock_config
     ):
@@ -881,12 +881,12 @@ class TestTier1FeatureF10CLITagAndStatusDisplay:
         assert any("No new releases found" in t for t in printed_texts)
 
 
-    @patch("cli.cli.config")
-    @patch("cli.cli.Prompt.ask")
-    @patch("cli.cli.console.print")
-    @patch("cli.cli.get_discoveries")
-    @patch("cli.cli.enrich_tv_show")
-    @patch("cli.cli.enrich_movie")
+    @patch("xarrtools.cli.cli.config")
+    @patch("xarrtools.cli.cli.Prompt.ask")
+    @patch("xarrtools.cli.cli.console.print")
+    @patch("xarrtools.cli.cli.get_discoveries")
+    @patch("xarrtools.cli.cli.enrich_tv_show")
+    @patch("xarrtools.cli.cli.enrich_movie")
     def test_f10_05_cli_multiple_items_mixed_statuses(
         self, mock_enrich_movie, mock_enrich_tv, mock_get_disc, mock_print, mock_ask, mock_config
     ):
@@ -1560,12 +1560,12 @@ class TestTier3CrossFeatureCombinations:
         assert items[0]["is_in_library"] is True
         assert items[0]["has_new_metadata"] is True
 
-    @patch("cli.cli.config")
-    @patch("cli.cli.Prompt.ask")
-    @patch("cli.cli.console.print")
-    @patch("cli.cli.get_discoveries")
-    @patch("cli.cli.enrich_tv_show")
-    @patch("cli.cli.enrich_movie")
+    @patch("xarrtools.cli.cli.config")
+    @patch("xarrtools.cli.cli.Prompt.ask")
+    @patch("xarrtools.cli.cli.console.print")
+    @patch("xarrtools.cli.cli.get_discoveries")
+    @patch("xarrtools.cli.cli.enrich_tv_show")
+    @patch("xarrtools.cli.cli.enrich_movie")
     def test_t3_11_cli_discovery_workflow_with_badged_items(
         self, mock_enrich_movie, mock_enrich_tv, mock_get_disc, mock_print, mock_ask, mock_config
     ):

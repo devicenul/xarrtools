@@ -1,11 +1,11 @@
 import os
 import pytest
 from unittest.mock import patch, MagicMock
-from core.config import Config
+from xarrtools.core.config import Config
 
 def test_config_from_db():
     config = Config()
-    with patch("core.db.get_setting") as mock_get:
+    with patch("xarrtools.core.db.get_setting") as mock_get:
         mock_get.side_effect = lambda key, default: {
             "radarr_url": "http://localhost:7878/",
             "radarr_api_key": "radarr_key_123",
@@ -25,7 +25,7 @@ def test_config_from_db():
 def test_config_fallback_to_env():
     config = Config()
     # If get_setting returns empty or raises an exception
-    with patch("core.db.get_setting", side_effect=Exception("DB error")), \
+    with patch("xarrtools.core.db.get_setting", side_effect=Exception("DB error")), \
          patch.dict(os.environ, {
              "RADARR_URL": "http://radarr-env:7878/",
              "RADARR_API_KEY": "radarr_env_key",
@@ -39,7 +39,7 @@ def test_config_fallback_to_env():
 
 def test_config_missing_vars():
     config = Config()
-    with patch("core.db.get_setting", return_value=""), \
+    with patch("xarrtools.core.db.get_setting", return_value=""), \
          patch.dict(os.environ, {}, clear=True):
         assert config.radarr_url == ""
         assert config.radarr_api_key == ""
@@ -56,7 +56,8 @@ def test_config_missing_vars():
 def test_config_frozen_path():
     import sys
     import importlib
-    import core.config
+    import xarrtools.core.config
+    from xarrtools import core
     
     old_frozen = getattr(sys, 'frozen', None)
     sys.frozen = True
@@ -76,7 +77,7 @@ def test_config_frozen_path():
 
 def test_config_placeholder_api_keys():
     config = Config()
-    with patch("core.db.get_setting") as mock_get:
+    with patch("xarrtools.core.db.get_setting") as mock_get:
         mock_get.side_effect = lambda key, default: {
             "radarr_url": "http://localhost:7878",
             "radarr_api_key": "your_radarr_api_key_here",

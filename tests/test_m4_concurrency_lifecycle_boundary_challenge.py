@@ -18,9 +18,9 @@ from datetime import datetime, timedelta
 import pytest
 from unittest.mock import patch, MagicMock
 
-import core.db
-import core.metadata
-from web.server import app
+import xarrtools.core.db; from xarrtools import core
+import xarrtools.core.metadata; from xarrtools import core
+from xarrtools.web.server import app
 
 
 @pytest.fixture
@@ -47,7 +47,7 @@ def isolated_db():
 def client(isolated_db):
     """Flask test client connected to the isolated database."""
     core.db.set_setting("api_key", "test_m4_key")
-    from core.config import config
+    from xarrtools.core.config import config
     config.refresh()
     
     app.config["TESTING"] = True

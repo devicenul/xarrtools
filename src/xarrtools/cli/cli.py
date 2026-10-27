@@ -12,11 +12,11 @@ from rich.panel import Panel
 from rich.status import Status
 from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TaskProgressColumn
 
-from core.config import config
-from core.db import get_setting, set_setting
-from core.client import RadarrClient, SonarrClient, ArrAPIError
-from core.scraper import get_discoveries
-from core.enricher import enrich_tv_show, enrich_movie
+from xarrtools.core.config import config
+from xarrtools.core.db import get_setting, set_setting
+from xarrtools.core.client import RadarrClient, SonarrClient, ArrAPIError
+from xarrtools.core.scraper import get_discoveries
+from xarrtools.core.enricher import enrich_tv_show, enrich_movie
 
 console = Console()
 
@@ -691,7 +691,7 @@ def handle_export_workflow() -> None:
     
     try:
         if filename.lower().endswith(".zip"):
-            from core.backup import export_full_backup
+            from xarrtools.core.backup import export_full_backup
             res = export_full_backup(filename, include_media=include_media)
             console.print(f"[green]✓ Successfully exported full backup to '{filename}'[/green]")
             console.print(f"  - Settings: [bold]{res.get('settings_count', 0)}[/bold]")
@@ -699,7 +699,7 @@ def handle_export_workflow() -> None:
             console.print(f"  - Media items: [bold]{res.get('media_count', 0)}[/bold]")
             console.print(f"  - Posters cached: [bold]{res.get('posters_count', 0)}[/bold]")
         else:
-            from core.db import export_to_dict
+            from xarrtools.core.db import export_to_dict
             data = export_to_dict(include_media=include_media)
             import json
             content = json.dumps(data, indent=2)
@@ -729,7 +729,7 @@ def handle_import_workflow() -> None:
             content = f.read()
             
         if content.startswith(b"PK") or filename.lower().endswith(".zip"):
-            from core.backup import import_full_backup
+            from xarrtools.core.backup import import_full_backup
             import io
             res = import_full_backup(io.BytesIO(content))
             console.print(f"[green]✓ Successfully imported backup from '{filename}'![/green]")
@@ -746,7 +746,7 @@ def handle_import_workflow() -> None:
             console.print("[red]Invalid backup file structure.[/red]")
             return
         
-        from core.db import verify_backup_checksum, import_from_dict
+        from xarrtools.core.db import verify_backup_checksum, import_from_dict
         check = verify_backup_checksum(data)
         if check is False:
             logger.warning("Backup checksum verification failed.")
@@ -764,7 +764,7 @@ def handle_import_workflow() -> None:
 
 def run_cli() -> None:
     """Start the interactive command-line terminal manager."""
-    from core.logging_setup import setup_logging
+    from xarrtools.core.logging_setup import setup_logging
     setup_logging()
     while True:
         console.clear()

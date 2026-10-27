@@ -6,8 +6,8 @@ import argparse
 import logging
 from threading import Timer
 from typing import Optional
-from cli import run_cli
-from web import start_server
+from xarrtools.cli import run_cli
+from xarrtools.web import start_server
 
 logger = logging.getLogger("xarrtools.main")
 
@@ -53,9 +53,8 @@ def open_browser(port: int = 5000, host: str = "localhost") -> None:
     webbrowser.open(target_url)
 
 
-if __name__ == "__main__":
-    # Set up argument parsing with mutually exclusive operational modes
-    import os
+def main(argv: Optional[list] = None) -> int:
+    """Main execution function parsing CLI arguments and dispatching to GUI/server/CLI."""
     parser = argparse.ArgumentParser(description="xarrtools - Radarr & Sonarr Media Discovery Companion")
     group = parser.add_mutually_exclusive_group()
     group.add_argument("--gui", "-g", action="store_true", help="Launch the standalone desktop GUI (default)")
@@ -65,11 +64,11 @@ if __name__ == "__main__":
     parser.add_argument("--host", default=None, help="Host/interface to bind the web server to (default: 127.0.0.1 or XARRTOOLS_HOST)")
     parser.add_argument("--port", "-p", type=int, default=None, help="Port to bind the web server to (default: 5000 or XARRTOOLS_PORT)")
     parser.add_argument("--no-browser", action="store_true", help="Do not automatically open the web browser on startup")
-    
-    # Use parse_known_args to ignore PyInstaller/system flags safely
-    args, unknown = parser.parse_known_args()
 
-    from core.logging_setup import setup_logging
+    # Use parse_known_args to ignore PyInstaller/system flags safely
+    args, unknown = parser.parse_known_args(argv)
+
+    from xarrtools.core.logging_setup import setup_logging
     setup_logging(level="DEBUG" if args.debug else None)
 
     # Resolve port and host with environment variable fallbacks
@@ -90,7 +89,7 @@ if __name__ == "__main__":
     else:
         # Standalone desktop app mode with server-fallback if graphical components are missing
         try:
-            from gui.gui import run_gui
+            from xarrtools.gui.gui import run_gui
             run_gui(debug=args.debug)
         except Exception as e:
             if args.gui:
@@ -101,5 +100,10 @@ if __name__ == "__main__":
                 logger.info("Launching in standard browser-based server mode...")
                 print("Launching in standard browser-based server mode...")
             run_server_mode(debug=args.debug, port=port, host=host, no_browser=args.no_browser)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
 
 

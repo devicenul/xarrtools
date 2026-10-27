@@ -122,19 +122,19 @@ def get_icon_path() -> Optional[str]:
         base_path = Path(sys._MEIPASS)  # type: ignore[attr-defined]  # PyInstaller runtime attribute
     else:
         base_path = Path(__file__).resolve().parent.parent
-    
-    if sys.platform == "win32":
-        icon_path = base_path / "web" / "templates" / "favicon.ico"
+
+    for tpl_dir in (base_path / "web" / "templates", base_path / "xarrtools" / "web" / "templates"):
+        if sys.platform == "win32":
+            icon_path = tpl_dir / "favicon.ico"
+            if icon_path.exists():
+                return str(icon_path)
+        elif sys.platform == "darwin":
+            icon_path = tpl_dir / "favicon.icns"
+            if icon_path.exists():
+                return str(icon_path)
+        icon_path = tpl_dir / "favicon.png"
         if icon_path.exists():
             return str(icon_path)
-    elif sys.platform == "darwin":
-        icon_path = base_path / "web" / "templates" / "favicon.icns"
-        if icon_path.exists():
-            return str(icon_path)
-            
-    icon_path = base_path / "web" / "templates" / "favicon.png"
-    if icon_path.exists():
-        return str(icon_path)
     return None
 
 def ensure_gui_available() -> None:
@@ -180,7 +180,7 @@ def run_gui(debug: bool = False) -> None:
     port = get_free_port()
 
     # 3. Import and boot standard server inside a daemon thread
-    from web.server import start_server
+    from xarrtools.web.server import start_server
     server_thread = threading.Thread(
         target=start_server,
         kwargs={"port": port, "debug": False},

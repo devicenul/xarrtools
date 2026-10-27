@@ -120,7 +120,7 @@ if "!SKIP_DEPS!"=="0" (
             popd
             exit /b 1
         )
-        echo [Init] Compiling the TypeScript frontend ^(web/static/dist^)...
+        echo [Init] Compiling the TypeScript frontend ^(src/xarrtools/web/static/dist^)...
         call npm run build --silent
         if errorlevel 1 (
             echo [Error] Frontend build failed.
@@ -146,7 +146,8 @@ if not exist ".env" (
 
 :: 6. Initialize SQLite database schema
 echo [Init] Initializing SQLite database schema (xarrtools.db)...
-"%VENV_DIR%\Scripts\python.exe" -c "from core.db import init_db, clean_expired_cache; init_db(); clean_expired_cache()"
+set "PYTHONPATH=%REPO_ROOT%\src;%PYTHONPATH%"
+"%VENV_DIR%\Scripts\python.exe" -c "from xarrtools.core.db import init_db, clean_expired_cache; init_db(); clean_expired_cache()"
 if errorlevel 1 (
     echo [Error] Failed to initialize SQLite database schema.
     if "!NO_PAUSE!"=="0" pause

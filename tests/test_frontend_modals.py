@@ -28,12 +28,12 @@ import pytest
 
 pytestmark = pytest.mark.skipif(shutil.which("node") is None, reason="node not available")
 
-DIST_MODALS = Path(__file__).resolve().parent.parent / "web" / "static" / "dist" / "modals.js"
+DIST_MODALS = Path(__file__).resolve().parent.parent / "src" / "xarrtools" / "web" / "static" / "dist" / "modals.js"
 
 
 def run_node_modals(body: str):
     if not DIST_MODALS.is_file():
-        pytest.skip("web/static/dist/modals.js not found; run 'npm run build' first")
+        pytest.skip("src/xarrtools/web/static/dist/modals.js not found; run 'npm run build' first")
     code = f"""
 import {{
   buildSelectOptionsHtml,

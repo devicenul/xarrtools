@@ -4,8 +4,8 @@ from unittest.mock import MagicMock, patch
 import pytest
 import requests
 
-import core.tmdb as tmdb
-from core.enricher import enrich_movie
+import xarrtools.core.tmdb as tmdb; from xarrtools import core
+from xarrtools.core.enricher import enrich_movie
 
 
 JWT = "eyJhbGciOiJIUzI1NiJ9.payload.signature"
@@ -32,20 +32,20 @@ def _reset_genre_cache():
 # --- auth -------------------------------------------------------------------
 
 def test_missing_key_raises():
-    with patch("core.tmdb.get_api_key", return_value=""):
+    with patch("xarrtools.core.tmdb.get_api_key", return_value=""):
         with pytest.raises(tmdb.TMDBError, match="not set"):
             tmdb._get("/genre/movie/list")
 
 
 def test_bearer_token_sent_as_header_and_v3_key_as_param():
-    with patch("core.tmdb.get_api_key", return_value=JWT), \
+    with patch("xarrtools.core.tmdb.get_api_key", return_value=JWT), \
          patch.object(tmdb._session, "get", return_value=_resp({"ok": 1})) as g:
         tmdb._get("/x", {"a": 1})
     _, kwargs = g.call_args
     assert kwargs["headers"]["Authorization"] == f"Bearer {JWT}"
     assert "api_key" not in kwargs["params"]
 
-    with patch("core.tmdb.get_api_key", return_value="abc123"), \
+    with patch("xarrtools.core.tmdb.get_api_key", return_value="abc123"), \
          patch.object(tmdb._session, "get", return_value=_resp({"ok": 1})) as g:
         tmdb._get("/x")
     _, kwargs = g.call_args
@@ -54,7 +54,7 @@ def test_bearer_token_sent_as_header_and_v3_key_as_param():
 
 
 def test_unauthorized_raises_clear_error():
-    with patch("core.tmdb.get_api_key", return_value="bad"), \
+    with patch("xarrtools.core.tmdb.get_api_key", return_value="bad"), \
          patch.object(tmdb._session, "get", return_value=_resp(status=401)):
         with pytest.raises(tmdb.TMDBError, match="rejected"):
             tmdb._get("/x")
@@ -73,7 +73,7 @@ def test_discover_movies_maps_fields_and_skips_undated():
     def fake_get(url, params=None, headers=None, timeout=None):
         return _resp(genres if url.endswith("/genre/movie/list") else page1)
 
-    with patch("core.tmdb.get_api_key", return_value=JWT), \
+    with patch("xarrtools.core.tmdb.get_api_key", return_value=JWT), \
          patch.object(tmdb._session, "get", side_effect=fake_get):
         items = tmdb.discover_movies(datetime(2026, 11, 1), datetime(2027, 1, 1))
 
@@ -112,7 +112,7 @@ DETAILS = {
 
 
 def test_get_movie_enrichment_by_tmdb_id():
-    with patch("core.tmdb.get_api_key", return_value=JWT), \
+    with patch("xarrtools.core.tmdb.get_api_key", return_value=JWT), \
          patch.object(tmdb._session, "get", return_value=_resp(DETAILS)):
         out = tmdb.get_movie_enrichment("Anything", 2026, tmdb_id=10)
     assert out["tmdbId"] == 10 and out["imdbId"] == "tt100"
@@ -138,7 +138,7 @@ def test_search_requires_matching_title_and_falls_back_on_year():
             return _resp({"results": []})
         return _resp(DETAILS)
 
-    with patch("core.tmdb.get_api_key", return_value=JWT), \
+    with patch("xarrtools.core.tmdb.get_api_key", return_value=JWT), \
          patch.object(tmdb._session, "get", side_effect=fake_get):
         out = tmdb.get_movie_enrichment("The Film", 2026)
     assert out["tmdbId"] == 10          # matched by normalized title, not first result
@@ -146,12 +146,12 @@ def test_search_requires_matching_title_and_falls_back_on_year():
 
 
 def test_enrichment_returns_none_without_key_or_on_error_or_no_match():
-    with patch("core.tmdb.get_api_key", return_value=""):
+    with patch("xarrtools.core.tmdb.get_api_key", return_value=""):
         assert tmdb.get_movie_enrichment("X", 2026) is None
-    with patch("core.tmdb.get_api_key", return_value=JWT), \
+    with patch("xarrtools.core.tmdb.get_api_key", return_value=JWT), \
          patch.object(tmdb._session, "get", return_value=_resp(status=500)):
         assert tmdb.get_movie_enrichment("X", 2026, tmdb_id=1) is None
-    with patch("core.tmdb.get_api_key", return_value=JWT), \
+    with patch("xarrtools.core.tmdb.get_api_key", return_value=JWT), \
          patch.object(tmdb._session, "get", return_value=_resp({"results": []})):
         assert tmdb.get_movie_enrichment("Nope", 2026) is None
 
@@ -162,8 +162,8 @@ def test_enrich_movie_uses_tmdb_and_skips_wikipedia_when_complete():
     tmdb_data = {"tmdbId": 10, "imdbId": "tt100", "plot": "TMDB plot.", "poster_url": "http://p",
                  "genres": ["Action"], "studio": "Acme", "trailer": "https://www.youtube.com/watch?v=abc",
                  "cast": "A, B", "director": "D", "producer": "P"}
-    with patch("core.enricher.get_movie_enrichment", return_value=tmdb_data) as g, \
-         patch("core.enricher.get_wikipedia_movie_details") as wiki:
+    with patch("xarrtools.core.enricher.get_movie_enrichment", return_value=tmdb_data) as g, \
+         patch("xarrtools.core.enricher.get_wikipedia_movie_details") as wiki:
         data = enrich_movie("Film", 2026, None, None, tmdb_id=10)
     assert g.call_args.kwargs["tmdb_id"] == 10
     assert data["plot"] == "TMDB plot." and data["cast"] == "A, B"
@@ -174,8 +174,8 @@ def test_enrich_movie_uses_tmdb_and_skips_wikipedia_when_complete():
 
 
 def test_enrich_movie_wikipedia_fills_what_tmdb_lacks():
-    with patch("core.enricher.get_movie_enrichment", return_value={"tmdbId": 10, "cast": "A, B"}), \
-         patch("core.enricher.get_wikipedia_movie_details",
+    with patch("xarrtools.core.enricher.get_movie_enrichment", return_value={"tmdbId": 10, "cast": "A, B"}), \
+         patch("xarrtools.core.enricher.get_wikipedia_movie_details",
                return_value={"cast": "WIKI CAST", "director": "Wiki Dir", "producer": "Wiki Prod"}):
         data = enrich_movie("Film", 2026)
     assert data["cast"] == "A, B"          # TMDB wins when it has data
@@ -184,8 +184,8 @@ def test_enrich_movie_wikipedia_fills_what_tmdb_lacks():
 
 
 def test_enrich_movie_without_tmdb_behaves_as_before():
-    with patch("core.enricher.get_movie_enrichment", return_value=None), \
-         patch("core.enricher.get_wikipedia_movie_details",
+    with patch("xarrtools.core.enricher.get_movie_enrichment", return_value=None), \
+         patch("xarrtools.core.enricher.get_wikipedia_movie_details",
                return_value={"cast": "WIKI CAST", "director": "Wiki Dir", "producer": "Wiki Prod"}):
         data = enrich_movie("Film", 2026)
     assert (data["cast"], data["director"], data["producer"]) == ("WIKI CAST", "Wiki Dir", "Wiki Prod")
@@ -216,7 +216,7 @@ def test_discover_movies_queries_each_window_and_dedupes():
         ("2026-11-01", 2): {"total_pages": 2, "results": [movie(2, "2026-11-05")]},
         ("2026-11-08", 1): {"total_pages": 1, "results": [movie(1, "2026-11-03"), movie(3, "2026-11-09")]},
     })
-    with patch("core.tmdb.get_api_key", return_value=JWT), \
+    with patch("xarrtools.core.tmdb.get_api_key", return_value=JWT), \
          patch.object(tmdb._session, "get", side_effect=fake):
         items = tmdb.discover_movies(datetime(2026, 11, 1), datetime(2026, 11, 10))
 
@@ -229,7 +229,7 @@ def test_discover_movies_queries_each_window_and_dedupes():
 
 def test_discover_movies_stops_on_empty_page_and_respects_page_limit():
     fake, calls = _discover_fake({})
-    with patch("core.tmdb.get_api_key", return_value=JWT), \
+    with patch("xarrtools.core.tmdb.get_api_key", return_value=JWT), \
          patch.object(tmdb._session, "get", side_effect=fake):
         assert tmdb.discover_movies(datetime(2026, 11, 1), datetime(2026, 11, 3)) == []
     assert len(calls) == 1   # empty results -> no second page requested
@@ -237,7 +237,7 @@ def test_discover_movies_stops_on_empty_page_and_respects_page_limit():
     many = {("2026-11-01", p): {"total_pages": 9, "results": [
         {"id": p, "title": f"T{p}", "release_date": "2026-11-02"}]} for p in range(1, 10)}
     fake, calls = _discover_fake(many)
-    with patch("core.tmdb.get_api_key", return_value=JWT), \
+    with patch("xarrtools.core.tmdb.get_api_key", return_value=JWT), \
          patch.object(tmdb._session, "get", side_effect=fake):
         items = tmdb.discover_movies(datetime(2026, 11, 1), datetime(2026, 11, 3), pages_per_chunk=3)
     assert len(calls) == 3 and len(items) == 3
@@ -245,28 +245,28 @@ def test_discover_movies_stops_on_empty_page_and_respects_page_limit():
 
 def test_movie_enrichment_returns_language_and_country():
     details = dict(DETAILS, original_language="fr", origin_country=["FR", "BE"])
-    with patch("core.tmdb.get_api_key", return_value=JWT), \
+    with patch("xarrtools.core.tmdb.get_api_key", return_value=JWT), \
          patch.object(tmdb._session, "get", return_value=_resp(details)):
         out = tmdb.get_movie_enrichment("Anything", 2026, tmdb_id=10)
     assert out["language"] == "French" and out["country"] == "FR"
 
     details = dict(DETAILS, original_language="xx",
                    production_countries=[{"iso_3166_1": "jp"}])
-    with patch("core.tmdb.get_api_key", return_value=JWT), \
+    with patch("xarrtools.core.tmdb.get_api_key", return_value=JWT), \
          patch.object(tmdb._session, "get", return_value=_resp(details)):
         out = tmdb.get_movie_enrichment("Anything", 2026, tmdb_id=10)
     assert not out.get("language") and out["country"] == "JP"   # falls back to production countries
 
 
 def test_enrich_movie_copies_language_and_country_from_tmdb():
-    with patch("core.enricher.get_movie_enrichment",
+    with patch("xarrtools.core.enricher.get_movie_enrichment",
                return_value={"tmdbId": 10, "language": "Japanese", "country": "JP"}), \
-         patch("core.enricher.get_wikipedia_movie_details", return_value={}):
+         patch("xarrtools.core.enricher.get_wikipedia_movie_details", return_value={}):
         data = enrich_movie("Film", 2026)
     assert data["language"] == "Japanese" and data["country"] == "JP"
 
-    with patch("core.enricher.get_movie_enrichment", return_value=None), \
-         patch("core.enricher.get_wikipedia_movie_details", return_value={}):
+    with patch("xarrtools.core.enricher.get_movie_enrichment", return_value=None), \
+         patch("xarrtools.core.enricher.get_wikipedia_movie_details", return_value={}):
         data = enrich_movie("Film", 2026)
     assert data["language"] == "" and data["country"] == ""
 
@@ -274,7 +274,7 @@ def test_enrich_movie_copies_language_and_country_from_tmdb():
 # --- locales ----------------------------------------------------------------
 
 def test_locales_helpers():
-    from core.locales import country_code, language_name
+    from xarrtools.core.locales import country_code, language_name
     assert language_name("en") == "English" and language_name("KO") == "Korean"
     assert language_name("Korean") == "Korean"
     assert language_name("zz") == "Zz" and language_name(None) == "" and language_name("") == ""

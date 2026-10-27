@@ -7,7 +7,7 @@ from unittest.mock import patch
 import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-import main  # noqa: E402
+import xarrtools.main as main  # noqa: E402
 
 
 def _listening_socket():

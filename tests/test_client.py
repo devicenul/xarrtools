@@ -1,7 +1,7 @@
 import pytest
 import requests
 from unittest.mock import patch, MagicMock
-from core.client import RadarrClient, SonarrClient, ArrAPIError
+from xarrtools.core.client import RadarrClient, SonarrClient, ArrAPIError
 
 def test_client_request_success():
     radarr = RadarrClient("http://localhost:7878", "radarrkey")
@@ -217,7 +217,7 @@ def test_client_protocol_discovery_https_success():
     # Test case where HTTPS is checked first and succeeds
     radarr = RadarrClient("localhost:7878", "radarrkey")
     with patch("requests.request") as mock_req, \
-         patch("core.db.set_setting") as mock_set_setting:
+         patch("xarrtools.core.db.set_setting") as mock_set_setting:
          
         mock_response = MagicMock()
         mock_response.status_code = 200
@@ -235,7 +235,7 @@ def test_client_protocol_discovery_https_fails_http_succeeds():
     # Test case where HTTPS fails (ConnectionError) and HTTP succeeds
     radarr = RadarrClient("localhost:7878", "radarrkey")
     with patch("requests.request") as mock_req, \
-         patch("core.db.set_setting") as mock_set_setting:
+         patch("xarrtools.core.db.set_setting") as mock_set_setting:
          
         mock_response_http = MagicMock()
         mock_response_http.status_code = 200
@@ -259,7 +259,7 @@ def test_client_protocol_discovery_general_request_exception():
     # Test case where a RequestException (other than timeout/connection) is raised
     sonarr = SonarrClient("localhost:8989", "sonarrkey")
     with patch("requests.request") as mock_req, \
-         patch("core.db.set_setting") as mock_set_setting:
+         patch("xarrtools.core.db.set_setting") as mock_set_setting:
          
         mock_response = MagicMock()
         mock_response.status_code = 200

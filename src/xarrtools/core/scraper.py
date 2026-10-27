@@ -14,7 +14,7 @@ from urllib3.connection import HTTPConnection, HTTPSConnection
 from urllib3.connectionpool import HTTPConnectionPool, HTTPSConnectionPool
 from urllib3.poolmanager import PoolManager
 from defusedxml.ElementTree import fromstring as secure_fromstring
-from core.locales import country_code, language_name, slug
+from xarrtools.core.locales import country_code, language_name, slug
 import xml.etree.ElementTree as ET
 import logging
 
@@ -890,7 +890,7 @@ def get_discoveries(past_days: int = 30, future_days: int = 60) -> Tuple[List[Di
     dvd_url_template: Optional[str] = None
     
     # 1. Fetch enabled custom feeds from database
-    from core.db import get_db_connection
+    from xarrtools.core.db import get_db_connection
     conn = get_db_connection()
     cursor = conn.cursor()
     
@@ -938,7 +938,7 @@ def get_discoveries(past_days: int = 30, future_days: int = 60) -> Tuple[List[Di
                     item["source_feed_id"] = feed["id"]
                     (tv_raw if is_tv_feed else movie_raw).append(item)
             elif feed_type == "tmdb_movies":
-                from core.tmdb import discover_movies
+                from xarrtools.core.tmdb import discover_movies
                 items = discover_movies(
                     datetime.now() - timedelta(days=past_days),
                     datetime.now() + timedelta(days=future_days),

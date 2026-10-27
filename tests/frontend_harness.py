@@ -11,7 +11,7 @@ import subprocess
 import pytest
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-DIST_DIR = REPO_ROOT / "web" / "static" / "dist"
+DIST_DIR = REPO_ROOT / "src" / "xarrtools" / "web" / "static" / "dist"
 DIST_FILTERS = DIST_DIR / "filters.js"
 DIST_API = DIST_DIR / "api.js"
 DIST_CARDS = DIST_DIR / "cards.js"
@@ -20,8 +20,8 @@ DIST_MODALS = DIST_DIR / "modals.js"
 DIST_RENDER = DIST_DIR / "render.js"
 DIST_STATE = DIST_DIR / "state.js"
 DIST_MAIN = DIST_DIR / "main.js"
-SRC_DIR = REPO_ROOT / "web" / "static" / "src"
-INDEX_HTML_PATH = REPO_ROOT / "web" / "templates" / "index.html"
+SRC_DIR = REPO_ROOT / "src" / "xarrtools" / "web" / "static" / "src"
+INDEX_HTML_PATH = REPO_ROOT / "src" / "xarrtools" / "web" / "templates" / "index.html"
 INDEX_HTML = INDEX_HTML_PATH.read_text(encoding="utf-8")
 
 REQUIRED_DIST_FILES = [

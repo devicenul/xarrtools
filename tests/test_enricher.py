@@ -1,8 +1,8 @@
 import pytest
 import requests
 from unittest.mock import patch, MagicMock
-from core.client import SonarrClient, RadarrClient, ArrAPIError
-from core.enricher import clean_html, get_wikipedia_cast, enrich_tv_show, enrich_movie
+from xarrtools.core.client import SonarrClient, RadarrClient, ArrAPIError
+from xarrtools.core.enricher import clean_html, get_wikipedia_cast, enrich_tv_show, enrich_movie
 
 def test_clean_html():
     assert clean_html("<p>Hello <b>World</b>!</p>") == "Hello World!"
@@ -36,7 +36,7 @@ def test_get_wikipedia_cast_success():
         }
     }
     
-    with patch("core.enricher.enricher_session.get") as mock_get:
+    with patch("xarrtools.core.enricher.enricher_session.get") as mock_get:
         # First request returns search query, second returns parsed text
         r1 = MagicMock()
         r1.status_code = 200
@@ -67,7 +67,7 @@ def test_get_wikipedia_cast_empty_starring():
             }
         }
     }
-    with patch("core.enricher.enricher_session.get") as mock_get:
+    with patch("xarrtools.core.enricher.enricher_session.get") as mock_get:
         r1, r2 = MagicMock(), MagicMock()
         r1.status_code = 200
         r1.json.return_value = search_mock
@@ -93,7 +93,7 @@ def test_get_wikipedia_cast_no_infobox_td():
             }
         }
     }
-    with patch("core.enricher.enricher_session.get") as mock_get:
+    with patch("xarrtools.core.enricher.enricher_session.get") as mock_get:
         r1, r2 = MagicMock(), MagicMock()
         r1.status_code = 200
         r1.json.return_value = search_mock
@@ -120,7 +120,7 @@ def test_get_wikipedia_cast_no_starring_label():
             }
         }
     }
-    with patch("core.enricher.enricher_session.get") as mock_get:
+    with patch("xarrtools.core.enricher.enricher_session.get") as mock_get:
         r1, r2 = MagicMock(), MagicMock()
         r1.status_code = 200
         r1.json.return_value = search_mock
@@ -152,7 +152,7 @@ def test_get_wikipedia_cast_li_list():
             }
         }
     }
-    with patch("core.enricher.enricher_session.get") as mock_get:
+    with patch("xarrtools.core.enricher.enricher_session.get") as mock_get:
         r1, r2 = MagicMock(), MagicMock()
         r1.status_code = 200
         r1.json.return_value = search_mock
@@ -179,7 +179,7 @@ def test_get_wikipedia_cast_plain_text():
             }
         }
     }
-    with patch("core.enricher.enricher_session.get") as mock_get:
+    with patch("xarrtools.core.enricher.enricher_session.get") as mock_get:
         r1, r2 = MagicMock(), MagicMock()
         r1.status_code = 200
         r1.json.return_value = search_mock
@@ -192,14 +192,14 @@ def test_get_wikipedia_cast_plain_text():
 
 def test_get_wikipedia_cast_failures():
     # 1. Non-200 search status
-    with patch("core.enricher.enricher_session.get") as mock_get:
+    with patch("xarrtools.core.enricher.enricher_session.get") as mock_get:
         r = MagicMock()
         r.status_code = 404
         mock_get.return_value = r
         assert get_wikipedia_cast("Rivals", 2026) is None
 
     # 2. Empty search results
-    with patch("core.enricher.enricher_session.get") as mock_get:
+    with patch("xarrtools.core.enricher.enricher_session.get") as mock_get:
         r = MagicMock()
         r.status_code = 200
         r.json.return_value = {"query": {"search": []}}
@@ -207,7 +207,7 @@ def test_get_wikipedia_cast_failures():
         assert get_wikipedia_cast("Rivals", 2026) is None
 
     # 3. Non-200 parse status
-    with patch("core.enricher.enricher_session.get") as mock_get:
+    with patch("xarrtools.core.enricher.enricher_session.get") as mock_get:
         r1 = MagicMock()
         r1.status_code = 200
         r1.json.return_value = {"query": {"search": [{"title": "Rivals"}]}}
@@ -217,7 +217,7 @@ def test_get_wikipedia_cast_failures():
         assert get_wikipedia_cast("Rivals", 2026) is None
 
     # 4. Exception raised during request
-    with patch("core.enricher.enricher_session.get", side_effect=Exception("Network down")):
+    with patch("xarrtools.core.enricher.enricher_session.get", side_effect=Exception("Network down")):
         assert get_wikipedia_cast("Rivals", 2026) is None
 
 def test_enrich_tv_show_tvmaze_success():
@@ -237,7 +237,7 @@ def test_enrich_tv_show_tvmaze_success():
         }
     }
     
-    with patch("core.enricher.enricher_session.get") as mock_get:
+    with patch("xarrtools.core.enricher.enricher_session.get") as mock_get:
         r = MagicMock()
         r.status_code = 200
         r.json.return_value = maze_mock
@@ -259,7 +259,7 @@ def test_enrich_tv_show_webchannel_and_failures():
         "image": {"original": "http://tvmaze/original.jpg"},
         "webChannel": {"name": "Netflix"}
     }
-    with patch("core.enricher.enricher_session.get") as mock_get:
+    with patch("xarrtools.core.enricher.enricher_session.get") as mock_get:
         r = MagicMock()
         r.status_code = 200
         r.json.return_value = maze_mock
@@ -274,7 +274,7 @@ def test_enrich_tv_show_webchannel_and_failures():
     maze_mock_empty = {
         "summary": ""
     }
-    with patch("core.enricher.enricher_session.get") as mock_get:
+    with patch("xarrtools.core.enricher.enricher_session.get") as mock_get:
         r = MagicMock()
         r.status_code = 200
         r.json.return_value = maze_mock_empty
@@ -285,7 +285,7 @@ def test_enrich_tv_show_webchannel_and_failures():
         assert data["poster_url"] == ""
 
     # Test request failure fallback
-    with patch("core.enricher.enricher_session.get", side_effect=Exception("TVMaze offline")):
+    with patch("xarrtools.core.enricher.enricher_session.get", side_effect=Exception("TVMaze offline")):
         data = enrich_tv_show("Rivals", 2026)
         assert data["network"] == "Unknown Network"
         assert data["plot"] == "No plot summary available."
@@ -315,7 +315,7 @@ def test_enrich_tv_show_sonarr_sync():
     sonarr.lookup_series.return_value = lookup_mock
     
     # Mock requests.get (TVMaze returns empty/404)
-    with patch("core.enricher.enricher_session.get") as mock_get:
+    with patch("xarrtools.core.enricher.enricher_session.get") as mock_get:
         r = MagicMock()
         r.status_code = 404
         mock_get.return_value = r
@@ -339,7 +339,7 @@ def test_enrich_tv_show_sonarr_sync():
         }
     ]
     sonarr.lookup_series.return_value = lookup_mock_relative_img
-    with patch("core.enricher.enricher_session.get") as mock_get:
+    with patch("xarrtools.core.enricher.enricher_session.get") as mock_get:
         r = MagicMock()
         r.status_code = 404
         mock_get.return_value = r
@@ -357,7 +357,7 @@ def test_enrich_tv_show_sonarr_sync():
         }
     ]
     sonarr.lookup_series.return_value = lookup_mock_missing_img_url
-    with patch("core.enricher.enricher_session.get") as mock_get:
+    with patch("xarrtools.core.enricher.enricher_session.get") as mock_get:
         r = MagicMock()
         r.status_code = 404
         mock_get.return_value = r
@@ -375,7 +375,7 @@ def test_enrich_tv_show_sonarr_sync():
         }
     ]
     sonarr.lookup_series.return_value = lookup_mock_absolute_img
-    with patch("core.enricher.enricher_session.get") as mock_get:
+    with patch("xarrtools.core.enricher.enricher_session.get") as mock_get:
         r = MagicMock()
         r.status_code = 404
         mock_get.return_value = r
@@ -384,7 +384,7 @@ def test_enrich_tv_show_sonarr_sync():
 
     # 3b. Test Sonarr client returns no matches (evaluates if best_match is None)
     sonarr.lookup_series.return_value = []
-    with patch("core.enricher.enricher_session.get") as mock_get:
+    with patch("xarrtools.core.enricher.enricher_session.get") as mock_get:
         r = MagicMock()
         r.status_code = 404
         mock_get.return_value = r
@@ -400,7 +400,7 @@ def test_enrich_tv_show_sonarr_sync():
         }
     ]
     sonarr.lookup_series.return_value = lookup_mock_first_fallback
-    with patch("core.enricher.enricher_session.get") as mock_get:
+    with patch("xarrtools.core.enricher.enricher_session.get") as mock_get:
         r = MagicMock()
         r.status_code = 404
         mock_get.return_value = r
@@ -409,7 +409,7 @@ def test_enrich_tv_show_sonarr_sync():
 
     # 4. Test Sonarr lookup raising ArrAPIError
     sonarr.lookup_series.side_effect = ArrAPIError("Sonarr error")
-    with patch("core.enricher.enricher_session.get") as mock_get:
+    with patch("xarrtools.core.enricher.enricher_session.get") as mock_get:
         r = MagicMock()
         r.status_code = 404
         mock_get.return_value = r
@@ -418,7 +418,7 @@ def test_enrich_tv_show_sonarr_sync():
 
 def test_enrich_tv_show_wikipedia_cast_fallback():
     # If cast is still missing, trigger Wikipedia search for cast
-    with patch("core.enricher.enricher_session.get") as mock_get:
+    with patch("xarrtools.core.enricher.enricher_session.get") as mock_get:
         r_maze = MagicMock()
         r_maze.status_code = 404
         
@@ -468,7 +468,7 @@ def test_enrich_movie_radarr_sync():
     ]
     radarr.lookup_movie.return_value = lookup_mock_imdb
     
-    with patch("core.enricher.get_wikipedia_movie_details", return_value={"cast": "Paul Mescal", "director": "Ridley Scott", "producer": "Douglas Wick"}):
+    with patch("xarrtools.core.enricher.get_wikipedia_movie_details", return_value={"cast": "Paul Mescal", "director": "Ridley Scott", "producer": "Douglas Wick"}):
         data = enrich_movie("Gladiator II", 2024, radarr_client=radarr, imdb_id="tt1234567")
         assert data["is_in_library"] is True
         assert data["tmdbId"] == 12345
@@ -496,7 +496,7 @@ def test_enrich_movie_radarr_sync():
         }
     ]
     radarr.lookup_movie.side_effect = [None, lookup_mock_title] # First IMDb fails, fallback to title search succeeds
-    with patch("core.enricher.get_wikipedia_movie_details", return_value={"cast": "", "director": "", "producer": ""}):
+    with patch("xarrtools.core.enricher.get_wikipedia_movie_details", return_value={"cast": "", "director": "", "producer": ""}):
         data = enrich_movie("Gladiator II", 2024, radarr_client=radarr, imdb_id="tt1234567")
         assert data["poster_url"] == "http://radarr:7878/api/v3/media/5.jpg?apikey=radarr_key"
 
@@ -511,7 +511,7 @@ def test_enrich_movie_radarr_sync():
         }
     ]
     radarr.lookup_movie.side_effect = [None, lookup_mock_relative_no_params]
-    with patch("core.enricher.get_wikipedia_movie_details", return_value={"cast": "", "director": "", "producer": ""}):
+    with patch("xarrtools.core.enricher.get_wikipedia_movie_details", return_value={"cast": "", "director": "", "producer": ""}):
         data = enrich_movie("Gladiator II", 2024, radarr_client=radarr, imdb_id="tt1234567")
         assert data["poster_url"] == "http://radarr:7878/api/v3/media/5.jpg?width=250&apikey=radarr_key"
 
@@ -528,19 +528,19 @@ def test_enrich_movie_radarr_sync():
     # Reset mock call side effects
     radarr.lookup_movie.side_effect = None
     radarr.lookup_movie.return_value = lookup_mock_no_year_match
-    with patch("core.enricher.get_wikipedia_movie_details", return_value={"cast": "", "director": "", "producer": ""}):
+    with patch("xarrtools.core.enricher.get_wikipedia_movie_details", return_value={"cast": "", "director": "", "producer": ""}):
         data = enrich_movie("Gladiator II", 2024, radarr_client=radarr)
         assert data["poster_url"] == "http://other-site/cover.jpg"
 
     # 3b. Test Radarr lookup returns empty results
     radarr.lookup_movie.return_value = []
-    with patch("core.enricher.get_wikipedia_movie_details", return_value={"cast": "", "director": "", "producer": ""}):
+    with patch("xarrtools.core.enricher.get_wikipedia_movie_details", return_value={"cast": "", "director": "", "producer": ""}):
         data = enrich_movie("Gladiator II", 2024, radarr_client=radarr)
         assert data["poster_url"] == ""
 
     # 4. Test Radarr raising ArrAPIError
     radarr.lookup_movie.side_effect = ArrAPIError("Radarr lookup error")
-    with patch("core.enricher.get_wikipedia_movie_details", return_value={"cast": "", "director": "", "producer": ""}):
+    with patch("xarrtools.core.enricher.get_wikipedia_movie_details", return_value={"cast": "", "director": "", "producer": ""}):
         data = enrich_movie("Gladiator II", 2024, radarr_client=radarr)
         assert data["is_in_library"] is False
 
@@ -555,7 +555,7 @@ def test_enrich_tv_show_skip_poster_when_already_populated():
     maze_mock = {
         "image": {"medium": "http://tvmaze/medium.jpg"},
     }
-    with patch("core.enricher.enricher_session.get") as mock_get:
+    with patch("xarrtools.core.enricher.enricher_session.get") as mock_get:
         r = MagicMock()
         r.status_code = 200
         r.json.return_value = maze_mock
@@ -568,7 +568,7 @@ def test_enrich_tv_show_skip_poster_when_already_populated():
         assert data["poster_url"] == "http://tvmaze/medium.jpg"
 
 def test_enrich_movie_no_radarr_client():
-    with patch("core.enricher.get_wikipedia_movie_details", return_value={"cast": "Some Cast", "director": "Some Director", "producer": "Some Producer"}):
+    with patch("xarrtools.core.enricher.get_wikipedia_movie_details", return_value={"cast": "Some Cast", "director": "Some Director", "producer": "Some Producer"}):
         data = enrich_movie("Gladiator II", 2024, radarr_client=None)
         assert data["is_in_library"] is False
         assert data["cast"] == "Some Cast"
@@ -594,12 +594,12 @@ def test_enrich_movie_images_edge_cases():
         }
     ]
     radarr.lookup_movie.return_value = lookup_mock
-    with patch("core.enricher.get_wikipedia_movie_details", return_value={"cast": "", "director": "", "producer": ""}):
+    with patch("xarrtools.core.enricher.get_wikipedia_movie_details", return_value={"cast": "", "director": "", "producer": ""}):
         data = enrich_movie("Gladiator II", 2024, radarr_client=radarr)
         assert data["poster_url"] == ""
 
 def test_get_wikipedia_movie_details_success():
-    from core.enricher import get_wikipedia_movie_details
+    from xarrtools.core.enricher import get_wikipedia_movie_details
     search_mock = {
         "query": {
             "search": [{"title": "Gladiator II"}]
@@ -648,7 +648,7 @@ def test_get_wikipedia_movie_details_success():
         assert details["producer"] == "Douglas Wick, Lucy Fisher"
 
 def test_get_wikipedia_movie_details_failures():
-    from core.enricher import get_wikipedia_movie_details
+    from xarrtools.core.enricher import get_wikipedia_movie_details
     # Search request fails
     with patch("requests.get") as mock_get:
         r = MagicMock()
@@ -669,17 +669,17 @@ def _tv_maze_response(payload):
 
 def test_enrich_tv_show_extracts_language_and_country():
     network = {"name": "BBC One", "country": {"code": "GB"}}
-    with patch("core.enricher.enricher_session.get",
+    with patch("xarrtools.core.enricher.enricher_session.get",
                return_value=_tv_maze_response({"language": "English", "network": network})):
         data = enrich_tv_show("Rivals", 2026)
     assert data["language"] == "English" and data["country"] == "GB"
 
     web = {"name": "Netflix", "country": None}
-    with patch("core.enricher.enricher_session.get",
+    with patch("xarrtools.core.enricher.enricher_session.get",
                return_value=_tv_maze_response({"language": "Korean", "network": None, "webChannel": web})):
         data = enrich_tv_show("Rivals", 2026)
     assert data["language"] == "Korean" and data["country"] == ""   # global streamer: no country
 
-    with patch("core.enricher.enricher_session.get", return_value=_tv_maze_response({})):
+    with patch("xarrtools.core.enricher.enricher_session.get", return_value=_tv_maze_response({})):
         data = enrich_tv_show("Rivals", 2026)
     assert data["language"] == "" and data["country"] == ""

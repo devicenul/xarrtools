@@ -9,14 +9,14 @@ from unittest.mock import patch
 import pytest
 
 # 1. Isolate the database path BEFORE importing web.server
-import core.db
+import xarrtools.core.db; from xarrtools import core
 fd, temp_db_path = tempfile.mkstemp(suffix=".db")
 os.close(fd)
 core.db.DB_PATH = Path(temp_db_path)
 core.db.init_db()
 
-import core.logging_setup
-from core.logging_setup import (
+import xarrtools.core.logging_setup; from xarrtools import core
+from xarrtools.core.logging_setup import (
     setup_logging,
     reset_logging,
     get_logger,
@@ -26,10 +26,10 @@ from core.logging_setup import (
     RedactingFormatter,
     parse_log_level,
 )
-from core.config import config
+from xarrtools.core.config import config
 
 with patch("threading.Thread"):
-    from web.server import app
+    from xarrtools.web.server import app
 
 
 @pytest.fixture(autouse=True)

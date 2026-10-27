@@ -27,7 +27,7 @@ from datetime import datetime, timedelta
 from unittest.mock import patch, MagicMock
 
 # Isolate test database before importing web.server
-import core.db
+import xarrtools.core.db; from xarrtools import core
 fd, temp_db_path = tempfile.mkstemp(suffix=".db")
 os.close(fd)
 core.db.DB_PATH = Path(temp_db_path)
@@ -35,16 +35,16 @@ core.db.init_db()
 
 # Intercept background thread on import
 with patch("threading.Thread"):
-    from web.server import app, update_scan_progress
+    from xarrtools.web.server import app, update_scan_progress
 
-from core.db import (
+from xarrtools.core.db import (
     add_cached_item,
     get_cached_item,
     get_db_connection,
     set_setting,
     init_db
 )
-from core.metadata import evaluate_metadata, should_auto_archive
+from xarrtools.core.metadata import evaluate_metadata, should_auto_archive
 
 
 @pytest.fixture(autouse=True)
@@ -59,7 +59,7 @@ def clean_database():
 
     init_db()
     set_setting("api_key", "test_api_key")
-    from core.config import config
+    from xarrtools.core.config import config
     config.refresh()
     yield
 
@@ -222,7 +222,7 @@ def test_api_discover_skip_scrape_all_permutations(client):
         "network": "A24", "is_in_library": False, "date_str": date_str, "date_obj": date_str
     })
 
-    with patch("web.server.get_clients", return_value=(None, None)):
+    with patch("xarrtools.web.server.get_clients", return_value=(None, None)):
         res = client.get("/api/discover?skip_scrape=true&past_months=1&future_months=1")
         assert res.status_code == 200
         
@@ -356,10 +356,10 @@ def test_api_discover_live_scrape_auto_archiving_and_badging(client):
             }
         raise ValueError(f"Unexpected title: {title}")
 
-    with patch("web.server.get_clients", return_value=(None, None)), \
-         patch("web.server.get_discoveries", return_value=(tv_raw, movie_raw)), \
-         patch("web.server.enrich_tv_show", side_effect=mock_tv_enricher), \
-         patch("web.server.enrich_movie", side_effect=mock_movie_enricher):
+    with patch("xarrtools.web.server.get_clients", return_value=(None, None)), \
+         patch("xarrtools.web.server.get_discoveries", return_value=(tv_raw, movie_raw)), \
+         patch("xarrtools.web.server.enrich_tv_show", side_effect=mock_tv_enricher), \
+         patch("xarrtools.web.server.enrich_movie", side_effect=mock_movie_enricher):
 
         res = client.get("/api/discover?skip_scrape=false")
         assert res.status_code == 200
@@ -449,7 +449,7 @@ def test_api_discover_date_windows_clamping(client, past_months, future_months):
         "is_in_library": False, "date_str": extreme_future_date, "date_obj": extreme_future_date
     })
 
-    with patch("web.server.get_clients", return_value=(None, None)):
+    with patch("xarrtools.web.server.get_clients", return_value=(None, None)):
         res = client.get(f"/api/discover?skip_scrape=true&past_months={past_months}&future_months={future_months}")
         assert res.status_code == 200
         data = res.get_json()
@@ -547,9 +547,9 @@ def test_api_discover_custom_feed_discoveries(client):
             }
         raise ValueError(f"Unexpected title: {title}")
 
-    with patch("web.server.get_clients", return_value=(None, None)), \
-         patch("core.scraper.safe_fetch_feed", return_value=mock_payload), \
-         patch("web.server.enrich_movie", side_effect=mock_enrich_movie):
+    with patch("xarrtools.web.server.get_clients", return_value=(None, None)), \
+         patch("xarrtools.core.scraper.safe_fetch_feed", return_value=mock_payload), \
+         patch("xarrtools.web.server.enrich_movie", side_effect=mock_enrich_movie):
 
         res = client.get("/api/discover?skip_scrape=false")
         assert res.status_code == 200
@@ -588,8 +588,8 @@ def test_api_archive_rearchiving_badge_reset_full_cycle(client):
     assert item["has_new_metadata"] == 0
 
     # Step 2: Metadata Refresh discovers complete metadata (Auto-unarchived with badge)
-    with patch("web.server.get_clients", return_value=(None, None)), \
-         patch("web.server.enrich_tv_show") as mock_enrich:
+    with patch("xarrtools.web.server.get_clients", return_value=(None, None)), \
+         patch("xarrtools.web.server.enrich_tv_show") as mock_enrich:
         
         mock_enrich.return_value = {
             "title": "Lifecycle Show", "year": 2026, "plot": "Newly discovered full series plot!",
@@ -609,7 +609,7 @@ def test_api_archive_rearchiving_badge_reset_full_cycle(client):
     assert item_after_refresh["has_new_metadata"] == 1
 
     # Verify discovery API reflects unarchived and badged state
-    with patch("web.server.get_clients", return_value=(None, None)):
+    with patch("xarrtools.web.server.get_clients", return_value=(None, None)):
         res_discover = client.get("/api/discover?skip_scrape=true&past_months=12&future_months=12")
         assert res_discover.status_code == 200
         tv_list = res_discover.get_json()["tv"]
@@ -629,7 +629,7 @@ def test_api_archive_rearchiving_badge_reset_full_cycle(client):
     assert item_after_rearchive["has_new_metadata"] == 0
 
     # Verify discovery API reflects re-archived and unbadged state
-    with patch("web.server.get_clients", return_value=(None, None)):
+    with patch("xarrtools.web.server.get_clients", return_value=(None, None)):
         res_discover_after = client.get("/api/discover?skip_scrape=true&past_months=12&future_months=12")
         assert res_discover_after.status_code == 200
         tv_list_after = res_discover_after.get_json()["tv"]

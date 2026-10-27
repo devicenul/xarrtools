@@ -51,7 +51,7 @@ class BaseArrClient:
                     headers=self.headers,
                     timeout=5,
                 )
-                from core.db import set_setting
+                from xarrtools.core.db import set_setting
 
                 setting_key = "radarr_url" if self.name.lower() == "radarr" else "sonarr_url"
                 set_setting(setting_key, test_url)
@@ -59,7 +59,7 @@ class BaseArrClient:
             except (requests.exceptions.ConnectionError, requests.exceptions.Timeout):
                 continue
             except requests.exceptions.RequestException:
-                from core.db import set_setting
+                from xarrtools.core.db import set_setting
 
                 setting_key = "radarr_url" if self.name.lower() == "radarr" else "sonarr_url"
                 set_setting(setting_key, test_url)

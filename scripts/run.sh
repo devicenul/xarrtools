@@ -29,6 +29,7 @@ fi
 echo ""
 echo "Booting xarrtools..."
 echo "--------------------------------------------------"
-"$VENV_DIR/bin/python" main.py "$@"
+export PYTHONPATH="$REPO_ROOT/src${PYTHONPATH:+:$PYTHONPATH}"
+"$VENV_DIR/bin/python" -m xarrtools "$@"
 echo "--------------------------------------------------"
 echo "Application closed."

@@ -171,7 +171,7 @@ if [ "$SKIP_DEPS" -eq 0 ] && [ -f "$REPO_ROOT/package.json" ]; then
         printf '#!/bin/sh\nexec node "$(dirname "$0")/../typescript/bin/tsc" "$@"\n' > "$REPO_ROOT/node_modules/.bin/tsc"
         chmod +x "$REPO_ROOT/node_modules/.bin/tsc" 2>/dev/null || true
     fi
-    log_init "[Init] Compiling the TypeScript frontend (web/static/dist)..."
+    log_init "[Init] Compiling the TypeScript frontend (src/xarrtools/web/static/dist)..."
     npm run build --silent
 fi
 
@@ -190,7 +190,7 @@ fi
 
 # 7. Initialize SQLite database schema and prune expired cache
 log_init "[Init] Initializing SQLite database schema (xarrtools.db)..."
-"$VENV_DIR/bin/python" -c "from core.db import init_db, clean_expired_cache; init_db(); clean_expired_cache()"
+PYTHONPATH="$REPO_ROOT/src${PYTHONPATH:+:$PYTHONPATH}" "$VENV_DIR/bin/python" -c "from xarrtools.core.db import init_db, clean_expired_cache; init_db(); clean_expired_cache()"
 
 log_init "=================================================="
 log_init "  [Success] xarrtools initialization complete!"

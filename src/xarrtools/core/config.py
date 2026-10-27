@@ -16,7 +16,10 @@ if getattr(sys, 'frozen', False):
 elif os.environ.get("XARRTOOLS_CONFIG_DIR"):
     dotenv_path = Path(os.environ["XARRTOOLS_CONFIG_DIR"]).resolve() / '.env'
 else:
-    dotenv_path = Path(__file__).resolve().parent.parent / '.env'
+    # In source mode, locate .env at the repository root (not inside src/).
+    # Note: This source-tree root computation will be revisited when the project
+    # is packaged for pip/wheel distribution.
+    dotenv_path = Path(__file__).resolve().parent.parent.parent.parent / '.env'
 
 load_dotenv(dotenv_path=dotenv_path)
 
@@ -40,7 +43,7 @@ class Config:
     def refresh(self) -> None:
         """Reloads settings cache from the database."""
         try:
-            from core.db import get_all_settings
+            from xarrtools.core.db import get_all_settings
             self._cache = get_all_settings()
         except Exception as e:
             # We catch generic Exception because get_all_settings could throw sqlite3.Error, 
@@ -51,7 +54,7 @@ class Config:
     def _get_setting(self, key: str, default: str = "") -> str:
         """Fetches a setting value from database, environment variable, or fallback cache."""
         try:
-            from core.db import get_setting
+            from xarrtools.core.db import get_setting
             val = get_setting(key, "")
             if val:
                 return val

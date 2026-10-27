@@ -19,8 +19,8 @@ from pathlib import Path
 from datetime import datetime
 import pytest
 
-import core.db
-from core.metadata import (
+import xarrtools.core.db; from xarrtools import core
+from xarrtools.core.metadata import (
     MISSING_TITLE_STRINGS,
     MISSING_NETWORK_STRINGS,
     MISSING_CAST_STRINGS,

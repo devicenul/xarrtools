@@ -7,7 +7,7 @@ from datetime import datetime, timedelta
 import pytest
 from unittest.mock import patch, MagicMock
 
-import core.db
+import xarrtools.core.db; from xarrtools import core
 
 @pytest.fixture
 def temp_db():
@@ -56,7 +56,7 @@ def test_init_db_env_migration_with_none():
     core.db.DB_PATH = Path(temp_path)
     
     # Mock config properties to return None to test the None branch in env migration
-    with patch("core.config.config") as mock_config:
+    with patch("xarrtools.core.config.config") as mock_config:
         mock_config.radarr_url = None
         mock_config.radarr_api_key = None
         mock_config.sonarr_url = None

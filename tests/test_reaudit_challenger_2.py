@@ -19,11 +19,11 @@ from pathlib import Path
 from unittest.mock import patch, MagicMock
 import pytest
 
-import core.db
-from core.config import config, Config
-from core.client import RadarrClient, SonarrClient, ArrAPIError, BaseArrClient
-from cli.cli import resolve_preset_index, select_from_list, parse_indices
-from web.server import app, get_clients
+import xarrtools.core.db; from xarrtools import core
+from xarrtools.core.config import config, Config
+from xarrtools.core.client import RadarrClient, SonarrClient, ArrAPIError, BaseArrClient
+from xarrtools.cli.cli import resolve_preset_index, select_from_list, parse_indices
+from xarrtools.web.server import app, get_clients
 from tests.frontend_harness import check_node_and_dist, get_module_injection_code
 
 
@@ -318,7 +318,7 @@ class TestLanguageProfileExcisionCompleteness:
 
     def test_api_config_no_language_profiles_key(self, auth_client):
         """GET /api/config must not contain language_profiles in radarr or sonarr payloads."""
-        with patch("web.server.get_clients") as mock_get_clients:
+        with patch("xarrtools.web.server.get_clients") as mock_get_clients:
             mock_radarr = MagicMock(spec=RadarrClient)
             mock_radarr.get_root_folders.return_value = [{"id": 1, "path": "/movies"}]
             mock_radarr.get_quality_profiles.return_value = [{"id": 1, "name": "HD"}]
@@ -339,7 +339,7 @@ class TestLanguageProfileExcisionCompleteness:
 
     def test_api_add_ignores_deprecated_lang_profile_id_gracefully(self, auth_client):
         """POST /api/add should succeed even if legacy client sends lang_profile_id without error."""
-        with patch("web.server.get_clients") as mock_get_clients:
+        with patch("xarrtools.web.server.get_clients") as mock_get_clients:
             mock_sonarr = MagicMock(spec=SonarrClient)
             mock_sonarr.add_series.return_value = {"id": 55, "title": "Breaking Bad", "year": 2008}
             mock_get_clients.return_value = (None, mock_sonarr)
@@ -365,7 +365,7 @@ class TestLanguageProfileExcisionCompleteness:
 
     def test_html_template_has_no_language_profile_dom(self):
         """web/templates/index.html must not contain #select-lang-profile or language profile markup."""
-        html_path = Path("web/templates/index.html")
+        html_path = Path("src/xarrtools/web/templates/index.html")
         assert html_path.exists()
         content = html_path.read_text(encoding="utf-8")
         assert "select-lang-profile" not in content
@@ -382,7 +382,7 @@ class TestMRUPersistenceAndConcurrency:
 
     def test_api_add_persists_mru_in_db_for_movie_and_tv(self, auth_client):
         """POST /api/add MUST update SQLite MRU settings and refresh config."""
-        with patch("web.server.get_clients") as mock_get_clients:
+        with patch("xarrtools.web.server.get_clients") as mock_get_clients:
             mock_radarr = MagicMock(spec=RadarrClient)
             mock_radarr.add_movie.return_value = {"id": 1, "title": "Inception", "year": 2010}
             mock_sonarr = MagicMock(spec=SonarrClient)
@@ -464,7 +464,7 @@ class TestJavaScriptHybridPresetHarness:
     def test_app_js_hybrid_preset_exhaustive_node_harness(self):
         """Executes Node.js test harness loading web/static/dist/settings.js directly."""
         check_node_and_dist()
-        settings_js = Path(__file__).resolve().parent.parent / "web" / "static" / "dist" / "settings.js"
+        settings_js = Path(__file__).resolve().parent.parent / "src" / "xarrtools" / "web" / "static" / "dist" / "settings.js"
 
         script = f"""
         (async () => {{

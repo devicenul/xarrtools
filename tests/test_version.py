@@ -9,8 +9,9 @@ from pathlib import Path
 from unittest.mock import patch
 
 import pytest
-from web.server import app
-import core.version
+from xarrtools.web.server import app
+import xarrtools.core.version
+from xarrtools import core
 
 
 @pytest.fixture
@@ -43,7 +44,7 @@ def test_stamped_release_version(tmp_path):
     version_file = Path(core.version.__file__).parent / "_version.py"
     try:
         version_file.write_text('__version__ = "2.0.0"\n', encoding="utf-8")
-        sys.modules.pop("core._version", None)
+        sys.modules.pop("xarrtools.core._version", None)
         with patch.dict(os.environ, {}, clear=True):
             os.environ.pop("XARRTOOLS_VERSION", None)
             importlib.reload(core.version)
@@ -51,7 +52,7 @@ def test_stamped_release_version(tmp_path):
     finally:
         if version_file.exists():
             version_file.unlink()
-        sys.modules.pop("core._version", None)
+        sys.modules.pop("xarrtools.core._version", None)
         importlib.reload(core.version)
 
 
@@ -68,9 +69,9 @@ def test_frontend_system_version():
     """Verify loadSystemVersion populates stat-app-version with health API version."""
     if shutil.which("node") is None:
         pytest.skip("Node not available")
-    dist_settings_ui = Path(__file__).resolve().parent.parent / "web" / "static" / "dist" / "settings-ui.js"
+    dist_settings_ui = Path(__file__).resolve().parent.parent / "src" / "xarrtools" / "web" / "static" / "dist" / "settings-ui.js"
     if not dist_settings_ui.is_file():
-        pytest.skip("web/static/dist/settings-ui.js missing; build frontend first")
+        pytest.skip("src/xarrtools/web/static/dist/settings-ui.js missing; build frontend first")
     code = f"""
     const element = {{ textContent: "" }};
     globalThis.document = {{

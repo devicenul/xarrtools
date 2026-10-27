@@ -19,7 +19,7 @@ import os
 from unittest.mock import patch, MagicMock
 from datetime import datetime, timedelta
 
-from core.metadata import (
+from xarrtools.core.metadata import (
     is_title_missing,
     is_network_missing,
     is_cast_missing,
@@ -32,7 +32,7 @@ from core.metadata import (
     MISSING_CAST_STRINGS,
     MISSING_PLOT_STRINGS
 )
-from core.db import (
+from xarrtools.core.db import (
     init_db,
     get_db_connection,
     add_cached_item,
@@ -51,7 +51,7 @@ from core.db import (
     get_setting,
     get_all_settings
 )
-from web.server import app
+from xarrtools.web.server import app
 
 
 # ---------------------------------------------------------------------------
@@ -61,7 +61,7 @@ from web.server import app
 def isolated_db(tmp_path, monkeypatch):
     """Provides a fresh isolated database file for adversarial stress-testing."""
     db_file = tmp_path / "xarrtools_adversarial.db"
-    monkeypatch.setattr("core.db.DB_PATH", db_file)
+    monkeypatch.setattr("xarrtools.core.db.DB_PATH", db_file)
     init_db()
     return db_file
 
@@ -474,8 +474,8 @@ class TestWebUIAdversarialCardRendering:
 
     def test_app_js_badging_logic_present(self):
         """Verifies frontend modules contain the exact conditional logic for has_new_metadata badge."""
-        cards_ts_path = os.path.join(os.path.dirname(__file__), "..", "web", "static", "src", "cards.ts")
-        render_ts_path = os.path.join(os.path.dirname(__file__), "..", "web", "static", "src", "render.ts")
+        cards_ts_path = os.path.join(os.path.dirname(__file__), "..", "src", "xarrtools", "web", "static", "src", "cards.ts")
+        render_ts_path = os.path.join(os.path.dirname(__file__), "..", "src", "xarrtools", "web", "static", "src", "render.ts")
         with open(cards_ts_path, "r", encoding="utf-8") as f:
             cards_content = f.read()
         with open(render_ts_path, "r", encoding="utf-8") as f:
@@ -492,7 +492,7 @@ class TestWebUIAdversarialCardRendering:
 
     def test_style_css_badge_styling_definitions(self):
         """Verifies web/templates/style.css defines the badge styling classes for both dark and light modes."""
-        style_css_path = os.path.join(os.path.dirname(__file__), "..", "web", "templates", "style.css")
+        style_css_path = os.path.join(os.path.dirname(__file__), "..", "src", "xarrtools", "web", "templates", "style.css")
         with open(style_css_path, "r", encoding="utf-8") as f:
             content = f.read()
 
@@ -519,7 +519,7 @@ class TestScraperEnricherRobustness:
     """Verifies regex safety against ReDoS and error handling during failed upstream scrapes."""
 
     def test_is_safe_regex_guards_against_redos(self):
-        from core.scraper import is_safe_regex
+        from xarrtools.core.scraper import is_safe_regex
         # Safe patterns
         assert is_safe_regex(r'\d{4}') is True
         assert is_safe_regex(r'[a-zA-Z0-9_-]+') is True

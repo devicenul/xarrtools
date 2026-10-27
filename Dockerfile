@@ -3,7 +3,7 @@ FROM node:20-alpine AS frontend-builder
 WORKDIR /build
 COPY package.json package-lock.json tsconfig.json ./
 RUN npm ci
-COPY web/static/src ./web/static/src
+COPY src/xarrtools/web/static/src ./src/xarrtools/web/static/src
 RUN npm run build
 
 # Stage 2: Runtime environment
@@ -21,14 +21,10 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy application files
-COPY core/ ./core/
-COPY web/ ./web/
-COPY cli/ ./cli/
-COPY gui/ ./gui/
-COPY main.py .
+COPY src/ ./src/
 
 # Copy compiled frontend assets from builder stage
-COPY --from=frontend-builder /build/web/static/dist ./web/static/dist
+COPY --from=frontend-builder /build/src/xarrtools/web/static/dist ./src/xarrtools/web/static/dist
 
 # Ensure permissions
 RUN chown -R appuser:appuser /app
@@ -47,6 +43,7 @@ ENV XARRTOOLS_CONFIG_DIR=/config \
     XARRTOOLS_HOST=0.0.0.0 \
     XARRTOOLS_PORT=5000 \
     XARRTOOLS_VERSION=${VERSION} \
+    PYTHONPATH=/app/src \
     PYTHONUNBUFFERED=1
 
 EXPOSE 5000
@@ -57,4 +54,4 @@ USER appuser
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
   CMD python -c "import urllib.request, sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:5000/api/health', timeout=3).getcode() == 200 else 1)"
 
-CMD ["python", "main.py", "--server", "--no-browser"]
+CMD ["python", "-m", "xarrtools", "--server", "--no-browser"]

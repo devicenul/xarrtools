@@ -22,12 +22,12 @@ import pytest
 
 pytestmark = pytest.mark.skipif(shutil.which("node") is None, reason="node not available")
 
-DIST_SETTINGS = Path(__file__).resolve().parent.parent / "web" / "static" / "dist" / "settings.js"
+DIST_SETTINGS = Path(__file__).resolve().parent.parent / "src" / "xarrtools" / "web" / "static" / "dist" / "settings.js"
 
 
 def run_node_settings(body: str):
     if not DIST_SETTINGS.is_file():
-        pytest.skip("web/static/dist/settings.js not found; run 'npm run build' first")
+        pytest.skip("src/xarrtools/web/static/dist/settings.js not found; run 'npm run build' first")
     code = f"""
 import {{
   DEFAULT_PARSER_CONFIGS,

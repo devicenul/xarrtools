@@ -5,11 +5,11 @@
     "strict": true,
     "allowJs": true,
     "checkJs": false,
-    "rootDir": "web/static/src",
-    "outDir": "web/static/dist",
+    "rootDir": "src/xarrtools/web/static/src",
+    "outDir": "src/xarrtools/web/static/dist",
     "skipLibCheck": true
   },
   "include": [
-    "web/static/src/**/*"
+    "src/xarrtools/web/static/src/**/*"
   ]
 }

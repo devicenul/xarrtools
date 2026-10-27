@@ -78,7 +78,7 @@ jobs:
 
       - name: Static type checking (mypy)
         run: |
-          mypy core web cli gui main.py
+          mypy src/xarrtools
 
       - name: Run pytest
         run: |

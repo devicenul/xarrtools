@@ -61,7 +61,7 @@ jobs:
       - name: Static type checking (mypy)
         if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.12'
         run: |
-          mypy core web cli gui main.py
+          mypy src/xarrtools
 
       - name: Run pytest
         run: |

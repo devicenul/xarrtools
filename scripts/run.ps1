@@ -47,7 +47,8 @@ if ($NeedsFullInit) {
 Write-Host ""
 Write-Host "Booting xarrtools..."
 Write-Host "--------------------------------------------------"
-& $VenvPython main.py @args
+$env:PYTHONPATH = (Join-Path $RepoRoot "src") + $(if ($env:PYTHONPATH) { [IO.Path]::PathSeparator + $env:PYTHONPATH } else { "" })
+& $VenvPython -m xarrtools @args
 $ExitCode = $LASTEXITCODE
 Write-Host "--------------------------------------------------"
 Write-Host "Application closed."

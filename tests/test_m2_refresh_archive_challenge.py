@@ -26,15 +26,15 @@ from unittest.mock import patch, MagicMock
 import pytest
 
 # Isolate the database path for this test module
-import core.db
+import xarrtools.core.db; from xarrtools import core
 fd, temp_db_path = tempfile.mkstemp(suffix=".db")
 os.close(fd)
 core.db.DB_PATH = Path(temp_db_path)
 core.db.init_db()
 
-from core.config import config
-from core.metadata import evaluate_metadata, should_auto_archive
-from web.server import app
+from xarrtools.core.config import config
+from xarrtools.core.metadata import evaluate_metadata, should_auto_archive
+from xarrtools.web.server import app
 
 
 @pytest.fixture(autouse=True)
@@ -152,9 +152,9 @@ def test_cache_refresh_combinatorial_matrix_from_archived(
     expected_archived = expected_low
     expected_has_new_metadata = not expected_low  # was archived, so if not low now -> True
 
-    with patch("web.server.get_clients", return_value=(None, None)), \
-         patch("web.server.enrich_tv_show", return_value=refreshed_payload), \
-         patch("web.server.enrich_movie", return_value=refreshed_payload):
+    with patch("xarrtools.web.server.get_clients", return_value=(None, None)), \
+         patch("xarrtools.web.server.enrich_tv_show", return_value=refreshed_payload), \
+         patch("xarrtools.web.server.enrich_movie", return_value=refreshed_payload):
 
         res = auth_client.post("/api/cache/refresh", json={
             "type": media_type,
@@ -227,9 +227,9 @@ def test_cache_refresh_preserves_new_metadata_badge_on_rich_update(auth_client):
             "imdbId": "tt9999"
         }
 
-        with patch("web.server.get_clients", return_value=(None, None)), \
-             patch("web.server.enrich_tv_show", return_value=refreshed), \
-             patch("web.server.enrich_movie", return_value=refreshed):
+        with patch("xarrtools.web.server.get_clients", return_value=(None, None)), \
+             patch("xarrtools.web.server.enrich_tv_show", return_value=refreshed), \
+             patch("xarrtools.web.server.enrich_movie", return_value=refreshed):
 
             res = auth_client.post("/api/cache/refresh", json={
                 "type": media_type,
@@ -282,9 +282,9 @@ def test_cache_refresh_demotes_unarchived_to_archived_if_metadata_degrades(auth_
             "genres": [],
         }
 
-        with patch("web.server.get_clients", return_value=(None, None)), \
-             patch("web.server.enrich_tv_show", return_value=degraded), \
-             patch("web.server.enrich_movie", return_value=degraded):
+        with patch("xarrtools.web.server.get_clients", return_value=(None, None)), \
+             patch("xarrtools.web.server.enrich_tv_show", return_value=degraded), \
+             patch("xarrtools.web.server.enrich_movie", return_value=degraded):
 
             res = auth_client.post("/api/cache/refresh", json={
                 "type": media_type,
@@ -331,9 +331,9 @@ def test_cache_refresh_unarchived_without_badge_remains_unarchived_without_badge
             "genres": ["Comedy"]
         }
 
-        with patch("web.server.get_clients", return_value=(None, None)), \
-             patch("web.server.enrich_tv_show", return_value=rich_update), \
-             patch("web.server.enrich_movie", return_value=rich_update):
+        with patch("xarrtools.web.server.get_clients", return_value=(None, None)), \
+             patch("xarrtools.web.server.enrich_tv_show", return_value=rich_update), \
+             patch("xarrtools.web.server.enrich_movie", return_value=rich_update):
 
             res = auth_client.post("/api/cache/refresh", json={
                 "type": media_type,
@@ -554,16 +554,16 @@ def test_full_lifecycle_archive_refresh_unarchive_rearchive_loop(auth_client):
         "tvdbId": None, "imdbId": None
     }
 
-    with patch("web.server.get_clients", return_value=(None, None)):
+    with patch("xarrtools.web.server.get_clients", return_value=(None, None)):
         # 2. Live refresh with rich data -> auto-unarchives with badge
-        with patch("web.server.enrich_tv_show", return_value=rich_enrichment):
+        with patch("xarrtools.web.server.enrich_tv_show", return_value=rich_enrichment):
             res2 = auth_client.post("/api/cache/refresh", json={"type": "tv", "title": title, "year": year})
             assert res2.status_code == 200
             assert res2.get_json()["item"]["is_archived"] is False
             assert res2.get_json()["item"]["has_new_metadata"] is True
 
         # 3. Subsequent live refresh with rich data -> badge preserved
-        with patch("web.server.enrich_tv_show", return_value=rich_enrichment):
+        with patch("xarrtools.web.server.enrich_tv_show", return_value=rich_enrichment):
             res3 = auth_client.post("/api/cache/refresh", json={"type": "tv", "title": title, "year": year})
             assert res3.status_code == 200
             assert res3.get_json()["item"]["is_archived"] is False
@@ -576,14 +576,14 @@ def test_full_lifecycle_archive_refresh_unarchive_rearchive_loop(auth_client):
         assert item4["is_archived"] == 1 and item4["has_new_metadata"] == 0
 
         # 5. Live refresh with low metadata -> stays archived, badge=0
-        with patch("web.server.enrich_tv_show", return_value=low_enrichment):
+        with patch("xarrtools.web.server.enrich_tv_show", return_value=low_enrichment):
             res5 = auth_client.post("/api/cache/refresh", json={"type": "tv", "title": title, "year": year})
             assert res5.status_code == 200
             assert res5.get_json()["item"]["is_archived"] is True
             assert res5.get_json()["item"]["has_new_metadata"] is False
 
         # 6. Live refresh with rich metadata -> manual archive is sticky: stays archived, no badge
-        with patch("web.server.enrich_tv_show", return_value=rich_enrichment):
+        with patch("xarrtools.web.server.enrich_tv_show", return_value=rich_enrichment):
             res6 = auth_client.post("/api/cache/refresh", json={"type": "tv", "title": title, "year": year})
             assert res6.status_code == 200
             assert res6.get_json()["item"]["is_archived"] is True
@@ -598,7 +598,7 @@ def test_full_lifecycle_archive_refresh_unarchive_rearchive_loop(auth_client):
         # 8. Live refresh with rich metadata while unarchived & badge=0 -> stays is_archived=0, has_new_metadata=0
         # (use a fresh dict: the endpoint mutates the shared one with is_archived=True from step 6)
         fresh_rich = {k: v for k, v in rich_enrichment.items() if k not in ("is_archived", "has_new_metadata")}
-        with patch("web.server.enrich_tv_show", return_value=fresh_rich):
+        with patch("xarrtools.web.server.enrich_tv_show", return_value=fresh_rich):
             res8 = auth_client.post("/api/cache/refresh", json={"type": "tv", "title": title, "year": year})
             assert res8.status_code == 200
             assert res8.get_json()["item"]["is_archived"] is False
@@ -639,8 +639,8 @@ def test_cache_refresh_boundary_sentinel_variations(auth_client, sentinel_plot, 
         "genres": []
     }
 
-    with patch("web.server.get_clients", return_value=(None, None)), \
-         patch("web.server.enrich_tv_show", return_value=enrichment):
+    with patch("xarrtools.web.server.get_clients", return_value=(None, None)), \
+         patch("xarrtools.web.server.enrich_tv_show", return_value=enrichment):
 
         res = auth_client.post("/api/cache/refresh", json={"type": "tv", "title": title, "year": year})
         assert res.status_code == 200
@@ -672,8 +672,8 @@ def test_cache_refresh_rich_metadata_with_clean_strings(auth_client):
         "genres": ["Drama", "Sci-Fi"]
     }
 
-    with patch("web.server.get_clients", return_value=(None, None)), \
-         patch("web.server.enrich_tv_show", return_value=rich_payload):
+    with patch("xarrtools.web.server.get_clients", return_value=(None, None)), \
+         patch("xarrtools.web.server.enrich_tv_show", return_value=rich_payload):
 
         res = auth_client.post("/api/cache/refresh", json={"type": "tv", "title": title, "year": year})
         assert res.status_code == 200
@@ -725,8 +725,8 @@ def test_archive_invalid_requests(auth_client):
 
 def test_cache_refresh_enricher_exception_handling(auth_client):
     """If enricher raises an unexpected exception, API returns 500 error cleanly."""
-    with patch("web.server.get_clients", return_value=(None, None)), \
-         patch("web.server.enrich_tv_show", side_effect=Exception("Upstream network timeout")):
+    with patch("xarrtools.web.server.get_clients", return_value=(None, None)), \
+         patch("xarrtools.web.server.enrich_tv_show", side_effect=Exception("Upstream network timeout")):
 
         res = auth_client.post("/api/cache/refresh", json={"type": "tv", "title": "Crash Show", "year": 2026})
         assert res.status_code == 500

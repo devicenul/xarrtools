@@ -11,9 +11,9 @@ from typing import Any, Dict, IO, List, Optional, Set, Tuple, Union
 
 logger = logging.getLogger("xarrtools.backup")
 
-import core.db
-from core.db import get_db_connection, get_cached_item, normalize_title
-from core.posters import (
+import xarrtools.core.db
+from xarrtools.core.db import get_db_connection, get_cached_item, normalize_title
+from xarrtools.core.posters import (
     get_cached_poster,
     store_poster,
     download_poster,

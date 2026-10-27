@@ -6,7 +6,7 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 import pytest
 
-from gui.gui import (
+from xarrtools.gui.gui import (
     DesktopApi,
     get_free_port,
     wait_for_server,

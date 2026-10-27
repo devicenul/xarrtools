@@ -21,7 +21,7 @@ from unittest.mock import patch, MagicMock
 import pytest
 
 # 1. Isolate the database path BEFORE importing web.server or core.config
-import core.db
+import xarrtools.core.db; from xarrtools import core
 fd, temp_db_path = tempfile.mkstemp(suffix=".db")
 os.close(fd)
 core.db.DB_PATH = Path(temp_db_path)
@@ -29,7 +29,7 @@ core.db.init_db()
 
 # 2. Intercept background thread startup so tests don't run background loops
 with patch("threading.Thread"):
-    from web.server import (
+    from xarrtools.web.server import (
         app,
         run_scan,
         run_scheduler_job,
@@ -38,8 +38,8 @@ with patch("threading.Thread"):
         scheduler_job_lock
     )
 
-import core.scheduler as scheduler
-from core.config import config
+import xarrtools.core.scheduler as scheduler; from xarrtools import core
+from xarrtools.core.config import config
 
 
 @pytest.fixture(autouse=True)
@@ -288,7 +288,7 @@ def test_scheduler_run_now_auth(client):
 
 
 def test_scheduler_run_now_success_and_busy(client):
-    with patch("web.server.run_scheduler_job"):
+    with patch("xarrtools.web.server.run_scheduler_job"):
         # 1. Trigger run-now when idle
         res = client.post("/api/scheduler/run-now")
         assert res.status_code == 200
@@ -311,11 +311,11 @@ def test_scheduler_run_now_success_and_busy(client):
 
 def test_run_scan_without_request_context():
     """run_scan must execute cleanly without Flask request context."""
-    with patch("web.server.get_discoveries") as mock_disc, \
-         patch("web.server.enrich_tv_show") as mock_tv, \
-         patch("web.server.enrich_movie") as mock_movie, \
-         patch("web.server.get_clients", return_value=(None, None)), \
-         patch("web.server.sync_library_cache"):
+    with patch("xarrtools.web.server.get_discoveries") as mock_disc, \
+         patch("xarrtools.web.server.enrich_tv_show") as mock_tv, \
+         patch("xarrtools.web.server.enrich_movie") as mock_movie, \
+         patch("xarrtools.web.server.get_clients", return_value=(None, None)), \
+         patch("xarrtools.web.server.sync_library_cache"):
 
         now = datetime.now()
         mock_disc.return_value = (
@@ -377,7 +377,7 @@ def test_run_scheduler_job_updates_db_and_records_result():
             "movies": [{"title": "Movie B"}, {"title": "Movie C"}]
         }
 
-    with patch("web.server.run_scan", side_effect=mock_scan_side_effect):
+    with patch("xarrtools.web.server.run_scan", side_effect=mock_scan_side_effect):
         run_scheduler_job()
 
         last_run = core.db.get_setting("scheduler_last_run", None)
@@ -393,7 +393,7 @@ def test_run_scheduler_job_updates_db_and_records_result():
 
 
 def test_run_scheduler_job_records_error_on_failure():
-    with patch("web.server.run_scan", side_effect=Exception("Database boom")):
+    with patch("xarrtools.web.server.run_scan", side_effect=Exception("Database boom")):
         run_scheduler_job()
 
         last_result_json = core.db.get_setting("scheduler_last_result", None)

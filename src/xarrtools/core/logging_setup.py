@@ -46,7 +46,7 @@ def get_log_dir() -> Path:
     elif os.environ.get("XARRTOOLS_LOG_DIR"):
         target = Path(os.environ["XARRTOOLS_LOG_DIR"])
     else:
-        from core.db import DB_PATH
+        from xarrtools.core.db import DB_PATH
         target = DB_PATH.resolve().parent / "logs"
     target.mkdir(parents=True, exist_ok=True)
     return target
@@ -56,7 +56,7 @@ def _get_configured_secrets() -> Set[str]:
     """Retrieves all non-empty configured secret keys that should be masked."""
     secrets: Set[str] = set()
     try:
-        from core.config import config
+        from xarrtools.core.config import config
         for key in (
             getattr(config, "radarr_api_key", None),
             getattr(config, "sonarr_api_key", None),
@@ -131,7 +131,7 @@ def parse_log_level(level: Optional[Union[str, int]]) -> int:
     """Converts a string or int log level to a valid logging numeric level."""
     if level is None:
         try:
-            from core.config import config
+            from xarrtools.core.config import config
             lvl_name = config.log_level
         except Exception:
             lvl_name = "INFO"

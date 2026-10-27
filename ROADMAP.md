@@ -21,20 +21,20 @@ This document tracks planned future functionality, architectural changes, and us
   - **Already done:** cards use `content-visibility: auto`, poster images are `loading="lazy"`, and `renderMediaLists` uses an index map plus a single fragment insert (was O(n^2) `indexOf`). Plot text stays clamped with click-to-expand.
   - Run the UI against a large synthetic sample set (thousands of items) and record initial render time, filter/sort latency, scroll smoothness and DOM/memory footprint.
   - Only if the results show a real problem, open a follow-up item (e.g. virtualized grid or event delegation). Otherwise close this item with the measurements.
-- **Code files involved**: [web/static/src/render.ts](web/static/src/render.ts).
+- **Code files involved**: [src/xarrtools/web/static/src/render.ts](src/xarrtools/web/static/src/render.ts).
 
 ### 3. Application Version in Logs and Diagnostics
 - **Goal**: Include the application version string in the startup log line and in the exported logs ZIP file.
 - **Implementation Strategy**:
   - Log `xarrtools v{version}` upon server and GUI initialization in `main.py` and `core/logging_setup.py`.
   - Add version metadata to the generated diagnostics archive (`/api/logs/download`).
-- **Code files involved**: [core/logging_setup.py](core/logging_setup.py), [web/server.py](web/server.py), [main.py](main.py).
+- **Code files involved**: [src/xarrtools/core/logging_setup.py](src/xarrtools/core/logging_setup.py), [src/xarrtools/web/server.py](src/xarrtools/web/server.py), [src/xarrtools/main.py](src/xarrtools/main.py).
 
 ### 4. Linux Native GUI Packaging (AppImage / Flatpak)
 - **Goal**: Bundle GTK/WebKit system libraries for Linux desktop environments so the captive window works out-of-the-box on any distribution without relying on host packages.
 - **Implementation Strategy**:
   - Package `xarrtools` as an AppImage or Flatpak bundle embedding WebKitGTK and native window dependencies.
-- **Code files involved**: [scripts/build.py](scripts/build.py), [gui/gui.py](gui/gui.py).
+- **Code files involved**: [scripts/build.py](scripts/build.py), [src/xarrtools/gui/gui.py](src/xarrtools/gui/gui.py).
 
 ---
 

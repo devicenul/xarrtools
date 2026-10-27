@@ -13,15 +13,15 @@ import requests
 
 logger = logging.getLogger("xarrtools.posters")
 
-import core.db
-from core.config import config
+import xarrtools.core.db
+from xarrtools.core.config import config
 
 MAX_POSTER_SIZE: int = 10 * 1024 * 1024  # 10 MB limit
 
 
 def get_posters_dir() -> Path:
     """Returns the posters cache directory next to the database file."""
-    return Path(os.path.dirname(core.db.DB_PATH)) / "posters"
+    return Path(os.path.dirname(xarrtools.core.db.DB_PATH)) / "posters"
 
 
 def get_extension_for_mimetype(content_type: str) -> str:

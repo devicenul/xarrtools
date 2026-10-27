@@ -12,13 +12,13 @@ from datetime import datetime, timedelta, timezone
 
 logger = logging.getLogger("xarrtools.server")
 
-from core.config import config
-import core.version
-from core.client import RadarrClient, SonarrClient, ArrAPIError
-from core.scraper import get_discoveries, safe_fetch_feed, parse_custom_feed, is_safe_regex
-from core.enricher import enrich_tv_show, enrich_movie
-from core.scheduler import validate_time_of_day, compute_next_run, is_due
-from core.db import (
+from xarrtools.core.config import config
+import xarrtools.core.version
+from xarrtools.core.client import RadarrClient, SonarrClient, ArrAPIError
+from xarrtools.core.scraper import get_discoveries, safe_fetch_feed, parse_custom_feed, is_safe_regex
+from xarrtools.core.enricher import enrich_tv_show, enrich_movie
+from xarrtools.core.scheduler import validate_time_of_day, compute_next_run, is_due
+from xarrtools.core.db import (
     init_db,
     clean_expired_cache,
     get_cached_item,
@@ -43,7 +43,20 @@ clean_expired_cache()
 
 # Resolve template directory path inside the package folder
 templates_dir = Path(__file__).resolve().parent / "templates"
+if not templates_dir.is_dir() and getattr(sys, "frozen", False):
+    _meipass = Path(sys._MEIPASS)  # type: ignore[attr-defined]
+    for _cand in (_meipass / "xarrtools" / "web" / "templates", _meipass / "web" / "templates"):
+        if _cand.is_dir():
+            templates_dir = _cand
+            break
+
 dist_dir = Path(__file__).resolve().parent / "static" / "dist"
+if not dist_dir.is_dir() and getattr(sys, "frozen", False):
+    _meipass = Path(sys._MEIPASS)  # type: ignore[attr-defined]
+    for _cand in (_meipass / "xarrtools" / "web" / "static" / "dist", _meipass / "web" / "static" / "dist"):
+        if _cand.is_dir():
+            dist_dir = _cand
+            break
 
 def is_dist_built() -> bool:
     """Checks whether compiled frontend modules exist in web/static/dist."""
@@ -184,10 +197,10 @@ def health_check() -> RouteResponse:
             cursor.fetchone()
         finally:
             conn.close()
-        return jsonify({"status": "ok", "version": core.version.__version__}), 200
+        return jsonify({"status": "ok", "version": xarrtools.core.version.__version__}), 200
     except Exception as e:
         logger.error(f"Health check database failure: {e}")
-        return jsonify({"status": "error", "message": "Database unavailable", "version": core.version.__version__}), 503
+        return jsonify({"status": "error", "message": "Database unavailable", "version": xarrtools.core.version.__version__}), 503
 
 @app.route("/")
 def index() -> str:
@@ -364,7 +377,7 @@ def manage_settings() -> RouteResponse:
             set_setting(key, str(val))
         config.refresh()
         if "log_level" in data:
-            from core.logging_setup import setup_logging
+            from xarrtools.core.logging_setup import setup_logging
             setup_logging(level=data["log_level"])
         with library_cache_lock:
             library_cache["last_updated"] = None
@@ -379,7 +392,7 @@ def backup_export() -> RouteResponse:
     fmt = request.args.get("format", "json").lower()
     try:
         if fmt == "full":
-            from core.backup import export_full_backup
+            from xarrtools.core.backup import export_full_backup
             import io
             bio = io.BytesIO()
             export_full_backup(bio, include_media=include_media)
@@ -408,7 +421,7 @@ def download_logs() -> Response:
     
     Returns a ZIP containing existing log files, or a README note if no logs are present.
     """
-    from core.logging_setup import get_log_dir
+    from xarrtools.core.logging_setup import get_log_dir
     import io
     import zipfile
 
@@ -449,7 +462,7 @@ def backup_import() -> RouteResponse:
         
         # Detect ZIP by magic bytes: PK
         if content.startswith(b"PK"):
-            from core.backup import import_full_backup
+            from xarrtools.core.backup import import_full_backup
             import io
             bio = io.BytesIO(content)
             res = import_full_backup(bio)
@@ -468,7 +481,7 @@ def backup_import() -> RouteResponse:
         if not isinstance(data, dict):
             return jsonify({"status": "error", "message": "Invalid backup file structure."}), 400
             
-        from core.db import verify_backup_checksum
+        from xarrtools.core.db import verify_backup_checksum
         check = verify_backup_checksum(data)
         if check is False:
             return jsonify({"status": "error", "message": "Backup checksum verification failed (file corrupted or tampered)."}), 400
@@ -494,7 +507,7 @@ from flask import Response
 @app.route("/api/poster", methods=["GET"])
 def proxy_poster() -> RouteResponse:
     """Proxies poster images safely to prevent mixed content and SSRF/path traversal, with disk cache."""
-    from core.posters import validate_poster_url, get_cached_poster, store_poster, MAX_POSTER_SIZE
+    from xarrtools.core.posters import validate_poster_url, get_cached_poster, store_poster, MAX_POSTER_SIZE
     url = request.args.get("url")
     if not url:
         return "Missing URL", 400
@@ -1588,7 +1601,7 @@ def link_library() -> RouteResponse:
         return jsonify({"status": "error", "message": "Missing required fields (type, title, year)"}), 400
         
     try:
-        from core.db import get_db_connection, get_cached_item
+        from xarrtools.core.db import get_db_connection, get_cached_item
         conn = get_db_connection()
         conn.execute("BEGIN IMMEDIATE")
         try:
@@ -1649,8 +1662,8 @@ def background_poster_healer() -> None:
         
     while True:
         try:
-            from core.db import get_db_connection, add_cached_item
-            from core.enricher import enrich_tv_show, enrich_movie
+            from xarrtools.core.db import get_db_connection, add_cached_item
+            from xarrtools.core.enricher import enrich_tv_show, enrich_movie
             
             conn = get_db_connection()
             cursor = conn.cursor()
@@ -1813,7 +1826,7 @@ def test_custom_feed() -> RouteResponse:
         
         if not (url.startswith("http://") or url.startswith("https://")):
             import requests
-            from core.scraper import HEADERS
+            from xarrtools.core.scraper import HEADERS
             https_url = f"https://{url}"
             http_url = f"http://{url}"
             discovered_url = http_url
@@ -1892,7 +1905,7 @@ def delete_custom_feed() -> RouteResponse:
 @app.route("/api/feeds/restore", methods=["POST"])
 def restore_default_feeds_route() -> RouteResponse:
     """Wipes the custom feeds registry and restores standard default configurations."""
-    from core.db import restore_default_feeds
+    from xarrtools.core.db import restore_default_feeds
     try:
         restore_default_feeds()
         return jsonify({"status": "success", "message": "Default feeds restored successfully"})
@@ -1903,7 +1916,7 @@ def start_server(port: int = 5000, debug: bool = False, host: Optional[str] = No
     """Starts the Flask web server."""
     if host is None:
         host = os.environ.get("XARRTOOLS_HOST", "127.0.0.1")
-    from core.logging_setup import setup_logging
+    from xarrtools.core.logging_setup import setup_logging
     setup_logging(level="DEBUG" if debug else None)
     if debug:
         logger.info(f"Starting xarrtools server in DEBUG mode at http://{host}:{port}...")

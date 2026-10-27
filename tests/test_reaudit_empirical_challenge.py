@@ -22,16 +22,16 @@ from unittest.mock import patch, MagicMock
 import pytest
 
 # Ensure test DB isolation
-import core.db
+import xarrtools.core.db; from xarrtools import core
 _temp_dir = tempfile.mkdtemp()
 core.db.DB_PATH = Path(_temp_dir) / "test_challenge_reaudit.db"
 core.db.init_db()
 
 with patch("threading.Thread"):
-    from web.server import app
-from core.client import RadarrClient, SonarrClient, ArrAPIError
-from core.config import config
-import cli.cli as cli_mod
+    from xarrtools.web.server import app
+from xarrtools.core.client import RadarrClient, SonarrClient, ArrAPIError
+from xarrtools.core.config import config
+import xarrtools.cli.cli as cli_mod; from xarrtools import cli
 from tests.frontend_harness import check_node_and_dist, get_module_injection_code
 
 
@@ -134,7 +134,7 @@ class TestLanguageProfileAbsence:
 
     def test_server_get_config_omits_language_profiles(self, auth_client):
         """GET /api/config response must never include language_profiles in sonarr or radarr sections."""
-        with patch("web.server.get_clients") as mock_get_clients:
+        with patch("xarrtools.web.server.get_clients") as mock_get_clients:
             mock_radarr = MagicMock(spec=RadarrClient)
             mock_radarr.get_root_folders.return_value = [{"path": "/movies"}]
             mock_radarr.get_quality_profiles.return_value = [{"id": 1, "name": "HD-1080p"}]
@@ -160,7 +160,7 @@ class TestLanguageProfileAbsence:
 
     def test_server_post_add_ignores_deprecated_lang_profile_id(self, auth_client):
         """POST /api/add must succeed without lang_profile_id, and if sent, must not propagate it."""
-        with patch("web.server.get_clients") as mock_get_clients:
+        with patch("xarrtools.web.server.get_clients") as mock_get_clients:
             mock_sonarr = MagicMock(spec=SonarrClient)
             mock_sonarr.add_series.return_value = {"id": 99, "title": "Test Show", "year": 2024}
             mock_get_clients.return_value = (None, mock_sonarr)
@@ -189,7 +189,7 @@ class TestLanguageProfileAbsence:
 
     def test_web_templates_no_language_profile_elements(self):
         """HTML templates must have no language profile select elements or groups."""
-        html_path = Path(__file__).resolve().parent.parent / "web" / "templates" / "index.html"
+        html_path = Path(__file__).resolve().parent.parent / "src" / "xarrtools" / "web" / "templates" / "index.html"
         content = html_path.read_text(encoding="utf-8")
         
         assert "select-lang-profile" not in content
@@ -381,7 +381,7 @@ class TestServerAPISettingsAndMRU:
 
     def test_post_api_add_updates_mru_in_live_mode(self, auth_client):
         """POST /api/add in live mode invokes client and updates MRU keys in database."""
-        with patch("web.server.get_clients") as mock_get_clients:
+        with patch("xarrtools.web.server.get_clients") as mock_get_clients:
             mock_radarr = MagicMock(spec=RadarrClient)
             mock_radarr.add_movie.return_value = {"id": 101, "title": "Oppenheimer", "year": 2023}
             mock_sonarr = MagicMock(spec=SonarrClient)
@@ -436,7 +436,7 @@ class TestCrossWorkflowStateInvariants:
 
     def test_multi_addition_mru_sequence(self, auth_client):
         """MRU must always reflect the single most recently added item's configuration."""
-        with patch("web.server.get_clients") as mock_get_clients:
+        with patch("xarrtools.web.server.get_clients") as mock_get_clients:
             mock_radarr = MagicMock(spec=RadarrClient)
             mock_radarr.add_movie.side_effect = lambda **kwargs: {"id": 1, "title": kwargs["movie_data"]["title"], "year": 2024}
             mock_get_clients.return_value = (mock_radarr, None)
@@ -500,7 +500,7 @@ class TestFrontendJavaScriptResolutionViaNode:
     def test_node_resolve_hybrid_preset_execution(self):
         """Execute settings.js functions directly in a mock browser environment via Node.js."""
         check_node_and_dist()
-        settings_js = Path(__file__).resolve().parent.parent / "web" / "static" / "dist" / "settings.js"
+        settings_js = Path(__file__).resolve().parent.parent / "src" / "xarrtools" / "web" / "static" / "dist" / "settings.js"
 
         runner_code = f"""
         (async () => {{
@@ -616,10 +616,10 @@ class TestCLIInteractiveWorkflows:
     def test_cli_handle_radarr_workflow(self):
         """Simulate handle_radarr_workflow end-to-end with MRU update."""
         with patch.object(config, "validate_radarr", return_value=True), \
-             patch("cli.cli.RadarrClient") as mock_client_cls, \
-             patch("cli.cli.Prompt.ask", side_effect=["Dune", "1"]), \
-             patch("cli.cli.IntPrompt.ask", side_effect=[1, 1]), \
-             patch("cli.cli.Confirm.ask", side_effect=[True, True]):
+             patch("xarrtools.cli.cli.RadarrClient") as mock_client_cls, \
+             patch("xarrtools.cli.cli.Prompt.ask", side_effect=["Dune", "1"]), \
+             patch("xarrtools.cli.cli.IntPrompt.ask", side_effect=[1, 1]), \
+             patch("xarrtools.cli.cli.Confirm.ask", side_effect=[True, True]):
             
             mock_client = mock_client_cls.return_value
             mock_client.lookup_movie.return_value = [{"title": "Dune 2", "year": 2024, "tmdbId": 693134, "id": None}]
@@ -642,10 +642,10 @@ class TestCLIInteractiveWorkflows:
     def test_cli_handle_sonarr_workflow(self):
         """Simulate handle_sonarr_workflow end-to-end with MRU update."""
         with patch.object(config, "validate_sonarr", return_value=True), \
-             patch("cli.cli.SonarrClient") as mock_client_cls, \
-             patch("cli.cli.Prompt.ask", side_effect=["Shogun", "1"]), \
-             patch("cli.cli.IntPrompt.ask", side_effect=[1, 1]), \
-             patch("cli.cli.Confirm.ask", side_effect=[True, True]):
+             patch("xarrtools.cli.cli.SonarrClient") as mock_client_cls, \
+             patch("xarrtools.cli.cli.Prompt.ask", side_effect=["Shogun", "1"]), \
+             patch("xarrtools.cli.cli.IntPrompt.ask", side_effect=[1, 1]), \
+             patch("xarrtools.cli.cli.Confirm.ask", side_effect=[True, True]):
             
             mock_client = mock_client_cls.return_value
             mock_client.lookup_series.return_value = [{"title": "Shogun", "year": 2024, "tvdbId": 361701, "id": None}]

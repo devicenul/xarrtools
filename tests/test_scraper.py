@@ -2,7 +2,7 @@ import pytest
 import requests
 from datetime import datetime, timedelta
 from unittest.mock import patch, MagicMock
-from core.scraper import (
+from xarrtools.core.scraper import (
     parse_date,
     parse_dvd_date,
     clean_movie_title,
@@ -277,11 +277,11 @@ def test_get_discoveries():
         {"title": "Movie 1", "date_obj": datetime(2026, 12, 18), "date_str": "Dec 18, 2026", "description": "Desc 1", "is_returning": False, "href": ""},
     ]
     
-    with patch("core.scraper.scrape_new_releases") as mock_scrape_new, \
-         patch("core.scraper.scrape_dvds_releases") as mock_scrape_dvd, \
-         patch("core.scraper.safe_fetch_feed", return_value=""), \
-         patch("core.scraper.scrape_tvmaze_schedule", return_value=[]), \
-         patch("core.scraper.datetime", MockDatetime):
+    with patch("xarrtools.core.scraper.scrape_new_releases") as mock_scrape_new, \
+         patch("xarrtools.core.scraper.scrape_dvds_releases") as mock_scrape_dvd, \
+         patch("xarrtools.core.scraper.safe_fetch_feed", return_value=""), \
+         patch("xarrtools.core.scraper.scrape_tvmaze_schedule", return_value=[]), \
+         patch("xarrtools.core.scraper.datetime", MockDatetime):
          
         # Scrape new releases returns mock_tv and mock_movies
         mock_scrape_new.side_effect = lambda url, is_tv=True, **kw: mock_tv if is_tv else mock_movies
@@ -315,9 +315,9 @@ def test_custom_feed_url_discovery():
         "default_media_type": "movie"
     }
     
-    with patch("core.db.get_db_connection") as mock_conn_func, \
-         patch("core.scraper.safe_fetch_feed") as mock_fetch, \
-         patch("core.scraper.requests.get") as mock_req_get:
+    with patch("xarrtools.core.db.get_db_connection") as mock_conn_func, \
+         patch("xarrtools.core.scraper.safe_fetch_feed") as mock_fetch, \
+         patch("xarrtools.core.scraper.requests.get") as mock_req_get:
          
         mock_conn = MagicMock()
         mock_cursor = MagicMock()
@@ -350,7 +350,7 @@ def test_custom_feed_url_discovery():
 
 
 def test_scrape_tvmaze_schedule_filters_and_maps():
-    from core.scraper import scrape_tvmaze_schedule
+    from xarrtools.core.scraper import scrape_tvmaze_schedule
 
     def ep(show_id, name, airdate, number, type_="regular", season=1, stype="Scripted", lang="English"):
         return {
@@ -377,7 +377,7 @@ def test_scrape_tvmaze_schedule_filters_and_maps():
     resp = MagicMock()
     resp.raise_for_status.return_value = None
     resp.json.return_value = payload
-    with patch("core.scraper.requests.get", return_value=resp):
+    with patch("xarrtools.core.scraper.requests.get", return_value=resp):
         items = scrape_tvmaze_schedule("https://api.tvmaze.com/schedule/full",
                                        datetime(2026, 11, 25), datetime(2027, 1, 31))
     by_title = {i["title"]: i for i in items}
@@ -393,9 +393,9 @@ def test_scrape_tvmaze_schedule_filters_and_maps():
 
 def test_get_discoveries_tmdb_feed_without_key_is_flagged_as_error_not_crash(tmp_path, monkeypatch):
     """The TMDB feed with no API key must record a clear error on the feed and not break the scan."""
-    import core.db
-    from core.scraper import get_discoveries
-    from core.tmdb import TMDBError
+    import xarrtools.core.db; from xarrtools import core
+    from xarrtools.core.scraper import get_discoveries
+    from xarrtools.core.tmdb import TMDBError
 
     # Isolated temp database: never touch the developer's real xarrtools.db
     monkeypatch.setattr(core.db, "DB_PATH", tmp_path / "isolated.db")
@@ -405,7 +405,7 @@ def test_get_discoveries_tmdb_feed_without_key_is_flagged_as_error_not_crash(tmp
     conn.execute("UPDATE custom_feeds SET enabled = 1 WHERE feed_type = 'tmdb_movies'")
     conn.close()
 
-    with patch("core.tmdb._get", side_effect=TMDBError("TMDB API key is not set (Settings -> TMDB API Key)")):
+    with patch("xarrtools.core.tmdb._get", side_effect=TMDBError("TMDB API key is not set (Settings -> TMDB API Key)")):
         tv, movies = get_discoveries(past_days=10, future_days=10)
     assert tv == [] and movies == []
 
@@ -423,24 +423,24 @@ def _mv(title, date="2026-11-10", **extra):
 
 
 def test_slug_keeps_non_latin_titles_distinct():
-    from core.locales import slug
+    from xarrtools.core.locales import slug
     assert slug("Οβολός") == "οβολος" and slug("Очарованные") == "очарованные"
     assert slug("Οβολός") != slug("Αλλη Ταινία")
     assert slug("Amélie") == slug("Amelie")
     assert slug("Above & Below") == slug("Above and Below")
-    from core.scraper import normalize_title
+    from xarrtools.core.scraper import normalize_title
     assert normalize_title("Οβολός") != normalize_title("Άλλη")
 
 
 def test_dedupe_movies_non_latin_titles_not_collapsed():
-    from core.scraper import dedupe_movies
+    from xarrtools.core.scraper import dedupe_movies
     items = [_mv("Οβολός", tmdbId=1), _mv("Άλλη Ταινία", tmdbId=2), _mv("Οβολός", tmdbId=1)]
     out = dedupe_movies(items)
     assert sorted(i["tmdbId"] for i in out) == [1, 2]
 
 
 def test_dedupe_movies_merges_same_film_across_sources():
-    from core.scraper import dedupe_movies
+    from xarrtools.core.scraper import dedupe_movies
     out = dedupe_movies([
         _mv("The Mandalorian and Grogu", "2026-10-13"),
         _mv("Star Wars: The Mandalorian and Grogu", "2026-10-25", tmdbId=5, language="English"),
@@ -458,7 +458,7 @@ def test_dedupe_movies_merges_same_film_across_sources():
 
 
 def test_dedupe_movies_keeps_distinct_films():
-    from core.scraper import dedupe_movies
+    from xarrtools.core.scraper import dedupe_movies
     out = dedupe_movies([
         _mv("The Beast", tmdbId=1), _mv("Beast", tmdbId=2),            # conflicting ids
         _mv("Heart"), _mv("The Heart of the Sea", "2026-11-12"),       # short title: no containment merge
@@ -469,7 +469,7 @@ def test_dedupe_movies_keeps_distinct_films():
 
 
 def test_dedupe_movies_same_title_same_year_collapses_and_input_unmodified():
-    from core.scraper import dedupe_movies
+    from xarrtools.core.scraper import dedupe_movies
     a = _mv("Ink"); b = _mv("Ink", poster_url="http://p")
     out = dedupe_movies([a, b])
     assert len(out) == 1 and out[0]["poster_url"] == "http://p"

@@ -108,11 +108,11 @@ If you want to run directly from the repository:
    - **Windows (PowerShell)**: `./scripts/init.ps1`
    This sets up the Python virtual environment, installs runtime and development dependencies, creates your `.env` configuration file if needed, initializes the database, and compiles the frontend TypeScript assets.
 3. **Launch the application**:
-   - **Desktop window**: `./scripts/run.sh` (or `python main.py`)
-   - **Web server**: `./scripts/run.sh --server` (or `python main.py --server`)
-   - **Terminal CLI**: `./scripts/run.sh --cli` (or `python main.py --cli`)
+   - **Desktop window**: `./scripts/run.sh` (or `python -m xarrtools`)
+   - **Web server**: `./scripts/run.sh --server` (or `python -m xarrtools --server`)
+   - **Terminal CLI**: `./scripts/run.sh --cli` (or `python -m xarrtools --cli`)
 
-Helpful startup flags for `main.py`:
+Helpful startup flags:
 - `--gui` / `-g`: Launch the desktop window (default).
 - `--server` / `-s`: Start the web server and open your default browser.
 - `--cli` / `-c`: Start the interactive terminal manager.
@@ -278,7 +278,7 @@ Contributions are welcome! If you want to build or modify xarrtools locally:
 .venv/bin/python -m pytest tests -q --no-cov
 
 # Run static type checking
-mypy core web cli gui main.py
+mypy src/xarrtools
 
 # Compile the modular TypeScript frontend
 npm run build

@@ -14,8 +14,8 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Tuple, Union
 
-from core.locales import slug
-from core.metadata import evaluate_item_state_transition
+from xarrtools.core.locales import slug
+from xarrtools.core.metadata import evaluate_item_state_transition
 
 logger = logging.getLogger("xarrtools.db")
 
@@ -25,7 +25,11 @@ if getattr(sys, 'frozen', False):
 elif os.environ.get("XARRTOOLS_CONFIG_DIR"):
     DB_PATH = Path(os.environ["XARRTOOLS_CONFIG_DIR"]).resolve() / "xarrtools.db"
 else:
-    DB_PATH = Path(__file__).resolve().parent.parent / "xarrtools.db"
+    # In source mode, place xarrtools.db at the repository root (not inside src/
+    # and not inside site-packages).
+    # Note: This source-tree root computation will be revisited when the project
+    # is packaged for pip/wheel distribution (e.g. defaulting to a platform app-data dir).
+    DB_PATH = Path(__file__).resolve().parent.parent.parent.parent / "xarrtools.db"
 
 TVMAZE_SCHEDULE_URL: str = "https://api.tvmaze.com/schedule/full"
 TMDB_DISCOVER_URL: str = "https://api.themoviedb.org/3/discover/movie"
@@ -169,7 +173,7 @@ def init_db() -> None:
         # Existing archived rows whose metadata is NOT low can't have been auto-archived,
         # so the user must have archived them by hand. (Low-metadata rows are ambiguous
         # and are left as auto-archived.)
-        from core.metadata import should_auto_archive
+        from xarrtools.core.metadata import should_auto_archive
         cursor.execute('SELECT id, title, network, "cast", description FROM cache WHERE is_archived = 1')
         for r in cursor.fetchall():
             if not should_auto_archive({"title": r["title"], "network": r["network"], "cast": r["cast"], "plot": r["description"]}):
@@ -221,7 +225,7 @@ def init_db() -> None:
     cursor.execute("SELECT COUNT(*) FROM settings")
     if cursor.fetchone()[0] == 0:
         # Import config dynamically to bypass circular dependency
-        from core.config import config
+        from xarrtools.core.config import config
         env_settings = {
             "radarr_url": config.radarr_url,
             "radarr_api_key": config.radarr_api_key,

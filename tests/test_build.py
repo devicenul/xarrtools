@@ -25,17 +25,17 @@ def test_icons_exist_for_every_platform():
 
 def test_pyinstaller_args_and_workpath():
     args = build.pyinstaller_args(build.build_settings("linux", cache_dir="/cache/x"))
-    assert args[0] == "--onefile" and args[-1] == "main.py"
+    assert args[0] == "--onefile" and args[-1] == "src/xarrtools/main.py"
     assert "--collect-submodules" in args
     assert "webview" in args
-    assert "web/templates:web/templates" in args
+    assert "src/xarrtools/web/templates:xarrtools/web/templates" in args
     assert args[args.index("--workpath") + 1] == str(Path("/cache/x") / "pyinstaller-build")
     assert "--workpath" not in build.pyinstaller_args(build.build_settings("linux"))
-    assert "web/templates;web/templates" in build.pyinstaller_args(build.build_settings("win32"))
+    assert "src/xarrtools/web/templates;xarrtools/web/templates" in build.pyinstaller_args(build.build_settings("win32"))
 
 
 def test_stamp_version(tmp_path):
-    version_file = ROOT / "core" / "_version.py"
+    version_file = ROOT / "src" / "xarrtools" / "core" / "_version.py"
     try:
         ver = build.stamp_version("v1.2.3")
         assert ver == "1.2.3"
@@ -88,7 +88,7 @@ def test_dev_requirements_and_init_scripts_use_them():
 def test_build_frontend_skips_when_empty(tmp_path):
     assert build.build_frontend(tmp_path) is True
 
-    src_dir = tmp_path / "web" / "static" / "src"
+    src_dir = tmp_path / "src" / "xarrtools" / "web" / "static" / "src"
     src_dir.mkdir(parents=True)
     (src_dir / ".gitkeep").write_text("")
     (src_dir / "notes.txt").write_text("notes")
@@ -101,7 +101,7 @@ def test_build_frontend_skips_when_empty(tmp_path):
 
 
 def test_build_frontend_npm_missing_failure(tmp_path, capsys):
-    src_dir = tmp_path / "web" / "static" / "src"
+    src_dir = tmp_path / "src" / "xarrtools" / "web" / "static" / "src"
     src_dir.mkdir(parents=True)
     (src_dir / "app.ts").write_text("console.log('hi');")
 
@@ -112,7 +112,7 @@ def test_build_frontend_npm_missing_failure(tmp_path, capsys):
 
 
 def test_build_frontend_builds_when_sources_present(tmp_path):
-    src_dir = tmp_path / "web" / "static" / "src"
+    src_dir = tmp_path / "src" / "xarrtools" / "web" / "static" / "src"
     src_dir.mkdir(parents=True)
     (src_dir / "app.ts").write_text("console.log('hi');")
 
@@ -160,15 +160,15 @@ def test_main_aborts_when_frontend_fails():
 def test_pyinstaller_args_conditional_dist_data():
     settings_linux = build.build_settings("linux", dist_exists=False)
     args = build.pyinstaller_args(settings_linux)
-    assert not any("web/static/dist" in arg for arg in args)
+    assert not any("src/xarrtools/web/static/dist" in arg for arg in args)
 
     settings_linux_dist = build.build_settings("linux", dist_exists=True)
     args_dist = build.pyinstaller_args(settings_linux_dist)
-    assert "web/static/dist:web/static/dist" in args_dist
+    assert "src/xarrtools/web/static/dist:xarrtools/web/static/dist" in args_dist
 
     settings_win_dist = build.build_settings("win32", dist_exists=True)
     args_win = build.pyinstaller_args(settings_win_dist)
-    assert "web/static/dist;web/static/dist" in args_win
+    assert "src/xarrtools/web/static/dist;xarrtools/web/static/dist" in args_win
 
     args_override = build.pyinstaller_args(settings_linux, dist_exists=True)
-    assert "web/static/dist:web/static/dist" in args_override
+    assert "src/xarrtools/web/static/dist:xarrtools/web/static/dist" in args_override

@@ -1,8 +1,8 @@
 import json
 import pytest
 from unittest.mock import patch, MagicMock
-from core.client import ArrAPIError
-from cli.cli import (
+from xarrtools.core.client import ArrAPIError
+from xarrtools.cli.cli import (
     parse_indices,
     show_config_status,
     select_from_list,
@@ -32,9 +32,9 @@ def test_parse_indices():
     # Out of bounds check to hit line 44->28 branch
     assert parse_indices("10", 5) == []
 
-@patch("cli.cli.console.print")
+@patch("xarrtools.cli.cli.console.print")
 def test_show_config_status(mock_print):
-    with patch("cli.cli.config") as mock_config:
+    with patch("xarrtools.cli.cli.config") as mock_config:
         # 1. Both configured
         mock_config.validate_radarr.return_value = True
         mock_config.validate_sonarr.return_value = True
@@ -51,8 +51,8 @@ def test_show_config_status(mock_print):
         show_config_status()
         assert mock_print.call_count == 2
 
-@patch("cli.cli.IntPrompt.ask")
-@patch("cli.cli.console.print")
+@patch("xarrtools.cli.cli.IntPrompt.ask")
+@patch("xarrtools.cli.cli.console.print")
 def test_select_from_list(mock_print, mock_ask):
     items = [{"name": "Profile A"}, {"name": "Profile B"}]
     
@@ -67,28 +67,28 @@ def test_select_from_list(mock_print, mock_ask):
     assert selected == items[1]
     mock_print.assert_any_call("[red]Invalid selection. Please choose a valid index.[/red]")
 
-@patch("cli.cli.config")
-@patch("cli.cli.Prompt.ask")
-@patch("cli.cli.console.print")
+@patch("xarrtools.cli.cli.config")
+@patch("xarrtools.cli.cli.Prompt.ask")
+@patch("xarrtools.cli.cli.console.print")
 def test_handle_radarr_workflow_unconfigured(mock_print, mock_ask, mock_config):
     mock_config.validate_radarr.return_value = False
     handle_radarr_workflow()
     mock_print.assert_called_once()
     assert "Radarr is not configured" in mock_print.call_args[0][0]
 
-@patch("cli.cli.config")
-@patch("cli.cli.Prompt.ask")
-@patch("cli.cli.console.print")
+@patch("xarrtools.cli.cli.config")
+@patch("xarrtools.cli.cli.Prompt.ask")
+@patch("xarrtools.cli.cli.console.print")
 def test_handle_radarr_workflow_empty_query(mock_print, mock_ask, mock_config):
     mock_config.validate_radarr.return_value = True
     mock_ask.return_value = "   " # Empty search query
     handle_radarr_workflow()
     mock_ask.assert_called_once()
 
-@patch("cli.cli.config")
-@patch("cli.cli.Prompt.ask")
-@patch("cli.cli.console.print")
-@patch("cli.cli.RadarrClient")
+@patch("xarrtools.cli.cli.config")
+@patch("xarrtools.cli.cli.Prompt.ask")
+@patch("xarrtools.cli.cli.console.print")
+@patch("xarrtools.cli.cli.RadarrClient")
 def test_handle_radarr_workflow_api_error(mock_radarr, mock_print, mock_ask, mock_config):
     mock_config.validate_radarr.return_value = True
     mock_ask.return_value = "Inception"
@@ -99,10 +99,10 @@ def test_handle_radarr_workflow_api_error(mock_radarr, mock_print, mock_ask, moc
     handle_radarr_workflow()
     assert "Error communicating with Radarr" in mock_print.call_args[0][0]
 
-@patch("cli.cli.config")
-@patch("cli.cli.Prompt.ask")
-@patch("cli.cli.console.print")
-@patch("cli.cli.RadarrClient")
+@patch("xarrtools.cli.cli.config")
+@patch("xarrtools.cli.cli.Prompt.ask")
+@patch("xarrtools.cli.cli.console.print")
+@patch("xarrtools.cli.cli.RadarrClient")
 def test_handle_radarr_workflow_no_results(mock_radarr, mock_print, mock_ask, mock_config):
     mock_config.validate_radarr.return_value = True
     mock_ask.return_value = "NonexistentMovie"
@@ -113,10 +113,10 @@ def test_handle_radarr_workflow_no_results(mock_radarr, mock_print, mock_ask, mo
     handle_radarr_workflow()
     assert "No movies found matching that term." in mock_print.call_args[0][0]
 
-@patch("cli.cli.config")
-@patch("cli.cli.Prompt.ask")
-@patch("cli.cli.console.print")
-@patch("cli.cli.RadarrClient")
+@patch("xarrtools.cli.cli.config")
+@patch("xarrtools.cli.cli.Prompt.ask")
+@patch("xarrtools.cli.cli.console.print")
+@patch("xarrtools.cli.cli.RadarrClient")
 def test_handle_radarr_workflow_missing_configs(mock_radarr, mock_print, mock_ask, mock_config):
     mock_config.validate_radarr.return_value = True
     mock_ask.return_value = "Inception"
@@ -129,10 +129,10 @@ def test_handle_radarr_workflow_missing_configs(mock_radarr, mock_print, mock_as
     handle_radarr_workflow()
     assert "Could not retrieve required quality profiles" in mock_print.call_args[0][0]
 
-@patch("cli.cli.config")
-@patch("cli.cli.Prompt.ask")
-@patch("cli.cli.console.print")
-@patch("cli.cli.RadarrClient")
+@patch("xarrtools.cli.cli.config")
+@patch("xarrtools.cli.cli.Prompt.ask")
+@patch("xarrtools.cli.cli.console.print")
+@patch("xarrtools.cli.cli.RadarrClient")
 def test_handle_radarr_workflow_cancel_selection(mock_radarr, mock_print, mock_ask, mock_config):
     mock_config.validate_radarr.return_value = True
     mock_ask.side_effect = ["Inception", "c"]
@@ -145,10 +145,10 @@ def test_handle_radarr_workflow_cancel_selection(mock_radarr, mock_print, mock_a
     handle_radarr_workflow()
     assert client_inst.add_movie.call_count == 0
 
-@patch("cli.cli.config")
-@patch("cli.cli.Prompt.ask")
-@patch("cli.cli.console.print")
-@patch("cli.cli.RadarrClient")
+@patch("xarrtools.cli.cli.config")
+@patch("xarrtools.cli.cli.Prompt.ask")
+@patch("xarrtools.cli.cli.console.print")
+@patch("xarrtools.cli.cli.RadarrClient")
 def test_handle_radarr_workflow_invalid_selection(mock_radarr, mock_print, mock_ask, mock_config):
     mock_config.validate_radarr.return_value = True
     mock_ask.side_effect = ["Inception", "invalid_indices"]
@@ -161,10 +161,10 @@ def test_handle_radarr_workflow_invalid_selection(mock_radarr, mock_print, mock_
     handle_radarr_workflow()
     assert any("No valid selections made" in str(call[0][0]) for call in mock_print.call_args_list if call[0])
 
-@patch("cli.cli.config")
-@patch("cli.cli.Prompt.ask")
-@patch("cli.cli.console.print")
-@patch("cli.cli.RadarrClient")
+@patch("xarrtools.cli.cli.config")
+@patch("xarrtools.cli.cli.Prompt.ask")
+@patch("xarrtools.cli.cli.console.print")
+@patch("xarrtools.cli.cli.RadarrClient")
 def test_handle_radarr_workflow_all_already_added(mock_radarr, mock_print, mock_ask, mock_config):
     mock_config.validate_radarr.return_value = True
     mock_ask.side_effect = ["Inception", "1"]
@@ -177,12 +177,12 @@ def test_handle_radarr_workflow_all_already_added(mock_radarr, mock_print, mock_
     handle_radarr_workflow()
     assert any("No new movies selected to add" in str(call[0][0]) for call in mock_print.call_args_list if call[0])
 
-@patch("cli.cli.config")
-@patch("cli.cli.Prompt.ask")
-@patch("cli.cli.Confirm.ask")
-@patch("cli.cli.console.print")
-@patch("cli.cli.select_from_list")
-@patch("cli.cli.RadarrClient")
+@patch("xarrtools.cli.cli.config")
+@patch("xarrtools.cli.cli.Prompt.ask")
+@patch("xarrtools.cli.cli.Confirm.ask")
+@patch("xarrtools.cli.cli.console.print")
+@patch("xarrtools.cli.cli.select_from_list")
+@patch("xarrtools.cli.cli.RadarrClient")
 def test_handle_radarr_workflow_add_success_and_failure(
     mock_radarr, mock_select, mock_print, mock_confirm, mock_ask, mock_config
 ):
@@ -226,27 +226,27 @@ def test_handle_radarr_workflow_add_success_and_failure(
     assert any("Successfully added" in str(call[0][0]) for call in mock_print.call_args_list if call[0])
     assert any("Failed to add" in str(call[0][0]) for call in mock_print.call_args_list if call[0])
 
-@patch("cli.cli.config")
-@patch("cli.cli.Prompt.ask")
-@patch("cli.cli.console.print")
+@patch("xarrtools.cli.cli.config")
+@patch("xarrtools.cli.cli.Prompt.ask")
+@patch("xarrtools.cli.cli.console.print")
 def test_handle_sonarr_workflow_unconfigured(mock_print, mock_ask, mock_config):
     mock_config.validate_sonarr.return_value = False
     handle_sonarr_workflow()
     assert "Sonarr is not configured" in mock_print.call_args[0][0]
 
-@patch("cli.cli.config")
-@patch("cli.cli.Prompt.ask")
-@patch("cli.cli.console.print")
+@patch("xarrtools.cli.cli.config")
+@patch("xarrtools.cli.cli.Prompt.ask")
+@patch("xarrtools.cli.cli.console.print")
 def test_handle_sonarr_workflow_empty_query(mock_print, mock_ask, mock_config):
     mock_config.validate_sonarr.return_value = True
     mock_ask.return_value = ""
     handle_sonarr_workflow()
     mock_ask.assert_called_once()
 
-@patch("cli.cli.config")
-@patch("cli.cli.Prompt.ask")
-@patch("cli.cli.console.print")
-@patch("cli.cli.SonarrClient")
+@patch("xarrtools.cli.cli.config")
+@patch("xarrtools.cli.cli.Prompt.ask")
+@patch("xarrtools.cli.cli.console.print")
+@patch("xarrtools.cli.cli.SonarrClient")
 def test_handle_sonarr_workflow_api_error(mock_sonarr, mock_print, mock_ask, mock_config):
     mock_config.validate_sonarr.return_value = True
     mock_ask.return_value = "Rivals"
@@ -257,10 +257,10 @@ def test_handle_sonarr_workflow_api_error(mock_sonarr, mock_print, mock_ask, moc
     handle_sonarr_workflow()
     assert "Error communicating with Sonarr" in mock_print.call_args[0][0]
 
-@patch("cli.cli.config")
-@patch("cli.cli.Prompt.ask")
-@patch("cli.cli.console.print")
-@patch("cli.cli.SonarrClient")
+@patch("xarrtools.cli.cli.config")
+@patch("xarrtools.cli.cli.Prompt.ask")
+@patch("xarrtools.cli.cli.console.print")
+@patch("xarrtools.cli.cli.SonarrClient")
 def test_handle_sonarr_workflow_no_results(mock_sonarr, mock_print, mock_ask, mock_config):
     mock_config.validate_sonarr.return_value = True
     mock_ask.return_value = "NonexistentShow"
@@ -271,10 +271,10 @@ def test_handle_sonarr_workflow_no_results(mock_sonarr, mock_print, mock_ask, mo
     handle_sonarr_workflow()
     assert "No TV shows found matching that term." in mock_print.call_args[0][0]
 
-@patch("cli.cli.config")
-@patch("cli.cli.Prompt.ask")
-@patch("cli.cli.console.print")
-@patch("cli.cli.SonarrClient")
+@patch("xarrtools.cli.cli.config")
+@patch("xarrtools.cli.cli.Prompt.ask")
+@patch("xarrtools.cli.cli.console.print")
+@patch("xarrtools.cli.cli.SonarrClient")
 def test_handle_sonarr_workflow_missing_configs(mock_sonarr, mock_print, mock_ask, mock_config):
     mock_config.validate_sonarr.return_value = True
     mock_ask.return_value = "Rivals"
@@ -287,10 +287,10 @@ def test_handle_sonarr_workflow_missing_configs(mock_sonarr, mock_print, mock_as
     handle_sonarr_workflow()
     assert "Could not retrieve required quality profiles" in mock_print.call_args[0][0]
 
-@patch("cli.cli.config")
-@patch("cli.cli.Prompt.ask")
-@patch("cli.cli.console.print")
-@patch("cli.cli.SonarrClient")
+@patch("xarrtools.cli.cli.config")
+@patch("xarrtools.cli.cli.Prompt.ask")
+@patch("xarrtools.cli.cli.console.print")
+@patch("xarrtools.cli.cli.SonarrClient")
 def test_handle_sonarr_workflow_cancel_selection(mock_sonarr, mock_print, mock_ask, mock_config):
     mock_config.validate_sonarr.return_value = True
     mock_ask.side_effect = ["Rivals", "c"]
@@ -303,10 +303,10 @@ def test_handle_sonarr_workflow_cancel_selection(mock_sonarr, mock_print, mock_a
     handle_sonarr_workflow()
     assert client_inst.add_series.call_count == 0
 
-@patch("cli.cli.config")
-@patch("cli.cli.Prompt.ask")
-@patch("cli.cli.console.print")
-@patch("cli.cli.SonarrClient")
+@patch("xarrtools.cli.cli.config")
+@patch("xarrtools.cli.cli.Prompt.ask")
+@patch("xarrtools.cli.cli.console.print")
+@patch("xarrtools.cli.cli.SonarrClient")
 def test_handle_sonarr_workflow_invalid_selection(mock_sonarr, mock_print, mock_ask, mock_config):
     mock_config.validate_sonarr.return_value = True
     mock_ask.side_effect = ["Rivals", "invalid_indices"]
@@ -319,10 +319,10 @@ def test_handle_sonarr_workflow_invalid_selection(mock_sonarr, mock_print, mock_
     handle_sonarr_workflow()
     assert any("No valid selections made" in str(call[0][0]) for call in mock_print.call_args_list if call[0])
 
-@patch("cli.cli.config")
-@patch("cli.cli.Prompt.ask")
-@patch("cli.cli.console.print")
-@patch("cli.cli.SonarrClient")
+@patch("xarrtools.cli.cli.config")
+@patch("xarrtools.cli.cli.Prompt.ask")
+@patch("xarrtools.cli.cli.console.print")
+@patch("xarrtools.cli.cli.SonarrClient")
 def test_handle_sonarr_workflow_all_already_added(mock_sonarr, mock_print, mock_ask, mock_config):
     mock_config.validate_sonarr.return_value = True
     mock_ask.side_effect = ["Rivals", "1"]
@@ -335,12 +335,12 @@ def test_handle_sonarr_workflow_all_already_added(mock_sonarr, mock_print, mock_
     handle_sonarr_workflow()
     assert any("No new series selected to add" in str(call[0][0]) for call in mock_print.call_args_list if call[0])
 
-@patch("cli.cli.config")
-@patch("cli.cli.Prompt.ask")
-@patch("cli.cli.Confirm.ask")
-@patch("cli.cli.console.print")
-@patch("cli.cli.select_from_list")
-@patch("cli.cli.SonarrClient")
+@patch("xarrtools.cli.cli.config")
+@patch("xarrtools.cli.cli.Prompt.ask")
+@patch("xarrtools.cli.cli.Confirm.ask")
+@patch("xarrtools.cli.cli.console.print")
+@patch("xarrtools.cli.cli.select_from_list")
+@patch("xarrtools.cli.cli.SonarrClient")
 def test_handle_sonarr_workflow_add_success(
     mock_sonarr, mock_select, mock_print, mock_confirm, mock_ask, mock_config
 ):
@@ -370,10 +370,10 @@ def test_handle_sonarr_workflow_add_success(
     )
     assert any("Successfully added" in str(call[0][0]) for call in mock_print.call_args_list if call[0])
 
-@patch("cli.cli.config")
-@patch("cli.cli.Prompt.ask")
-@patch("cli.cli.console.print")
-@patch("cli.cli.SonarrClient")
+@patch("xarrtools.cli.cli.config")
+@patch("xarrtools.cli.cli.Prompt.ask")
+@patch("xarrtools.cli.cli.console.print")
+@patch("xarrtools.cli.cli.SonarrClient")
 def test_handle_sonarr_workflow_add_failure(mock_sonarr, mock_print, mock_ask, mock_config):
     mock_config.validate_sonarr.return_value = True
     mock_ask.side_effect = ["Rivals", "1"]
@@ -385,8 +385,8 @@ def test_handle_sonarr_workflow_add_failure(mock_sonarr, mock_print, mock_ask, m
     client_inst.get_root_folders.return_value = [{"path": "/tv"}]
     
     # 1. Folder, 2. Profile
-    with patch("cli.cli.select_from_list") as mock_select, \
-         patch("cli.cli.Confirm.ask", return_value=True):
+    with patch("xarrtools.cli.cli.select_from_list") as mock_select, \
+         patch("xarrtools.cli.cli.Confirm.ask", return_value=True):
         mock_select.side_effect = [{"path": "/tv"}, {"id": 1, "name": "HD"}]
         client_inst.add_series.side_effect = ArrAPIError("Sonarr add failed")
         handle_sonarr_workflow()
@@ -394,10 +394,10 @@ def test_handle_sonarr_workflow_add_failure(mock_sonarr, mock_print, mock_ask, m
     assert client_inst.add_series.call_count == 1
     assert any("Failed to add" in str(call[0][0]) for call in mock_print.call_args_list if call[0])
 
-@patch("cli.cli.config")
-@patch("cli.cli.Prompt.ask")
-@patch("cli.cli.console.print")
-@patch("cli.cli.get_discoveries")
+@patch("xarrtools.cli.cli.config")
+@patch("xarrtools.cli.cli.Prompt.ask")
+@patch("xarrtools.cli.cli.console.print")
+@patch("xarrtools.cli.cli.get_discoveries")
 def test_handle_discovery_workflow_no_releases(mock_get_disc, mock_print, mock_ask, mock_config):
     mock_config.validate_radarr.return_value = True
     mock_config.validate_sonarr.return_value = True
@@ -408,16 +408,16 @@ def test_handle_discovery_workflow_no_releases(mock_get_disc, mock_print, mock_a
     handle_discovery_workflow()
     assert "No new releases found" in mock_print.call_args[0][0]
 
-@patch("cli.cli.config")
-@patch("cli.cli.Prompt.ask")
-@patch("cli.cli.Confirm.ask")
-@patch("cli.cli.console.print")
-@patch("cli.cli.select_from_list")
-@patch("cli.cli.get_discoveries")
-@patch("cli.cli.enrich_tv_show")
-@patch("cli.cli.enrich_movie")
-@patch("cli.cli.RadarrClient")
-@patch("cli.cli.SonarrClient")
+@patch("xarrtools.cli.cli.config")
+@patch("xarrtools.cli.cli.Prompt.ask")
+@patch("xarrtools.cli.cli.Confirm.ask")
+@patch("xarrtools.cli.cli.console.print")
+@patch("xarrtools.cli.cli.select_from_list")
+@patch("xarrtools.cli.cli.get_discoveries")
+@patch("xarrtools.cli.cli.enrich_tv_show")
+@patch("xarrtools.cli.cli.enrich_movie")
+@patch("xarrtools.cli.cli.RadarrClient")
+@patch("xarrtools.cli.cli.SonarrClient")
 def test_handle_discovery_workflow_add_all(
     mock_sonarr, mock_radarr, mock_enrich_movie, mock_enrich_tv,
     mock_get_disc, mock_select, mock_print, mock_confirm, mock_ask, mock_config
@@ -470,12 +470,12 @@ def test_handle_discovery_workflow_add_all(
     sonarr_inst.add_series.assert_called_once()
     radarr_inst.add_movie.assert_called_once()
 
-@patch("cli.cli.config")
-@patch("cli.cli.Prompt.ask")
-@patch("cli.cli.console.print")
-@patch("cli.cli.get_discoveries")
-@patch("cli.cli.enrich_tv_show")
-@patch("cli.cli.enrich_movie")
+@patch("xarrtools.cli.cli.config")
+@patch("xarrtools.cli.cli.Prompt.ask")
+@patch("xarrtools.cli.cli.console.print")
+@patch("xarrtools.cli.cli.get_discoveries")
+@patch("xarrtools.cli.cli.enrich_tv_show")
+@patch("xarrtools.cli.cli.enrich_movie")
 def test_handle_discovery_workflow_empty_selections_and_edge_branches(
     mock_enrich_movie, mock_enrich_tv, mock_get_disc, mock_print, mock_ask, mock_config
 ):
@@ -506,12 +506,12 @@ def test_handle_discovery_workflow_empty_selections_and_edge_branches(
     # Movie enrichment should have run
     mock_enrich_movie.assert_called_once()
 
-@patch("cli.cli.config")
-@patch("cli.cli.Prompt.ask")
-@patch("cli.cli.console.print")
-@patch("cli.cli.get_discoveries")
-@patch("cli.cli.enrich_tv_show")
-@patch("cli.cli.enrich_movie")
+@patch("xarrtools.cli.cli.config")
+@patch("xarrtools.cli.cli.Prompt.ask")
+@patch("xarrtools.cli.cli.console.print")
+@patch("xarrtools.cli.cli.get_discoveries")
+@patch("xarrtools.cli.cli.enrich_tv_show")
+@patch("xarrtools.cli.cli.enrich_movie")
 def test_handle_discovery_workflow_invalid_selections(
     mock_enrich_movie, mock_enrich_tv, mock_get_disc, mock_print, mock_ask, mock_config
 ):
@@ -534,12 +534,12 @@ def test_handle_discovery_workflow_invalid_selections(
     handle_discovery_workflow()
     assert any("No valid selections made" in str(call[0][0]) for call in mock_print.call_args_list if call[0])
 
-@patch("cli.cli.config")
-@patch("cli.cli.Prompt.ask")
-@patch("cli.cli.console.print")
-@patch("cli.cli.get_discoveries")
-@patch("cli.cli.enrich_tv_show")
-@patch("cli.cli.enrich_movie")
+@patch("xarrtools.cli.cli.config")
+@patch("xarrtools.cli.cli.Prompt.ask")
+@patch("xarrtools.cli.cli.console.print")
+@patch("xarrtools.cli.cli.get_discoveries")
+@patch("xarrtools.cli.cli.enrich_tv_show")
+@patch("xarrtools.cli.cli.enrich_movie")
 def test_handle_discovery_workflow_skip_already_in_library_and_empty_metadata(
     mock_enrich_movie, mock_enrich_tv, mock_get_disc, mock_print, mock_ask, mock_config
 ):
@@ -567,7 +567,7 @@ def test_handle_discovery_workflow_skip_already_in_library_and_empty_metadata(
         "imdbId": "tt34", "is_in_library": False, "raw_metadata": None
     }
     
-    with patch("cli.cli.RadarrClient") as mock_radarr:
+    with patch("xarrtools.cli.cli.RadarrClient") as mock_radarr:
         radarr_inst = mock_radarr.return_value
         radarr_inst.lookup_movie.return_value = [] # Missing raw_metadata lookup yields empty
         handle_discovery_workflow()
@@ -575,16 +575,16 @@ def test_handle_discovery_workflow_skip_already_in_library_and_empty_metadata(
     assert any("Skipping 'Show Library' (already in library)" in str(call[0][0]) for call in mock_print.call_args_list if call[0])
     assert any("Could not find 'Movie Empty'" in str(call[0][0]) for call in mock_print.call_args_list if call[0])
 
-@patch("cli.cli.config")
-@patch("cli.cli.Prompt.ask")
-@patch("cli.cli.Confirm.ask")
-@patch("cli.cli.console.print")
-@patch("cli.cli.select_from_list")
-@patch("cli.cli.get_discoveries")
-@patch("cli.cli.enrich_tv_show")
-@patch("cli.cli.enrich_movie")
-@patch("cli.cli.RadarrClient")
-@patch("cli.cli.SonarrClient")
+@patch("xarrtools.cli.cli.config")
+@patch("xarrtools.cli.cli.Prompt.ask")
+@patch("xarrtools.cli.cli.Confirm.ask")
+@patch("xarrtools.cli.cli.console.print")
+@patch("xarrtools.cli.cli.select_from_list")
+@patch("xarrtools.cli.cli.get_discoveries")
+@patch("xarrtools.cli.cli.enrich_tv_show")
+@patch("xarrtools.cli.cli.enrich_movie")
+@patch("xarrtools.cli.cli.RadarrClient")
+@patch("xarrtools.cli.cli.SonarrClient")
 def test_handle_discovery_workflow_enrichment_fails_and_missing_raw_metadata_lookup(
     mock_sonarr, mock_radarr, mock_enrich_movie, mock_enrich_tv,
     mock_get_disc, mock_select, mock_print, mock_confirm, mock_ask, mock_config
@@ -632,14 +632,14 @@ def test_handle_discovery_workflow_enrichment_fails_and_missing_raw_metadata_loo
     sonarr_inst.add_series.assert_called_once()
     radarr_inst.add_movie.assert_called_once()
 
-@patch("cli.cli.config")
-@patch("cli.cli.Prompt.ask")
-@patch("cli.cli.console.print")
-@patch("cli.cli.get_discoveries")
-@patch("cli.cli.enrich_tv_show")
-@patch("cli.cli.enrich_movie")
-@patch("cli.cli.RadarrClient")
-@patch("cli.cli.SonarrClient")
+@patch("xarrtools.cli.cli.config")
+@patch("xarrtools.cli.cli.Prompt.ask")
+@patch("xarrtools.cli.cli.console.print")
+@patch("xarrtools.cli.cli.get_discoveries")
+@patch("xarrtools.cli.cli.enrich_tv_show")
+@patch("xarrtools.cli.cli.enrich_movie")
+@patch("xarrtools.cli.cli.RadarrClient")
+@patch("xarrtools.cli.cli.SonarrClient")
 def test_handle_discovery_workflow_lookup_exception_during_fallback(
     mock_sonarr, mock_radarr, mock_enrich_movie, mock_enrich_tv,
     mock_get_disc, mock_print, mock_ask, mock_config
@@ -670,12 +670,12 @@ def test_handle_discovery_workflow_lookup_exception_during_fallback(
     # Movie lookup fail should print error
     assert any("Error fetching API metadata for 'Movie Fail'" in str(call[0][0]) for call in mock_print.call_args_list if call[0])
 
-@patch("cli.cli.config")
-@patch("cli.cli.Prompt.ask")
-@patch("cli.cli.console.print")
-@patch("cli.cli.get_discoveries")
-@patch("cli.cli.enrich_tv_show")
-@patch("cli.cli.enrich_movie")
+@patch("xarrtools.cli.cli.config")
+@patch("xarrtools.cli.cli.Prompt.ask")
+@patch("xarrtools.cli.cli.console.print")
+@patch("xarrtools.cli.cli.get_discoveries")
+@patch("xarrtools.cli.cli.enrich_tv_show")
+@patch("xarrtools.cli.cli.enrich_movie")
 def test_handle_discovery_workflow_bulk_adding_no_clients_configured(
     mock_enrich_movie, mock_enrich_tv, mock_get_disc, mock_print, mock_ask, mock_config
 ):
@@ -699,16 +699,16 @@ def test_handle_discovery_workflow_bulk_adding_no_clients_configured(
     assert any("Sonarr is not configured. Cannot add TV shows." in str(call[0][0]) for call in mock_print.call_args_list if call[0])
     assert any("Radarr is not configured. Cannot add movies." in str(call[0][0]) for call in mock_print.call_args_list if call[0])
 
-@patch("cli.cli.config")
-@patch("cli.cli.Prompt.ask")
-@patch("cli.cli.Confirm.ask")
-@patch("cli.cli.console.print")
-@patch("cli.cli.select_from_list")
-@patch("cli.cli.get_discoveries")
-@patch("cli.cli.enrich_tv_show")
-@patch("cli.cli.enrich_movie")
-@patch("cli.cli.RadarrClient")
-@patch("cli.cli.SonarrClient")
+@patch("xarrtools.cli.cli.config")
+@patch("xarrtools.cli.cli.Prompt.ask")
+@patch("xarrtools.cli.cli.Confirm.ask")
+@patch("xarrtools.cli.cli.console.print")
+@patch("xarrtools.cli.cli.select_from_list")
+@patch("xarrtools.cli.cli.get_discoveries")
+@patch("xarrtools.cli.cli.enrich_tv_show")
+@patch("xarrtools.cli.cli.enrich_movie")
+@patch("xarrtools.cli.cli.RadarrClient")
+@patch("xarrtools.cli.cli.SonarrClient")
 def test_handle_discovery_workflow_bulk_adding_api_config_failures(
     mock_sonarr, mock_radarr, mock_enrich_movie, mock_enrich_tv,
     mock_get_disc, mock_select, mock_print, mock_confirm, mock_ask, mock_config
@@ -738,13 +738,13 @@ def test_handle_discovery_workflow_bulk_adding_api_config_failures(
     assert any("Error fetching Sonarr config options: API error loading Sonarr config" in str(call[0][0]) for call in mock_print.call_args_list if call[0])
     assert any("Error fetching Radarr config options: API error loading Radarr config" in str(call[0][0]) for call in mock_print.call_args_list if call[0])
 
-@patch("cli.cli.Prompt.ask")
-@patch("cli.cli.console.clear")
-@patch("cli.cli.show_config_status")
-@patch("cli.cli.handle_radarr_workflow")
-@patch("cli.cli.handle_sonarr_workflow")
-@patch("cli.cli.handle_discovery_workflow")
-@patch("cli.cli.console.print")
+@patch("xarrtools.cli.cli.Prompt.ask")
+@patch("xarrtools.cli.cli.console.clear")
+@patch("xarrtools.cli.cli.show_config_status")
+@patch("xarrtools.cli.cli.handle_radarr_workflow")
+@patch("xarrtools.cli.cli.handle_sonarr_workflow")
+@patch("xarrtools.cli.cli.handle_discovery_workflow")
+@patch("xarrtools.cli.cli.console.print")
 def test_run_cli_menu_loop_with_invalid_options(
     mock_print, mock_discovery, mock_sonarr, mock_radarr, mock_status, mock_clear, mock_ask
 ):
@@ -758,13 +758,13 @@ def test_run_cli_menu_loop_with_invalid_options(
     assert any("Goodbye!" in str(call[0][0]) for call in mock_print.call_args_list if call[0])
     assert mock_clear.call_count == 2
 
-@patch("cli.cli.Prompt.ask")
-@patch("cli.cli.console.clear")
-@patch("cli.cli.show_config_status")
-@patch("cli.cli.handle_radarr_workflow")
-@patch("cli.cli.handle_sonarr_workflow")
-@patch("cli.cli.handle_discovery_workflow")
-@patch("cli.cli.console.print")
+@patch("xarrtools.cli.cli.Prompt.ask")
+@patch("xarrtools.cli.cli.console.clear")
+@patch("xarrtools.cli.cli.show_config_status")
+@patch("xarrtools.cli.cli.handle_radarr_workflow")
+@patch("xarrtools.cli.cli.handle_sonarr_workflow")
+@patch("xarrtools.cli.cli.handle_discovery_workflow")
+@patch("xarrtools.cli.cli.console.print")
 def test_run_cli_menu_options_1_2_3(
     mock_print, mock_discovery, mock_sonarr, mock_radarr, mock_status, mock_clear, mock_ask
 ):
@@ -779,12 +779,12 @@ def test_run_cli_menu_options_1_2_3(
     mock_sonarr.assert_called_once()
     mock_discovery.assert_called_once()
 
-@patch("cli.cli.config")
-@patch("cli.cli.Prompt.ask")
-@patch("cli.cli.Confirm.ask")
-@patch("cli.cli.console.print")
-@patch("cli.cli.select_from_list")
-@patch("cli.cli.RadarrClient")
+@patch("xarrtools.cli.cli.config")
+@patch("xarrtools.cli.cli.Prompt.ask")
+@patch("xarrtools.cli.cli.Confirm.ask")
+@patch("xarrtools.cli.cli.console.print")
+@patch("xarrtools.cli.cli.select_from_list")
+@patch("xarrtools.cli.cli.RadarrClient")
 def test_handle_radarr_workflow_already_added_false_branch(
     mock_radarr, mock_select, mock_print, mock_confirm, mock_ask, mock_config
 ):
@@ -805,16 +805,16 @@ def test_handle_radarr_workflow_already_added_false_branch(
     # verify that the already_added warning printed list is empty (was not skipped)
     assert not any("Skipping already added movies:" in str(call[0][0]) for call in mock_print.call_args_list if call[0])
 
-@patch("cli.cli.config")
-@patch("cli.cli.Prompt.ask")
-@patch("cli.cli.Confirm.ask")
-@patch("cli.cli.console.print")
-@patch("cli.cli.select_from_list")
-@patch("cli.cli.get_discoveries")
-@patch("cli.cli.enrich_tv_show")
-@patch("cli.cli.enrich_movie")
-@patch("cli.cli.RadarrClient")
-@patch("cli.cli.SonarrClient")
+@patch("xarrtools.cli.cli.config")
+@patch("xarrtools.cli.cli.Prompt.ask")
+@patch("xarrtools.cli.cli.Confirm.ask")
+@patch("xarrtools.cli.cli.console.print")
+@patch("xarrtools.cli.cli.select_from_list")
+@patch("xarrtools.cli.cli.get_discoveries")
+@patch("xarrtools.cli.cli.enrich_tv_show")
+@patch("xarrtools.cli.cli.enrich_movie")
+@patch("xarrtools.cli.cli.RadarrClient")
+@patch("xarrtools.cli.cli.SonarrClient")
 def test_handle_discovery_workflow_additional_branches(
     mock_sonarr, mock_radarr, mock_enrich_movie, mock_enrich_tv,
     mock_get_disc, mock_select, mock_print, mock_confirm, mock_ask, mock_config
@@ -868,16 +868,16 @@ def test_handle_discovery_workflow_additional_branches(
     assert any("Could not find 'Show Extra' in Sonarr/Radarr indexers" in str(call[0][0]) for call in mock_print.call_args_list if call[0])
     assert any("Could not find 'Movie Extra' in Sonarr/Radarr indexers" in str(call[0][0]) for call in mock_print.call_args_list if call[0])
 
-@patch("cli.cli.config")
-@patch("cli.cli.Prompt.ask")
-@patch("cli.cli.Confirm.ask")
-@patch("cli.cli.console.print")
-@patch("cli.cli.select_from_list")
-@patch("cli.cli.get_discoveries")
-@patch("cli.cli.enrich_tv_show")
-@patch("cli.cli.enrich_movie")
-@patch("cli.cli.RadarrClient")
-@patch("cli.cli.SonarrClient")
+@patch("xarrtools.cli.cli.config")
+@patch("xarrtools.cli.cli.Prompt.ask")
+@patch("xarrtools.cli.cli.Confirm.ask")
+@patch("xarrtools.cli.cli.console.print")
+@patch("xarrtools.cli.cli.select_from_list")
+@patch("xarrtools.cli.cli.get_discoveries")
+@patch("xarrtools.cli.cli.enrich_tv_show")
+@patch("xarrtools.cli.cli.enrich_movie")
+@patch("xarrtools.cli.cli.RadarrClient")
+@patch("xarrtools.cli.cli.SonarrClient")
 def test_handle_discovery_workflow_bulk_failures(
     mock_sonarr, mock_radarr, mock_enrich_movie, mock_enrich_tv,
     mock_get_disc, mock_select, mock_print, mock_confirm, mock_ask, mock_config
@@ -917,13 +917,13 @@ def test_handle_discovery_workflow_bulk_failures(
     assert any("Failed to add 'Show Fail': Sonarr Disk error" in str(call[0][0]) for call in mock_print.call_args_list if call[0])
     assert any("Failed to add 'Movie Fail': Radarr Disk error" in str(call[0][0]) for call in mock_print.call_args_list if call[0])
 
-@patch("cli.cli.config")
-@patch("cli.cli.Prompt.ask")
-@patch("cli.cli.Confirm.ask")
-@patch("cli.cli.console.print")
-@patch("cli.cli.select_from_list")
-@patch("cli.cli.get_discoveries")
-@patch("cli.cli.enrich_movie")
+@patch("xarrtools.cli.cli.config")
+@patch("xarrtools.cli.cli.Prompt.ask")
+@patch("xarrtools.cli.cli.Confirm.ask")
+@patch("xarrtools.cli.cli.console.print")
+@patch("xarrtools.cli.cli.select_from_list")
+@patch("xarrtools.cli.cli.get_discoveries")
+@patch("xarrtools.cli.cli.enrich_movie")
 def test_handle_discovery_workflow_falsy_branches(
     mock_enrich_movie, mock_get_disc, mock_select, mock_print, mock_confirm, mock_ask, mock_config
 ):
@@ -957,11 +957,11 @@ def test_handle_discovery_workflow_falsy_branches(
     assert any("Could not find 'Movie Extra' in Sonarr/Radarr indexers" in str(call[0][0]) for call in mock_print.call_args_list if call[0])
 
 
-@patch("cli.cli.Prompt.ask")
-@patch("cli.cli.Confirm.ask")
-@patch("cli.cli.console.print")
+@patch("xarrtools.cli.cli.Prompt.ask")
+@patch("xarrtools.cli.cli.Confirm.ask")
+@patch("xarrtools.cli.cli.console.print")
 def test_handle_export_and_import_workflows(mock_print, mock_confirm, mock_ask):
-    from cli.cli import handle_export_workflow, handle_import_workflow
+    from xarrtools.cli.cli import handle_export_workflow, handle_import_workflow
     import tempfile
     import os
     
@@ -972,7 +972,7 @@ def test_handle_export_and_import_workflows(mock_print, mock_confirm, mock_ask):
         dest_file = os.path.join(tmpdir, "backup.json")
         mock_ask.return_value = dest_file
         
-        with patch("core.db.export_to_dict", return_value={"settings": {"test_key": "val"}, "media_items": []}) as mock_export:
+        with patch("xarrtools.core.db.export_to_dict", return_value={"settings": {"test_key": "val"}, "media_items": []}) as mock_export:
             handle_export_workflow()
             mock_export.assert_called_once_with(include_media=True)
             
@@ -993,7 +993,7 @@ def test_handle_export_and_import_workflows(mock_print, mock_confirm, mock_ask):
             json.dump({"settings": {"test_key": "val"}}, f)
             
         mock_ask.side_effect = [dest_file]
-        with patch("core.db.import_from_dict", return_value=(1, 0)) as mock_import:
+        with patch("xarrtools.core.db.import_from_dict", return_value=(1, 0)) as mock_import:
             handle_import_workflow()
             mock_import.assert_called_once()
             
@@ -1004,8 +1004,8 @@ def test_handle_export_and_import_workflows(mock_print, mock_confirm, mock_ask):
 # Milestone 2: Hybrid Preset Resolution & MRU Persistence Unit Tests
 # ==============================================================================
 
-@patch("cli.cli.IntPrompt.ask")
-@patch("cli.cli.console.print")
+@patch("xarrtools.cli.cli.IntPrompt.ask")
+@patch("xarrtools.cli.cli.console.print")
 def test_select_from_list_default_index_and_clamping(mock_print, mock_ask):
     items = [{"name": "Profile A"}, {"name": "Profile B"}, {"name": "Profile C"}]
 
@@ -1058,68 +1058,68 @@ def test_resolve_preset_index_unit():
     assert resolve_preset_index([], "id", ["explicit"], ["mru"]) == 1
 
     # 2. Explicit match by ID (string or int)
-    with patch("cli.cli.get_setting", side_effect=lambda k, d="": "2" if k == "exp_prof" else ""):
+    with patch("xarrtools.cli.cli.get_setting", side_effect=lambda k, d="": "2" if k == "exp_prof" else ""):
         idx = resolve_preset_index(profiles, key_field="id", explicit_keys=["exp_prof"], mru_keys=["mru_prof"])
         assert idx == 2
 
     # 3. Explicit match by Name (case-insensitive)
-    with patch("cli.cli.get_setting", side_effect=lambda k, d="": "ultra-hd 4k" if k == "exp_prof" else ""):
+    with patch("xarrtools.cli.cli.get_setting", side_effect=lambda k, d="": "ultra-hd 4k" if k == "exp_prof" else ""):
         idx = resolve_preset_index(profiles, key_field="id", explicit_keys=["exp_prof"], mru_keys=["mru_prof"])
         assert idx == 2
 
     # 4. Explicit match by Path (with trailing slash difference)
-    with patch("cli.cli.get_setting", side_effect=lambda k, d="": "/data/media/4k_movies/" if k == "exp_folder" else ""):
+    with patch("xarrtools.cli.cli.get_setting", side_effect=lambda k, d="": "/data/media/4k_movies/" if k == "exp_folder" else ""):
         idx = resolve_preset_index(folders, key_field="path", explicit_keys=["exp_folder"], mru_keys=["mru_folder"])
         assert idx == 2
 
     # 5. Explicit match by custom key
     custom_items = [{"tag": "standard"}, {"tag": "premium"}]
-    with patch("cli.cli.get_setting", side_effect=lambda k, d="": "premium" if k == "exp_tag" else ""):
+    with patch("xarrtools.cli.cli.get_setting", side_effect=lambda k, d="": "premium" if k == "exp_tag" else ""):
         idx = resolve_preset_index(custom_items, key_field="tag", explicit_keys=["exp_tag"], mru_keys=["mru_tag"])
         assert idx == 2
 
     # 6. MRU fallback when explicit is not set
-    with patch("cli.cli.get_setting", side_effect=lambda k, d="": "3" if k == "mru_prof" else ""):
+    with patch("xarrtools.cli.cli.get_setting", side_effect=lambda k, d="": "3" if k == "mru_prof" else ""):
         idx = resolve_preset_index(profiles, key_field="id", explicit_keys=["exp_prof"], mru_keys=["mru_prof"])
         assert idx == 3
 
     # 7. Fallback to MRU when explicit ID is invalid/deleted
-    with patch("cli.cli.get_setting", side_effect=lambda k, d="": "999" if k == "exp_prof" else ("2" if k == "mru_prof" else "")):
+    with patch("xarrtools.cli.cli.get_setting", side_effect=lambda k, d="": "999" if k == "exp_prof" else ("2" if k == "mru_prof" else "")):
         idx = resolve_preset_index(profiles, key_field="id", explicit_keys=["exp_prof"], mru_keys=["mru_prof"])
         assert idx == 2
 
     # 8. Safety fallback when both explicit and MRU are invalid/missing
-    with patch("cli.cli.get_setting", side_effect=lambda k, d="": "999" if k == "exp_prof" else ("888" if k == "mru_prof" else "")):
+    with patch("xarrtools.cli.cli.get_setting", side_effect=lambda k, d="": "999" if k == "exp_prof" else ("888" if k == "mru_prof" else "")):
         idx = resolve_preset_index(profiles, key_field="id", explicit_keys=["exp_prof"], mru_keys=["mru_prof"])
         assert idx == 1
 
-    with patch("cli.cli.get_setting", return_value=""):
+    with patch("xarrtools.cli.cli.get_setting", return_value=""):
         idx = resolve_preset_index(profiles, key_field="id", explicit_keys=["exp_prof"], mru_keys=["mru_prof"])
         assert idx == 1
 
     # 9. Exception in get_setting falls back to config or safety fallback 1
-    with patch("cli.cli.get_setting", side_effect=Exception("DB locked")):
-        with patch("cli.cli.config") as mock_conf:
+    with patch("xarrtools.cli.cli.get_setting", side_effect=Exception("DB locked")):
+        with patch("xarrtools.cli.cli.config") as mock_conf:
             mock_conf.exp_prof = "2"
             idx = resolve_preset_index(profiles, key_field="id", explicit_keys=["exp_prof"], mru_keys=["mru_prof"])
             assert idx == 2
 
-    with patch("cli.cli.get_setting", side_effect=Exception("DB locked")):
-        with patch("cli.cli.config") as mock_conf:
+    with patch("xarrtools.cli.cli.get_setting", side_effect=Exception("DB locked")):
+        with patch("xarrtools.cli.cli.config") as mock_conf:
             mock_conf.exp_prof = ""
             mock_conf.mru_prof = ""
             idx = resolve_preset_index(profiles, key_field="id", explicit_keys=["exp_prof"], mru_keys=["mru_prof"])
             assert idx == 1
 
 
-@patch("cli.cli.config")
-@patch("cli.cli.Prompt.ask")
-@patch("cli.cli.Confirm.ask")
-@patch("cli.cli.console.print")
-@patch("cli.cli.select_from_list")
-@patch("cli.cli.set_setting")
-@patch("cli.cli.get_setting")
-@patch("cli.cli.RadarrClient")
+@patch("xarrtools.cli.cli.config")
+@patch("xarrtools.cli.cli.Prompt.ask")
+@patch("xarrtools.cli.cli.Confirm.ask")
+@patch("xarrtools.cli.cli.console.print")
+@patch("xarrtools.cli.cli.select_from_list")
+@patch("xarrtools.cli.cli.set_setting")
+@patch("xarrtools.cli.cli.get_setting")
+@patch("xarrtools.cli.cli.RadarrClient")
 def test_handle_radarr_workflow_hybrid_presets_explicit(
     mock_radarr, mock_get_setting, mock_set_setting, mock_select, mock_print, mock_confirm, mock_ask, mock_config
 ):
@@ -1158,14 +1158,14 @@ def test_handle_radarr_workflow_hybrid_presets_explicit(
     mock_set_setting.assert_any_call("radarr_mru_root_folder", "/movies/4k")
 
 
-@patch("cli.cli.config")
-@patch("cli.cli.Prompt.ask")
-@patch("cli.cli.Confirm.ask")
-@patch("cli.cli.console.print")
-@patch("cli.cli.select_from_list")
-@patch("cli.cli.set_setting")
-@patch("cli.cli.get_setting")
-@patch("cli.cli.RadarrClient")
+@patch("xarrtools.cli.cli.config")
+@patch("xarrtools.cli.cli.Prompt.ask")
+@patch("xarrtools.cli.cli.Confirm.ask")
+@patch("xarrtools.cli.cli.console.print")
+@patch("xarrtools.cli.cli.select_from_list")
+@patch("xarrtools.cli.cli.set_setting")
+@patch("xarrtools.cli.cli.get_setting")
+@patch("xarrtools.cli.cli.RadarrClient")
 def test_handle_radarr_workflow_hybrid_presets_mru_fallback(
     mock_radarr, mock_get_setting, mock_set_setting, mock_select, mock_print, mock_confirm, mock_ask, mock_config
 ):
@@ -1199,14 +1199,14 @@ def test_handle_radarr_workflow_hybrid_presets_mru_fallback(
     assert mock_select.call_args_list[1][1]["default_index"] == 2
 
 
-@patch("cli.cli.config")
-@patch("cli.cli.Prompt.ask")
-@patch("cli.cli.Confirm.ask")
-@patch("cli.cli.console.print")
-@patch("cli.cli.select_from_list")
-@patch("cli.cli.set_setting")
-@patch("cli.cli.get_setting")
-@patch("cli.cli.RadarrClient")
+@patch("xarrtools.cli.cli.config")
+@patch("xarrtools.cli.cli.Prompt.ask")
+@patch("xarrtools.cli.cli.Confirm.ask")
+@patch("xarrtools.cli.cli.console.print")
+@patch("xarrtools.cli.cli.select_from_list")
+@patch("xarrtools.cli.cli.set_setting")
+@patch("xarrtools.cli.cli.get_setting")
+@patch("xarrtools.cli.cli.RadarrClient")
 def test_handle_radarr_workflow_hybrid_presets_invalid_fallback(
     mock_radarr, mock_get_setting, mock_set_setting, mock_select, mock_print, mock_confirm, mock_ask, mock_config
 ):
@@ -1241,14 +1241,14 @@ def test_handle_radarr_workflow_hybrid_presets_invalid_fallback(
     assert mock_select.call_args_list[1][1]["default_index"] == 1
 
 
-@patch("cli.cli.config")
-@patch("cli.cli.Prompt.ask")
-@patch("cli.cli.Confirm.ask")
-@patch("cli.cli.console.print")
-@patch("cli.cli.select_from_list")
-@patch("cli.cli.set_setting")
-@patch("cli.cli.get_setting")
-@patch("cli.cli.SonarrClient")
+@patch("xarrtools.cli.cli.config")
+@patch("xarrtools.cli.cli.Prompt.ask")
+@patch("xarrtools.cli.cli.Confirm.ask")
+@patch("xarrtools.cli.cli.console.print")
+@patch("xarrtools.cli.cli.select_from_list")
+@patch("xarrtools.cli.cli.set_setting")
+@patch("xarrtools.cli.cli.get_setting")
+@patch("xarrtools.cli.cli.SonarrClient")
 def test_handle_sonarr_workflow_hybrid_presets_explicit(
     mock_sonarr, mock_get_setting, mock_set_setting, mock_select, mock_print, mock_confirm, mock_ask, mock_config
 ):
@@ -1286,14 +1286,14 @@ def test_handle_sonarr_workflow_hybrid_presets_explicit(
     mock_set_setting.assert_any_call("sonarr_mru_root_folder", "/tv/4k")
 
 
-@patch("cli.cli.config")
-@patch("cli.cli.Prompt.ask")
-@patch("cli.cli.Confirm.ask")
-@patch("cli.cli.console.print")
-@patch("cli.cli.select_from_list")
-@patch("cli.cli.set_setting")
-@patch("cli.cli.get_setting")
-@patch("cli.cli.SonarrClient")
+@patch("xarrtools.cli.cli.config")
+@patch("xarrtools.cli.cli.Prompt.ask")
+@patch("xarrtools.cli.cli.Confirm.ask")
+@patch("xarrtools.cli.cli.console.print")
+@patch("xarrtools.cli.cli.select_from_list")
+@patch("xarrtools.cli.cli.set_setting")
+@patch("xarrtools.cli.cli.get_setting")
+@patch("xarrtools.cli.cli.SonarrClient")
 def test_handle_sonarr_workflow_hybrid_presets_mru_fallback(
     mock_sonarr, mock_get_setting, mock_set_setting, mock_select, mock_print, mock_confirm, mock_ask, mock_config
 ):
@@ -1327,14 +1327,14 @@ def test_handle_sonarr_workflow_hybrid_presets_mru_fallback(
     assert mock_select.call_args_list[1][1]["default_index"] == 2
 
 
-@patch("cli.cli.config")
-@patch("cli.cli.Prompt.ask")
-@patch("cli.cli.Confirm.ask")
-@patch("cli.cli.console.print")
-@patch("cli.cli.select_from_list")
-@patch("cli.cli.set_setting")
-@patch("cli.cli.get_setting")
-@patch("cli.cli.SonarrClient")
+@patch("xarrtools.cli.cli.config")
+@patch("xarrtools.cli.cli.Prompt.ask")
+@patch("xarrtools.cli.cli.Confirm.ask")
+@patch("xarrtools.cli.cli.console.print")
+@patch("xarrtools.cli.cli.select_from_list")
+@patch("xarrtools.cli.cli.set_setting")
+@patch("xarrtools.cli.cli.get_setting")
+@patch("xarrtools.cli.cli.SonarrClient")
 def test_handle_sonarr_workflow_hybrid_presets_invalid_fallback(
     mock_sonarr, mock_get_setting, mock_set_setting, mock_select, mock_print, mock_confirm, mock_ask, mock_config
 ):
@@ -1368,18 +1368,18 @@ def test_handle_sonarr_workflow_hybrid_presets_invalid_fallback(
     assert mock_select.call_args_list[1][1]["default_index"] == 1
 
 
-@patch("cli.cli.config")
-@patch("cli.cli.Prompt.ask")
-@patch("cli.cli.Confirm.ask")
-@patch("cli.cli.console.print")
-@patch("cli.cli.select_from_list")
-@patch("cli.cli.get_discoveries")
-@patch("cli.cli.enrich_tv_show")
-@patch("cli.cli.enrich_movie")
-@patch("cli.cli.set_setting")
-@patch("cli.cli.get_setting")
-@patch("cli.cli.RadarrClient")
-@patch("cli.cli.SonarrClient")
+@patch("xarrtools.cli.cli.config")
+@patch("xarrtools.cli.cli.Prompt.ask")
+@patch("xarrtools.cli.cli.Confirm.ask")
+@patch("xarrtools.cli.cli.console.print")
+@patch("xarrtools.cli.cli.select_from_list")
+@patch("xarrtools.cli.cli.get_discoveries")
+@patch("xarrtools.cli.cli.enrich_tv_show")
+@patch("xarrtools.cli.cli.enrich_movie")
+@patch("xarrtools.cli.cli.set_setting")
+@patch("xarrtools.cli.cli.get_setting")
+@patch("xarrtools.cli.cli.RadarrClient")
+@patch("xarrtools.cli.cli.SonarrClient")
 def test_handle_discovery_workflow_presets_and_mru_persistence(
     mock_sonarr, mock_radarr, mock_get_setting, mock_set_setting,
     mock_enrich_movie, mock_enrich_tv, mock_get_disc, mock_select,
@@ -1460,12 +1460,12 @@ def test_handle_discovery_workflow_presets_and_mru_persistence(
 # Milestone 2: Discovery Workflow with has_new_metadata & Low-Metadata Releases
 # ==============================================================================
 
-@patch("cli.cli.config")
-@patch("cli.cli.Prompt.ask")
-@patch("cli.cli.console.print")
-@patch("cli.cli.get_discoveries")
-@patch("cli.cli.enrich_tv_show")
-@patch("cli.cli.enrich_movie")
+@patch("xarrtools.cli.cli.config")
+@patch("xarrtools.cli.cli.Prompt.ask")
+@patch("xarrtools.cli.cli.console.print")
+@patch("xarrtools.cli.cli.get_discoveries")
+@patch("xarrtools.cli.cli.enrich_tv_show")
+@patch("xarrtools.cli.cli.enrich_movie")
 def test_handle_discovery_workflow_with_has_new_metadata_cleanly(
     mock_enrich_movie, mock_enrich_tv, mock_get_disc, mock_print, mock_ask, mock_config
 ):
@@ -1503,16 +1503,16 @@ def test_handle_discovery_workflow_with_has_new_metadata_cleanly(
     assert any("MOVIE: Badge Movie (2026)" in t and "[New metadata]" in t and "(In Library)" in t for t in printed_texts)
 
 
-@patch("cli.cli.config")
-@patch("cli.cli.Prompt.ask")
-@patch("cli.cli.Confirm.ask")
-@patch("cli.cli.console.print")
-@patch("cli.cli.select_from_list")
-@patch("cli.cli.get_discoveries")
-@patch("cli.cli.enrich_tv_show")
-@patch("cli.cli.enrich_movie")
-@patch("cli.cli.RadarrClient")
-@patch("cli.cli.SonarrClient")
+@patch("xarrtools.cli.cli.config")
+@patch("xarrtools.cli.cli.Prompt.ask")
+@patch("xarrtools.cli.cli.Confirm.ask")
+@patch("xarrtools.cli.cli.console.print")
+@patch("xarrtools.cli.cli.select_from_list")
+@patch("xarrtools.cli.cli.get_discoveries")
+@patch("xarrtools.cli.cli.enrich_tv_show")
+@patch("xarrtools.cli.cli.enrich_movie")
+@patch("xarrtools.cli.cli.RadarrClient")
+@patch("xarrtools.cli.cli.SonarrClient")
 def test_handle_discovery_workflow_auto_archived_low_metadata_selection(
     mock_sonarr, mock_radarr, mock_enrich_movie, mock_enrich_tv,
     mock_get_disc, mock_select, mock_print, mock_confirm, mock_ask, mock_config

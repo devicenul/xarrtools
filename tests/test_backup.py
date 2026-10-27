@@ -10,17 +10,17 @@ from pathlib import Path
 from unittest.mock import patch, MagicMock
 import pytest
 
-import core.db
-from core.db import verify_backup_checksum
-from core.backup import export_full_backup, import_full_backup
-from core.posters import (
+import xarrtools.core.db; from xarrtools import core
+from xarrtools.core.db import verify_backup_checksum
+from xarrtools.core.backup import export_full_backup, import_full_backup
+from xarrtools.core.posters import (
     get_posters_dir,
     get_cached_poster,
     store_poster,
     download_poster,
     validate_poster_url
 )
-from web.server import app
+from xarrtools.web.server import app
 
 # Isolate database path to a temp file before tests run
 fd, temp_db_path = tempfile.mkstemp(suffix=".db")
@@ -40,7 +40,7 @@ def cleanup_db():
     conn.close()
     core.db.init_db()
     core.db.set_setting("api_key", "test_api_key")
-    from core.config import config
+    from xarrtools.core.config import config
     config.refresh()
 
     p_dir = get_posters_dir()
@@ -60,12 +60,12 @@ def client():
             self.client = client
             
         def _get_api_key(self):
-            from core.db import get_setting, set_setting
+            from xarrtools.core.db import get_setting, set_setting
             key = get_setting("api_key", "")
             if not key:
                 key = "test_api_key"
                 set_setting("api_key", key)
-                from core.config import config
+                from xarrtools.core.config import config
                 config.refresh()
             return key
             
@@ -650,7 +650,7 @@ def test_export_full_backup_cached_posters_fast():
     conn.close()
 
     bio = BytesIO()
-    with patch("core.backup.download_poster") as mock_dl:
+    with patch("xarrtools.core.backup.download_poster") as mock_dl:
         counts = export_full_backup(bio, include_media=True, max_poster_fetch_time=5.0)
         mock_dl.assert_not_called()
 
@@ -688,7 +688,7 @@ def test_export_full_backup_uncached_posters_timeout():
 
     bio = BytesIO()
     t0 = time.time()
-    with patch("core.backup.download_poster", side_effect=slow_download):
+    with patch("xarrtools.core.backup.download_poster", side_effect=slow_download):
         counts = export_full_backup(bio, include_media=True, max_poster_fetch_time=0.3)
     duration = time.time() - t0
 

@@ -17,16 +17,16 @@ from unittest.mock import patch, MagicMock
 import pytest
 
 # Isolate SQLite database path before importing application modules
-import core.db
+import xarrtools.core.db; from xarrtools import core
 fd, temp_db_path = tempfile.mkstemp(suffix=".db")
 os.close(fd)
 core.db.DB_PATH = Path(temp_db_path)
 core.db.init_db()
 
 with patch("threading.Thread") as mock_thread:
-    from web.server import app, get_clients
-from core.client import RadarrClient, SonarrClient, ArrAPIError
-from core.config import config
+    from xarrtools.web.server import app, get_clients
+from xarrtools.core.client import RadarrClient, SonarrClient, ArrAPIError
+from xarrtools.core.config import config
 
 
 # ---------------------------------------------------------------------------
@@ -301,7 +301,7 @@ class TestTier1FeatureCoverage:
         mock_sonarr.get_root_folders.return_value = [{"path": "/tv"}]
         mock_sonarr.get_quality_profiles.return_value = [{"id": 2, "name": "FullHD"}]
 
-        with patch("web.server.get_clients", return_value=(mock_radarr, mock_sonarr)):
+        with patch("xarrtools.web.server.get_clients", return_value=(mock_radarr, mock_sonarr)):
             res = client.get("/api/config")
             assert res.status_code == 200
             data = res.get_json()
@@ -314,7 +314,7 @@ class TestTier1FeatureCoverage:
         mock_sonarr = MagicMock()
         mock_sonarr.add_series.return_value = {"id": 1, "title": "Severance", "year": 2022, "tvdbId": 12345}
 
-        with patch("web.server.get_clients", return_value=(None, mock_sonarr)):
+        with patch("xarrtools.web.server.get_clients", return_value=(None, mock_sonarr)):
             payload = {
                 "type": "tv",
                 "raw_metadata": {"title": "Severance", "year": 2022, "tvdbId": 12345},
@@ -343,7 +343,7 @@ class TestTier1FeatureCoverage:
         mock_radarr = MagicMock()
         mock_radarr.add_movie.return_value = {"id": 1, "title": "Dune 2", "year": 2024, "tmdbId": 67890}
 
-        with patch("web.server.get_clients", return_value=(mock_radarr, None)):
+        with patch("xarrtools.web.server.get_clients", return_value=(mock_radarr, None)):
             payload = {
                 "type": "movie",
                 "raw_metadata": {"title": "Dune 2", "year": 2024, "tmdbId": 67890},
@@ -401,7 +401,7 @@ class TestTier2BoundaryAndCornerCases:
 
     def test_t2_unconfigured_offline_services_api_behavior(self, client):
         """When services are unconfigured, config returns configured=False and add returns 400 gracefully."""
-        with patch("web.server.get_clients", return_value=(None, None)):
+        with patch("xarrtools.web.server.get_clients", return_value=(None, None)):
             res_config = client.get("/api/config")
             assert res_config.status_code == 200
             data_config = res_config.get_json()
@@ -527,7 +527,7 @@ class TestTier3CrossFeatureCombinations:
         mock_sonarr = MagicMock()
         mock_sonarr.add_series.return_value = {"id": 2, "title": "Show 1"}
 
-        with patch("web.server.get_clients", return_value=(mock_radarr, mock_sonarr)):
+        with patch("xarrtools.web.server.get_clients", return_value=(mock_radarr, mock_sonarr)):
             # 1. Add Movie
             client.post("/api/add", json={
                 "type": "movie",
@@ -564,7 +564,7 @@ class TestTier3CrossFeatureCombinations:
         profiles = [{"id": 1, "name": "720p"}, {"id": 2, "name": "1080p"}, {"id": 3, "name": "4K"}]
         folders = [{"path": "/movies/a"}, {"path": "/movies/b"}, {"path": "/movies/c"}]
 
-        with patch("web.server.get_clients", return_value=(mock_radarr, None)):
+        with patch("xarrtools.web.server.get_clients", return_value=(mock_radarr, None)):
             # Add 1: Profile 1, Folder A
             client.post("/api/add", json={"type": "movie", "raw_metadata": {"title": "M1", "year": 2024}, "folder": "/movies/a", "profile_id": 1})
             assert resolve_hybrid_preset("radarr", "profile", profiles)["id"] == 1
@@ -630,7 +630,7 @@ class TestTier3CrossFeatureCombinations:
         mock_sonarr = MagicMock()
         mock_sonarr.add_series.return_value = {"id": 2}
 
-        with patch("web.server.get_clients", return_value=(mock_radarr, mock_sonarr)):
+        with patch("xarrtools.web.server.get_clients", return_value=(mock_radarr, mock_sonarr)):
             client.post("/api/add", json={"type": "tv", "raw_metadata": {"title": "S1", "year": 2024}, "folder": "/tv/1", "profile_id": 101})
             client.post("/api/add", json={"type": "movie", "raw_metadata": {"title": "M1", "year": 2024}, "folder": "/movies/1", "profile_id": 201})
             client.post("/api/add", json={"type": "tv", "raw_metadata": {"title": "S2", "year": 2024}, "folder": "/tv/2", "profile_id": 102})
@@ -694,7 +694,7 @@ class TestTier4RealWorldWorkloads:
             {"path": "/tv/secondary"}
         ]
 
-        with patch("web.server.get_clients", return_value=(None, mock_sonarr)):
+        with patch("xarrtools.web.server.get_clients", return_value=(None, mock_sonarr)):
             # Step 1: Fresh install (no settings). User opens Add dialog.
             # Hybrid resolution resolves index 0
             p1 = resolve_hybrid_preset("sonarr", "profile", profiles_initial)
@@ -753,7 +753,7 @@ class TestTier4RealWorldWorkloads:
         mock_sonarr.get_quality_profiles.return_value = [{"id": 10, "name": "Any"}, {"id": 20, "name": "HD"}]
         mock_sonarr.add_series.return_value = {"id": 200, "title": "Frieren"}
 
-        with patch("web.server.get_clients", return_value=(mock_radarr, mock_sonarr)):
+        with patch("xarrtools.web.server.get_clients", return_value=(mock_radarr, mock_sonarr)):
             # 1. Verify GET /api/config has no language_profiles
             cfg_res = client.get("/api/config")
             assert cfg_res.status_code == 200

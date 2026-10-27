@@ -3,7 +3,7 @@ __pycache__/
 *.pyc
 *.pyo
 *.pyd
-core/_version.py
+src/xarrtools/core/_version.py
 .venv/
 env/
 venv/
@@ -54,4 +54,4 @@ posters/
 node_modules/
 
 # Compiled frontend output (TypeScript migration; built by init/build, not committed)
-web/static/dist/
+src/xarrtools/web/static/dist/

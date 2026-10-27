@@ -10,12 +10,12 @@ import pytest
 
 pytestmark = pytest.mark.skipif(shutil.which("node") is None, reason="node not available")
 
-DIST_API = Path(__file__).resolve().parent.parent / "web" / "static" / "dist" / "api.js"
+DIST_API = Path(__file__).resolve().parent.parent / "src" / "xarrtools" / "web" / "static" / "dist" / "api.js"
 
 
 def run_api_test(body: str):
     if not DIST_API.is_file():
-        pytest.skip("web/static/dist/api.js not found; run 'npm run build' first")
+        pytest.skip("src/xarrtools/web/static/dist/api.js not found; run 'npm run build' first")
     code = f"""
 const calls = [];
 let mockResponses = {{}};

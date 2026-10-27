@@ -1,7 +1,7 @@
 import pytest
 from typing import Any, Dict, List, Optional
 
-from core.metadata import (
+from xarrtools.core.metadata import (
     MISSING_TITLE_STRINGS,
     MISSING_NETWORK_STRINGS,
     MISSING_CAST_STRINGS,

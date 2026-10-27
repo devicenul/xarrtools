@@ -10,13 +10,13 @@ from unittest.mock import patch
 
 import pytest
 
-import core.db
-import core.config
-import core.posters
-import core.logging_setup
-from core.db import init_db, set_setting, get_setting, add_cached_item, get_cached_item, export_to_dict, import_from_dict, verify_backup_checksum as db_verify_checksum
-from core.backup import export_full_backup, import_full_backup, verify_backup_checksum
-from core.posters import store_poster, get_cached_poster, get_posters_dir
+import xarrtools.core.db; from xarrtools import core
+import xarrtools.core.config; from xarrtools import core
+import xarrtools.core.posters; from xarrtools import core
+import xarrtools.core.logging_setup; from xarrtools import core
+from xarrtools.core.db import init_db, set_setting, get_setting, add_cached_item, get_cached_item, export_to_dict, import_from_dict, verify_backup_checksum as db_verify_checksum
+from xarrtools.core.backup import export_full_backup, import_full_backup, verify_backup_checksum
+from xarrtools.core.posters import store_poster, get_cached_poster, get_posters_dir
 
 
 def test_config_dir_env_resolution(tmp_path):
