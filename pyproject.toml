@@ -8,7 +8,8 @@ branch = true
 source = ["core", "web", "cli"]
 omit = [
     "tests/*",
-    "setup.py"
+    "setup.py",
+    "core/_version.py"
 ]
 
 [tool.coverage.report]

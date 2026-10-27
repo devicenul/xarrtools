@@ -18,6 +18,7 @@ import {
   LookupResponse,
   LinkLibraryPayload,
   CacheStatsResponse,
+  HealthResponse,
   BackupImportResponse,
   FeedsResponse,
   SaveFeedPayload,
@@ -185,6 +186,15 @@ export async function linkLibrary(payload: LinkLibraryPayload): Promise<ApiRespo
     body: JSON.stringify(payload)
   });
   return parseResponse<ApiResponse>(response);
+}
+
+/**
+ * Retrieve health status and application version.
+ * GET /api/health
+ */
+export async function fetchHealth(): Promise<HealthResponse> {
+  const response = await fetch("/api/health");
+  return parseResponse<HealthResponse>(response);
 }
 
 /**

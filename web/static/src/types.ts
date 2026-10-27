@@ -217,6 +217,10 @@ export interface LinkLibraryPayload {
   link_metadata: Record<string, unknown>;
 }
 
+export interface HealthResponse extends ApiResponse {
+  version?: string;
+}
+
 export interface CacheStatsResponse extends ApiResponse {
   total_discoveries?: number;
   archived_discoveries?: number;

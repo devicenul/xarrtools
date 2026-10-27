@@ -18,6 +18,7 @@ import { buildSelectOptionsHtml as moduleBuildSelectOptionsHtml } from "./modals
 import { escapeHtml } from "./cards.js";
 import {
   saveSettings as apiSaveSettings,
+  fetchHealth as apiFetchHealth,
   fetchCacheStats as apiFetchCacheStats,
   pruneCache as apiPruneCache,
   clearCache as apiClearCache,
@@ -216,6 +217,7 @@ export function openSettingsModal(): void {
 
   loadCacheStats();
   loadSchedulerStatus();
+  loadSystemVersion();
 
   const settingsOverlay = document.getElementById("settings-overlay");
   if (settingsOverlay) settingsOverlay.classList.remove("hidden");
@@ -305,6 +307,18 @@ export async function loadCacheStats(): Promise<void> {
     }
   } catch (error) {
     console.error("Failed to load cache stats:", error);
+  }
+}
+
+export async function loadSystemVersion(): Promise<void> {
+  try {
+    const data = await apiFetchHealth();
+    const statVersion = document.getElementById("stat-app-version");
+    if (statVersion && data.version) {
+      statVersion.textContent = data.version;
+    }
+  } catch (error) {
+    console.error("Failed to load system version:", error);
   }
 }
 

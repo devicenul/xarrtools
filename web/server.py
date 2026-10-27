@@ -13,6 +13,7 @@ from datetime import datetime, timedelta, timezone
 logger = logging.getLogger("xarrtools.server")
 
 from core.config import config
+import core.version
 from core.client import RadarrClient, SonarrClient, ArrAPIError
 from core.scraper import get_discoveries, safe_fetch_feed, parse_custom_feed, is_safe_regex
 from core.enricher import enrich_tv_show, enrich_movie
@@ -183,10 +184,10 @@ def health_check() -> RouteResponse:
             cursor.fetchone()
         finally:
             conn.close()
-        return jsonify({"status": "ok"}), 200
+        return jsonify({"status": "ok", "version": core.version.__version__}), 200
     except Exception as e:
         logger.error(f"Health check database failure: {e}")
-        return jsonify({"status": "error", "message": "Database unavailable"}), 503
+        return jsonify({"status": "error", "message": "Database unavailable", "version": core.version.__version__}), 503
 
 @app.route("/")
 def index() -> str:

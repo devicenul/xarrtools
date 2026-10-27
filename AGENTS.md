@@ -41,6 +41,7 @@ Read this file first, then [docs/architecture.md](docs/architecture.md) (how it 
 | `core/locales.py` | Language/country normalisation and the Unicode-aware `slug()` title key |
 | `core/scheduler.py` | Background refresh calculation helpers, due-check, and time-of-day parsing |
 | `core/logging_setup.py` | Central logging setup, credential redaction filter/formatter, rotation (max 2 files) |
+| `core/version.py` | Application version definition and release build stamping |
 | `core/client.py`, `core/config.py` | Radarr/Sonarr API clients; settings/.env access |
 | `web/server.py`, `web/templates/` | Flask API + single-page UI (`index.html`, `style.css`) |
 | `web/static/src/` | TypeScript frontend modules (`types.ts`, `state.ts`, `render.ts`, `cards.ts`, `filters.ts`, `api.ts`, `settings.ts`, `modals.ts`, `main.ts`) |

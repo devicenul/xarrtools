@@ -31,6 +31,13 @@ This document tracks planned future functionality, architectural changes, and us
   - Only if the results show a real problem, open a follow-up item (e.g. virtualized grid or event delegation). Otherwise close this item with the measurements.
 - **Code files involved**: [web/static/src/render.ts](web/static/src/render.ts).
 
+### 4. Application Version in Logs and Diagnostics
+- **Goal**: Include the application version string in the startup log line and in the exported logs ZIP file.
+- **Implementation Strategy**:
+  - Log `xarrtools v{version}` upon server and GUI initialization in `main.py` and `core/logging_setup.py`.
+  - Add version metadata to the generated diagnostics archive (`/api/logs/download`).
+- **Code files involved**: [core/logging_setup.py](core/logging_setup.py), [web/server.py](web/server.py), [main.py](main.py).
+
 ---
 
 ## Completed Features

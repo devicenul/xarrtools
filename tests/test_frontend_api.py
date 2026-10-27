@@ -51,6 +51,7 @@ import {{
   lookupMedia,
   addMedia,
   linkLibrary,
+  fetchHealth,
   fetchCacheStats,
   pruneCache,
   clearCache,
@@ -208,6 +209,20 @@ def test_media_add_archive_refresh_and_lookup():
     assert any("/api/cache/refresh" in u for u in urls)
     assert any("/api/lookup?type=movie&title=Dune" in u for u in urls)
     assert any("/api/link_library" in u for u in urls)
+
+
+def test_fetch_health():
+    res = run_api_test("""
+      mockResponses["GET /api/health"] = {
+        status: 200, ok: true,
+        json: { status: "ok", version: "1.2.3" }
+      };
+      const health = await fetchHealth();
+      console.log(JSON.stringify({ calls, health }));
+    """)
+    assert res["health"]["status"] == "ok"
+    assert res["health"]["version"] == "1.2.3"
+    assert any(c["url"] == "/api/health" for c in res["calls"])
 
 
 def test_cache_maintenance_and_backup_and_feeds():

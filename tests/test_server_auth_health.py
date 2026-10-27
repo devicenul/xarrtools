@@ -20,11 +20,14 @@ def _basic_auth_header(user: str, password: str) -> dict:
 
 
 def test_health_check_endpoint_success(client):
-    """GET /api/health returns 200 and {'status': 'ok'} without secrets or path info."""
+    """GET /api/health returns 200, status ok, and application version without secrets or path info."""
     res = client.get("/api/health")
     assert res.status_code == 200
     data = res.get_json()
-    assert data == {"status": "ok"}
+    assert data["status"] == "ok"
+    assert "version" in data
+    assert isinstance(data["version"], str)
+    assert len(data["version"]) > 0
     # Verify no leaked credentials or environment details
     assert "token" not in str(data).lower()
     assert "password" not in str(data).lower()
@@ -39,6 +42,7 @@ def test_health_check_endpoint_db_failure(client):
         data = res.get_json()
         assert data["status"] == "error"
         assert "Database unavailable" in data["message"]
+        assert "version" in data
 
 
 def test_routes_accessible_when_basic_auth_unset(client):
@@ -77,7 +81,8 @@ def test_routes_gated_when_basic_auth_set(client):
         # 2. Health endpoint remains accessible unauthenticated
         res_health = client.get("/api/health")
         assert res_health.status_code == 200
-        assert res_health.get_json() == {"status": "ok"}
+        assert res_health.get_json()["status"] == "ok"
+        assert "version" in res_health.get_json()
 
         # 3. Bad credentials rejected
         bad_headers = _basic_auth_header("testuser", "wrongpassword")
