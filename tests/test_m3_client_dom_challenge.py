@@ -223,6 +223,7 @@ def run_node_harness(script_code: str) -> dict:
         [node_bin, "--no-warnings", "-e", wrapped_script],
         capture_output=True,
         text=True,
+        encoding="utf-8",
         timeout=15
     )
 

@@ -528,7 +528,7 @@ class TestJavaScriptHybridPresetHarness:
         }});
         """
 
-        result = subprocess.run(["node", "--input-type=module", "-e", script], capture_output=True, text=True, check=True)
+        result = subprocess.run(["node", "--input-type=module", "-e", script], capture_output=True, text=True, encoding="utf-8", check=True)
         assert "NODE_JS_HARNESS_SUCCESS" in result.stdout
 
 

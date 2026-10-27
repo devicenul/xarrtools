@@ -84,6 +84,7 @@ jobs:
       - name: Run container
         run: |
           mkdir -p /tmp/xarrtools-config
+          chmod 777 /tmp/xarrtools-config
           docker run -d --name smoke-test -p 5000:5000 -v /tmp/xarrtools-config:/config xarrtools:smoke
 
       - name: Poll health check

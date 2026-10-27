@@ -51,10 +51,10 @@ def test_config_dir_env_resolution(tmp_path):
             os.environ["XARRTOOLS_LOG_DIR"] = old_log_env
             
         importlib.reload(core.db)
+        core.db.DB_PATH = old_db
         importlib.reload(core.config)
         importlib.reload(core.posters)
         importlib.reload(core.logging_setup)
-        core.db.DB_PATH = old_db
         core.config.dotenv_path = old_env
 
 
@@ -90,8 +90,8 @@ def test_sys_frozen_precedes_config_dir(tmp_path):
             os.environ["XARRTOOLS_CONFIG_DIR"] = old_config_env
             
         importlib.reload(core.db)
-        importlib.reload(core.config)
         core.db.DB_PATH = old_db
+        importlib.reload(core.config)
         core.config.dotenv_path = old_env
 
 

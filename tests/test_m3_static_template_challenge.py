@@ -357,7 +357,7 @@ def test_compiled_dist_syntax_via_node():
     if not dist_dir.is_dir() or not any(dist_dir.glob("*.js")):
         pytest.skip("Frontend dist assets missing; run 'npm run build' first")
     for js_file in dist_dir.glob("*.js"):
-        res = subprocess.run([node_bin, "--check", str(js_file)], capture_output=True, text=True)
+        res = subprocess.run([node_bin, "--check", str(js_file)], capture_output=True, text=True, encoding="utf-8")
         assert res.returncode == 0, f"Node syntax check failed on {js_file.name}:\n{res.stderr}"
 
 
@@ -377,7 +377,7 @@ def test_compiled_dist_template_interpolation_node_ast():
     let code = fs.readFileSync({json.dumps(str(cards_js))}, 'utf8').split('\\n').filter(l => !l.startsWith('import ')).join('\\n').replace(/^export /gm, '');
     new vm.Script(code);
     """
-    res = subprocess.run([node_bin, "-e", check_script], capture_output=True, text=True)
+    res = subprocess.run([node_bin, "-e", check_script], capture_output=True, text=True, encoding="utf-8")
     assert res.returncode == 0, f"Node vm.Script failed on cards.js:\n{res.stderr}"
 
 
@@ -458,7 +458,7 @@ def test_js_rating_badges_html_matrix():
         process.exit(1);
     }});
     """
-    res = subprocess.run([node_bin, "--no-warnings", "-e", eval_script], capture_output=True, text=True)
+    res = subprocess.run([node_bin, "--no-warnings", "-e", eval_script], capture_output=True, text=True, encoding="utf-8")
     assert res.returncode == 0, f"Rating badges JS evaluation failed:\n{res.stderr}"
 
 
@@ -493,7 +493,7 @@ def test_js_filter_and_archived_visibility_simulation():
     
     process.exit(0);
     """
-    res = subprocess.run([node_bin, "-e", eval_script], capture_output=True, text=True)
+    res = subprocess.run([node_bin, "-e", eval_script], capture_output=True, text=True, encoding="utf-8")
     assert res.returncode == 0, f"Client filtering simulation failed: {res.stderr}"
 
 

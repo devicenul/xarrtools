@@ -41,6 +41,8 @@ def _never_use_real_db():
     if Path(core.db.DB_PATH).resolve() == REAL_DB_PATH.resolve():
         core.db.DB_PATH = SESSION_DB_PATH
     yield
+    if Path(core.db.DB_PATH).resolve() == REAL_DB_PATH.resolve():
+        core.db.DB_PATH = SESSION_DB_PATH
 
 
 def pytest_sessionfinish(session, exitstatus):

@@ -2765,7 +2765,7 @@ def test_frontend_dist_syntax_validation():
         pytest.skip("web/static/dist not built; run 'npm run build' first")
     
     for js_file in dist_dir.glob("*.js"):
-        res = subprocess.run([node_bin, "--check", str(js_file)], capture_output=True, text=True)
+        res = subprocess.run([node_bin, "--check", str(js_file)], capture_output=True, text=True, encoding="utf-8")
         assert res.returncode == 0, f"Syntax error in {js_file.name}:\n{res.stderr}"
 
 
@@ -2844,7 +2844,7 @@ def test_frontend_dist_node_smoke():
     }});
     """
 
-    res = subprocess.run([node_bin, "--input-type=module", "-e", smoke_script], capture_output=True, text=True)
+    res = subprocess.run([node_bin, "--input-type=module", "-e", smoke_script], capture_output=True, text=True, encoding="utf-8")
     assert res.returncode == 0, f"Node smoke test failed:\nSTDOUT: {res.stdout}\nSTDERR: {res.stderr}"
     assert "DIST_SMOKE_TEST_SUCCESS" in res.stdout
 

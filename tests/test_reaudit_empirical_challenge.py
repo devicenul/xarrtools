@@ -599,6 +599,7 @@ class TestFrontendJavaScriptResolutionViaNode:
             ["node", "--input-type=module", "-e", runner_code],
             capture_output=True,
             text=True,
+            encoding="utf-8",
             timeout=10
         )
         assert result.returncode == 0, f"Node.js tests failed: {result.stderr}"

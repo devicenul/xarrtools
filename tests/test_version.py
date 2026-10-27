@@ -90,7 +90,7 @@ def test_frontend_system_version():
       process.exit(1);
     }});
     """
-    out = subprocess.run(["node", "--input-type=module", "-e", code], capture_output=True, text=True, timeout=10)
+    out = subprocess.run(["node", "--input-type=module", "-e", code], capture_output=True, text=True, encoding="utf-8", timeout=10)
     assert out.returncode == 0, f"Error: {out.stderr}"
     data = json.loads(out.stdout.strip().splitlines()[-1])
     assert data["textContent"] == "9.8.7"

@@ -264,7 +264,8 @@ class TestChallenge2EmptyOptionsLists:
         res = subprocess.run(
             ["node", "--input-type=module", "-e", js_code],
             capture_output=True,
-            text=True
+            text=True,
+            encoding="utf-8"
         )
         assert res.returncode == 0, f"Node.js test harness failed:\nSTDOUT: {res.stdout}\nSTDERR: {res.stderr}"
         assert "ALL_NODE_TESTS_PASSED" in res.stdout
@@ -283,7 +284,7 @@ class TestChallenge3HtmlJsIntegrity:
         dist_dir = os.path.abspath("web/static/dist")
         for f in os.listdir(dist_dir):
             if f.endswith(".js"):
-                res = subprocess.run(["node", "--check", os.path.join(dist_dir, f)], capture_output=True, text=True)
+                res = subprocess.run(["node", "--check", os.path.join(dist_dir, f)], capture_output=True, text=True, encoding="utf-8")
                 assert res.returncode == 0, f"JS Syntax Error in {f}:\n{res.stderr}"
 
     def test_html_syntax_and_unique_ids(self):

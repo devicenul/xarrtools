@@ -167,7 +167,7 @@ globalThis.fetch = async (url, opts) => {{
   process.exit(1);
 }});
 """
-    out = subprocess.run(["node", "--no-warnings", "-e", code], capture_output=True, text=True, timeout=30)
+    out = subprocess.run(["node", "--no-warnings", "-e", code], capture_output=True, text=True, encoding="utf-8", timeout=30)
     assert out.returncode == 0, out.stderr
     return json.loads(out.stdout.strip().splitlines()[-1])
 
@@ -180,7 +180,7 @@ import {{ matchLocale, matchFilter, itemPassesFilters, getFilteredUnarchived }} 
 {body}
 }})();
 """
-    out = subprocess.run(["node", "--no-warnings", "--input-type=module", "-e", code], capture_output=True, text=True, timeout=30)
+    out = subprocess.run(["node", "--no-warnings", "--input-type=module", "-e", code], capture_output=True, text=True, encoding="utf-8", timeout=30)
     assert out.returncode == 0, out.stderr
     return json.loads(out.stdout.strip().splitlines()[-1])
 
