@@ -6,17 +6,7 @@ This document tracks planned future functionality, architectural changes, and us
 
 ## Planned Enhancements
 
-### 1. Dockerization for NAS/Server Hosting
-- **Goal**: Allow running the application inside a lightweight container on NAS systems (Synology, Unraid, QNAP) or homelab servers.
-- **Implementation Strategy**:
-  - Create a `Dockerfile` based on `python:3.11-alpine` to keep the footprint small (<100MB).
-  - Define `/config` as a persistent volume mapping area to hold `xarrtools.db` and optional `.env` file overrides.
-  - Expose port `5000` to link the internal Flask process to host requests.
-  - Create a `docker-compose.yml` template to easily stand up the tool alongside Radarr and Sonarr containers.
-- **Code files involved**: [Dockerfile](Dockerfile), [docker-compose.yml](docker-compose.yml), [core/db.py](core/db.py).
-
-
-### 2. GitHub Builds and Releases Setup
+### 1. GitHub Builds and Releases Setup
 - **Goal**: Automate PyInstaller compilation and packaging workflows on GitHub tag triggers, distributing binary builds directly via GitHub Releases.
 - **Implementation Strategy**:
   - Create GitHub Actions workflows for multi-platform matrices (Ubuntu, macOS, Windows).
@@ -24,7 +14,7 @@ This document tracks planned future functionality, architectural changes, and us
   - Generate release artifacts (`.dmg`, `Setup.exe`, standalone binaries) and attach them to GitHub Releases.
 - **Code files involved**: `.github/workflows/build.yml`.
 
-### 3. Free Packaging and Distribution Pipeline
+### 2. Free Packaging and Distribution Pipeline
 - **Goal**: Create cross-platform installation packages and setup distribution channels completely free of charge, avoiding developer registration fees.
 - **Implementation Strategy**:
   - **macOS (Homebrew Tap & DMG)**: Distribute the compiled `.app` bundle inside an unsigned drag-and-drop `.dmg` using `create-dmg` or `dmgbuild`. Create a custom Homebrew Tap repository (`homebrew-xarrtools`) with a Ruby formula to distribute the pre-compiled binary seamlessly via `brew install xarrtools`. Provide clear instructions for Gatekeeper bypass (`xattr -d com.apple.quarantine`).
@@ -33,7 +23,7 @@ This document tracks planned future functionality, architectural changes, and us
   - **Python Package (PyPI)**: Distribute the app as a standard package on PyPI, enabling installation via `pipx install xarrtools` to bypass OS code-signing limitations completely.
 - **Code files involved**: [build.py](build.py), [build.sh](build.sh), [build.bat](build.bat), [build.ps1](build.ps1).
 
-### 4. Frontend Performance Run (Large Sample Set)
+### 3. Frontend Performance Run (Large Sample Set)
 - **Goal**: Determine whether further frontend work is needed for very large release libraries by measuring, not building.
 - **Implementation Strategy**:
   - **Already done:** cards use `content-visibility: auto`, poster images are `loading="lazy"`, and `renderMediaLists` uses an index map plus a single fragment insert (was O(n^2) `indexOf`). Plot text stays clamped with click-to-expand.
@@ -44,6 +34,15 @@ This document tracks planned future functionality, architectural changes, and us
 ---
 
 ## Completed Features
+
+### ✓ Dockerization for NAS/Server Hosting
+- Multi-stage `Dockerfile` with `node:20-alpine` building the TypeScript frontend assets and `python:3.12-slim` providing a secure, musl-free, lightweight runtime.
+- Runs as an unprivileged, non-root system user (`appuser`, UID/GID 1000) with `/config` volume mapping holding `xarrtools.db`, `.env` overrides, and cached posters/logs.
+- Headless execution with `--server --no-browser` and binding to `0.0.0.0:5000` configurable via `XARRTOOLS_HOST` and `XARRTOOLS_PORT`.
+- Container healthchecks via unauthenticated `GET /api/health` performing a database query probe without exposing credentials or internal paths.
+- Optional HTTP Basic Authentication (`XARRTOOLS_AUTH_USER` / `XARRTOOLS_AUTH_PASSWORD`) with constant-time comparison gating all application routes when deployed in network-accessible homelabs.
+- Fully portable instance backups (both ZIP and JSON formats) without embedded environment paths, preserving checksum and schema version integrity across standalone and containerized deployments.
+- Ready-to-use `docker-compose.yml` template with volume mounts and optional Radarr/Sonarr service definitions.
 
 ### ✓ Standardized Code Documentation & Type Annotations
 - Comprehensive PEP 257 compliant docstrings across all modules, classes, utility functions, routes, and parsing blocks in `core/`, `web/`, `cli/`, `gui/`, `main.py`, and `build.py`.

@@ -41,8 +41,11 @@ xarrtools/
 ├── run.sh / run.bat / run.ps1  # Cross-platform automated startup launchers
 ├── build.py                         # Cross-platform PyInstaller build logic
 ├── build.sh / build.bat / build.ps1 # Thin wrappers: ensure the venv (init.*) then run build.py
-├── requirements-dev.txt             # Test + build tooling (pytest, pytest-cov, pyinstaller)
-├── requirements.txt            # Python dependencies
+├── Dockerfile                  # Multi-stage container build (Node.js + Python 3.12-slim)
+├── docker-compose.yml          # Container orchestration template with /config volume
+├── requirements.txt            # Runtime dependencies (headless-clean)
+├── requirements-gui.txt        # Desktop GUI dependencies (pywebview)
+├── requirements-dev.txt        # Test + build tooling (pytest, pytest-cov, pyinstaller)
 ├── README.md                   # System documentation
 ├── ROADMAP.md                  # Project roadmap and completed features log
 ├── .gitignore                  # Git untracked pattern definitions
@@ -181,6 +184,33 @@ Launch the CLI interface:
 python main.py --cli
 ```
 Allows searching and queueing downloads in a direct interactive command-line workflow.
+
+### Docker & Container Deployment
+Run xarrtools in a lightweight, unprivileged container on a NAS (Synology, Unraid, QNAP) or homelab server:
+
+#### Using Docker Compose (Recommended)
+```bash
+docker compose up -d
+```
+
+#### Using Docker Run
+```bash
+docker build -t xarrtools .
+docker run -d \
+  --name xarrtools \
+  -p 5000:5000 \
+  -v "$(pwd)/config:/config" \
+  -e XARRTOOLS_AUTH_USER="admin" \
+  -e XARRTOOLS_AUTH_PASSWORD="your-strong-password" \
+  xarrtools
+```
+
+#### Container Configuration
+- **Persistent Storage (`/config`)**: Maps your host storage to `/config` inside the container. The database (`xarrtools.db`), custom `.env` overrides, cached posters (`/config/posters`), and logs (`/config/logs`) are preserved here.
+- **Port Mapping**: Default port is `5000` (override via `XARRTOOLS_PORT`).
+- **Optional Basic Authentication**: When `XARRTOOLS_AUTH_USER` and `XARRTOOLS_AUTH_PASSWORD` environment variables are provided, all web routes and API endpoints (except `/api/health`) require HTTP Basic Authentication.
+- **Container Healthcheck**: Built-in Python health probe checks `/api/health` every 30 seconds to confirm database readiness without requiring external tools.
+- **Backup Portability**: Full ZIP and JSON backups can be imported and exported interchangeably between Docker containers and standalone desktop/CLI installations.
 
 ---
 

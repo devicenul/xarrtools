@@ -128,6 +128,23 @@ Node-based test suites exercise compiled modules: `tests/test_frontend_filters.p
 - **Log Export**:
   - `GET /api/logs/download` streams an in-memory ZIP archive of pre-redacted logs (`xarrtools.log` and `xarrtools.log.1`). If no logs are present, it gracefully returns a ZIP containing an explanatory README.txt file.
 
+## Container Architecture & Deployment (`Dockerfile`, `docker-compose.yml`)
+
+- **Multi-stage build**:
+  - Stage 1 (`node:20-alpine`): installs frontend dependencies (`npm ci`) and compiles TypeScript sources (`npm run build`) into `web/static/dist/`.
+  - Stage 2 (`python:3.12-slim`): installs runtime dependencies from `requirements.txt` (excluding GUI libraries), copies application modules (`core`, `web`, `cli`, `gui`, `main.py`), and imports compiled frontend assets from Stage 1.
+- **Config directory isolation**:
+  - Uses `XARRTOOLS_CONFIG_DIR=/config` mapped as a persistent volume.
+  - SQLite database (`xarrtools.db`), environment overrides (`.env`), cached posters (`/config/posters`), and logs (`/config/logs`) all reside within this single directory.
+- **Security & Least Privilege**:
+  - Runs under an unprivileged user (`appuser`, UID/GID 1000).
+  - Optional HTTP Basic Authentication (`XARRTOOLS_AUTH_USER` / `XARRTOOLS_AUTH_PASSWORD`) protects all endpoints (`/` and `/api/*`) using constant-time comparison (`hmac.compare_digest`).
+  - Credentials and tokens are redacted from logging and never exported in backups or saved into container images.
+- **Health monitoring**:
+  - Built-in Python-based `HEALTHCHECK` queries unauthenticated `GET /api/health` (`SELECT 1` database query probe) without needing external utilities like curl or wget.
+- **Cross-environment backup portability**:
+  - Backups (both full ZIP and JSON) store purely relative references without environment-specific paths or host credentials, enabling seamless migration between Docker and standalone desktop/server installations.
+
 ## Tests
 
 `pytest tests -q --no-cov`. Many files are named after review "challenge" rounds; they are regular tests.
