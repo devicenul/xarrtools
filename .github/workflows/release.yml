@@ -208,6 +208,9 @@ jobs:
     name: Build Docker (multi-arch)
     needs: gate
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
