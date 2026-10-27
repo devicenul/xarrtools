@@ -132,7 +132,7 @@ Node-based test suites exercise compiled modules: `tests/test_frontend_filters.p
 
 - **Multi-stage build**:
   - Stage 1 (`node:20-alpine`): installs frontend dependencies (`npm ci`) and compiles TypeScript sources (`npm run build`) into `src/xarrtools/web/static/dist/`.
-  - Stage 2 (`python:3.12-slim`): installs runtime dependencies from `requirements.txt` (excluding GUI libraries), copies application modules (`src/xarrtools/`), and imports compiled frontend assets from Stage 1.
+  - Stage 2 (`python:3.12-slim`): installs runtime dependencies from `pyproject.toml` (excluding GUI libraries), copies application modules (`src/xarrtools/`), and imports compiled frontend assets from Stage 1.
 - **Config directory isolation**:
   - Uses `XARRTOOLS_CONFIG_DIR=/config` mapped as a persistent volume.
   - SQLite database (`xarrtools.db`), environment overrides (`.env`), cached posters (`/config/posters`), and logs (`/config/logs`) all reside within this single directory.

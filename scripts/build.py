@@ -86,11 +86,11 @@ def stamp_version(version: Optional[str] = None) -> Optional[str]:
 
 
 def ensure_pyinstaller() -> None:
-    """Verify PyInstaller is installed in the active environment, installing requirements-dev.txt if missing."""
+    """Verify PyInstaller is installed in the active environment, installing dev extra if missing."""
     if importlib.util.find_spec("PyInstaller") is not None:
         return
-    print("PyInstaller not found; installing requirements-dev.txt ...")
-    subprocess.check_call([sys.executable, "-m", "pip", "install", "-r", str(ROOT / "requirements-dev.txt")])
+    print("PyInstaller not found; installing .[dev] dependencies ...")
+    subprocess.check_call([sys.executable, "-m", "pip", "install", "-e", f"{ROOT}[dev]"])
 
 
 def build_frontend(root: Optional[Path] = None) -> bool:

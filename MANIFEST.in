@@ -1,0 +1,2 @@
+recursive-include src/xarrtools/web/templates *
+recursive-include src/xarrtools/web/static *

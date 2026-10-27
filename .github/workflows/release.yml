@@ -59,6 +59,7 @@ jobs:
         with:
           python-version: "3.12"
           cache: "pip"
+          cache-dependency-path: "pyproject.toml"
 
       - name: Set up Node.js 20
         uses: actions/setup-node@v4
@@ -69,7 +70,7 @@ jobs:
       - name: Install Python dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements-dev.txt
+          pip install -e ".[dev]"
 
       - name: Build frontend
         run: |
@@ -118,6 +119,7 @@ jobs:
         with:
           python-version: "3.12"
           cache: "pip"
+          cache-dependency-path: "pyproject.toml"
 
       - name: Set up Node.js 20
         uses: actions/setup-node@v4
@@ -128,7 +130,7 @@ jobs:
       - name: Install Python dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements-dev.txt
+          pip install -e ".[dev]"
 
       - name: Build standalone binary
         run: |

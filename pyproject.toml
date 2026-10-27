@@ -1,3 +1,61 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "xarrtools"
+dynamic = ["version"]
+description = "Upcoming and new TV show and movie discovery and triage companion for Radarr and Sonarr"
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "GPL-3.0"}
+authors = [
+    {name = "Rich Jefferson"}
+]
+urls = {Homepage = "https://github.com/devicenul/xarrtools", Repository = "https://github.com/devicenul/xarrtools"}
+dependencies = [
+    "requests>=2.31.0",
+    "rich>=13.7.0",
+    "python-dotenv>=1.0.0",
+    "beautifulsoup4>=4.12.0",
+    "Flask>=3.0.0",
+    "waitress>=3.0.0",
+    "defusedxml>=0.7.1",
+]
+
+[project.optional-dependencies]
+gui = [
+    "pywebview>=5.0.0",
+]
+dev = [
+    "pytest",
+    "pytest-cov",
+    "pyinstaller",
+    "mypy",
+    "pyyaml",
+    "tomli>=1.1.0; python_version < '3.11'",
+    "xarrtools[gui]",
+]
+
+[project.scripts]
+xarrtools = "xarrtools.main:main"
+
+[tool.setuptools]
+include-package-data = true
+
+[tool.setuptools.dynamic]
+version = {attr = "xarrtools.core.version.__version__"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+"xarrtools.web" = [
+    "templates/*",
+    "templates/**/*",
+    "static/**/*",
+]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]
@@ -36,4 +94,3 @@ python_version = "3.10"
 ignore_missing_imports = true
 warn_unused_configs = true
 mypy_path = "src"
-

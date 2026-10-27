@@ -166,17 +166,10 @@ if (-not (Test-Path -LiteralPath $VenvPython)) {
 
 # 5. Install runtime and test/development dependencies
 if (-not $SkipDeps) {
-    Write-Host "[Init] Installing runtime dependencies from requirements.txt..."
-    & $VenvPip install -r requirements.txt
+    Write-Host "[Init] Installing development dependencies from pyproject.toml..."
+    & $VenvPip install -e ".[dev]"
     if ($LASTEXITCODE -ne 0) {
-        Write-Error "[Error] Failed to install runtime requirements."
-        exit 1
-    }
-
-    Write-Host "[Init] Installing test and development dependencies (pytest, pytest-cov, pyinstaller)..."
-    & $VenvPip install -r requirements-dev.txt
-    if ($LASTEXITCODE -ne 0) {
-        Write-Error "[Error] Failed to install test/development dependencies."
+        Write-Error "[Error] Failed to install development requirements."
         exit 1
     }
 }

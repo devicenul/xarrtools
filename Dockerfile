@@ -16,15 +16,18 @@ RUN groupadd -g 1000 appuser && \
     mkdir -p /config /app && \
     chown -R appuser:appuser /config /app
 
-# Install runtime dependencies
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# Install runtime dependencies from pyproject.toml
+COPY pyproject.toml README.md MANIFEST.in ./
+RUN python3 -c "import tomllib; c = tomllib.load(open('pyproject.toml', 'rb')); open('/tmp/requirements.txt', 'w').write('\n'.join(c['project']['dependencies']))" && \
+    pip install --no-cache-dir -r /tmp/requirements.txt && \
+    rm /tmp/requirements.txt
 
-# Copy application files
+# Copy application files and compiled frontend assets
 COPY src/ ./src/
-
-# Copy compiled frontend assets from builder stage
 COPY --from=frontend-builder /build/src/xarrtools/web/static/dist ./src/xarrtools/web/static/dist
+
+# Install application package
+RUN pip install --no-cache-dir --no-deps .
 
 # Ensure permissions
 RUN chown -R appuser:appuser /app

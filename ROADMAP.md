@@ -36,6 +36,11 @@ This document tracks planned future functionality, architectural changes, and us
   - Package `xarrtools` as an AppImage or Flatpak bundle embedding WebKitGTK and native window dependencies.
 - **Code files involved**: [scripts/build.py](scripts/build.py), [src/xarrtools/gui/gui.py](src/xarrtools/gui/gui.py).
 
+### 5. PyPI: Default Data Directory When Installed From a Wheel
+- **Goal**: When installed from a wheel/sdist into a non-editable Python site-packages directory without `XARRTOOLS_CONFIG_DIR` set, default database, logs, posters, and `.env` to a standard platform application data directory (e.g. `~/.local/share/xarrtools` on Linux, `~/Library/Application Support/xarrtools` on macOS, `%APPDATA%\xarrtools` on Windows via `platformdirs`) instead of resolving to site-packages.
+- **Context**: In source checkouts, editable installs (`pip install -e .`), Docker containers (`/config`), and frozen PyInstaller binaries (`sys.executable.parent`), the data directories are correctly positioned and unchanged.
+- **Code files involved**: [src/xarrtools/core/db.py](src/xarrtools/core/db.py), [src/xarrtools/core/logging_setup.py](src/xarrtools/core/logging_setup.py), [src/xarrtools/core/posters.py](src/xarrtools/core/posters.py).
+
 ---
 
 ## Completed Features
@@ -63,7 +68,7 @@ This document tracks planned future functionality, architectural changes, and us
 - Comprehensive PEP 257 compliant docstrings across all modules, classes, utility functions, routes, and parsing blocks in `core/`, `web/`, `cli/`, `gui/`, `main.py`, and `scripts/build.py`.
 - Complete Python type annotations (`typing` signatures) covering parameters and returns across all application layers.
 - Contextual block and inline comments clarifying non-trivial business logic, regex pattern matching, deduplication heuristics, threading/locking boundaries, and database query optimizations.
-- Zero-error `mypy` static type checking configured in `pyproject.toml` (`[tool.mypy]`) and tracked in `requirements-dev.txt`.
+- Zero-error `mypy` static type checking configured in `pyproject.toml` (`[tool.mypy]`) and tracked in `pyproject.toml` (`dev` extra).
 
 ### ✓ Structured Logging Architecture
 - Centralized `core/logging_setup.py` with idempotent `setup_logging(level=None)` attaching console and `RotatingFileHandler` to the `xarrtools` hierarchy root.
@@ -93,7 +98,7 @@ This document tracks planned future functionality, architectural changes, and us
 - Added `AGENTS.md`, `docs/architecture.md` and `docs/decisions.md` describing purpose, architecture and design rationale, with a test that fails when documented paths or symbols disappear.
 
 ### ✓ Single Cross-Platform Build Script
-- `scripts/build.py` now holds all PyInstaller logic; `scripts/build.sh` / `scripts/build.ps1` / `scripts/build.bat` are thin wrappers, and `scripts/init.*` install `requirements-dev.txt` (pytest, pytest-cov, pyinstaller).
+- `scripts/build.py` now holds all PyInstaller logic; `scripts/build.sh` / `scripts/build.ps1` / `scripts/build.bat` are thin wrappers, and `scripts/init.*` install development dependencies via `pip install -e .[dev]`.
 
 ### ✓ Bulk Archive and Filter Invert
 - "Archive all filtered" button (`POST /api/archive/batch`) and an "Invert" button on every filter dropdown.

@@ -35,12 +35,17 @@ def test_dockerfile_sanity():
     assert "--no-browser" in content
 
 
-def test_runtime_requirements_headless_clean():
-    runtime_reqs = (ROOT / "requirements.txt").read_text(encoding="utf-8")
-    gui_reqs = (ROOT / "requirements-gui.txt").read_text(encoding="utf-8")
+def test_runtime_dependencies_headless_clean():
+    try:
+        import tomllib
+    except ModuleNotFoundError:
+        import tomli as tomllib  # type: ignore[no-redef]
+    pyproject = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+    deps = pyproject["project"]["dependencies"]
+    gui_deps = pyproject["project"]["optional-dependencies"]["gui"]
 
-    assert "pywebview" not in runtime_reqs, "Runtime requirements.txt must be headless-clean"
-    assert "pywebview" in gui_reqs, "requirements-gui.txt must contain pywebview"
+    assert not any("pywebview" in dep for dep in deps), "Runtime dependencies in pyproject.toml must be headless-clean"
+    assert any("pywebview" in dep for dep in gui_deps), "gui extra in pyproject.toml must contain pywebview"
 
 
 def test_docker_compose_sanity():

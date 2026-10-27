@@ -68,20 +68,25 @@ def test_ensure_pyinstaller_installs_only_when_missing():
     with patch.object(build.importlib.util, "find_spec", return_value=None), \
          patch.object(build.subprocess, "check_call") as pip:
         build.ensure_pyinstaller()
-    assert "requirements-dev.txt" in pip.call_args.args[0][-1]
+    assert pip.call_args.args[0][-1].endswith("[dev]")
 
 
 def test_dev_requirements_and_init_scripts_use_them():
-    dev = (ROOT / "requirements-dev.txt").read_text()
-    for needed in ("-r requirements.txt", "pytest", "pytest-cov", "pyinstaller"):
-        assert needed in dev
+    try:
+        import tomllib
+    except ModuleNotFoundError:
+        import tomli as tomllib  # type: ignore[no-redef]
+    pyproject = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+    dev = pyproject["project"]["optional-dependencies"]["dev"]
+    for needed in ("pytest", "pytest-cov", "pyinstaller", "xarrtools[gui]"):
+        assert any(needed in d for d in dev), f"{needed} missing from pyproject dev extra"
     scripts_dir = ROOT / "scripts"
     for script in ("init.sh", "init.ps1", "init.bat"):
-        text = (scripts_dir / script).read_text()
-        assert "requirements-dev.txt" in text, script
+        text = (scripts_dir / script).read_text(encoding="utf-8")
+        assert ".[dev]" in text, script
         assert "package.json" in text, script
     for script in ("build.sh", "build.ps1", "build.bat"):
-        text = (scripts_dir / script).read_text()
+        text = (scripts_dir / script).read_text(encoding="utf-8")
         assert "build.py" in text and "pip install pyinstaller" not in text.lower(), script
 
 

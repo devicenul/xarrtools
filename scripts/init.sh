@@ -147,11 +147,8 @@ fi
 
 # 5. Install runtime and test/development dependencies
 if [ "$SKIP_DEPS" -eq 0 ]; then
-    log_init "[Init] Installing runtime dependencies from requirements.txt..."
-    "$VENV_DIR/bin/pip" install -r requirements.txt
-
-    log_init "[Init] Installing test, development and build dependencies (pytest, pytest-cov, pyinstaller)..."
-    "$VENV_DIR/bin/pip" install -r requirements-dev.txt
+    log_init "[Init] Installing development dependencies from pyproject.toml..."
+    "$VENV_DIR/bin/pip" install -e ".[dev]"
 fi
 
 # 5b. Install frontend build dependencies (TypeScript)

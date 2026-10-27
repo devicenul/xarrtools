@@ -140,7 +140,7 @@ def get_icon_path() -> Optional[str]:
 def ensure_gui_available() -> None:
     """Verifies that a graphical display and a supported pywebview backend exist before starting a server."""
     if webview is None:
-        raise RuntimeError("pywebview is not installed; install requirements-gui.txt to use the desktop GUI.")
+        raise RuntimeError("pywebview is not installed; install xarrtools[gui] to use the desktop GUI.")
     import os
     import logging
 

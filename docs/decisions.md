@@ -31,7 +31,7 @@
 | Bounded poster download deadline & 8 Waitress worker threads (`src/xarrtools/core/backup.py`, `src/xarrtools/web/server.py`) | Full backup export separates instant disk-cached posters from uncached ones and applies a strict deadline (`max_poster_fetch_time=10.0`s) to prevent thread starvation or UI timeouts while Waitress runs with 8 threads to handle concurrent polling. |
 | `python:3.12-slim` base image for Docker | Avoids musl libc compatibility and wheel compilation issues inherent to Alpine while remaining lean (~150MB). |
 | Multi-stage Docker build with `node:20-alpine` | Builds compiled TypeScript assets during docker build without requiring checked-in generated JS in the repository. |
-| Separation of `pywebview` into `requirements-gui.txt` | Keeps runtime `requirements.txt` headless-clean for Docker and server environments while `requirements-dev.txt` installs it for desktop development and PyInstaller builds. |
+| Separation of `pywebview` into `gui` extra | Keeps runtime dependencies in `pyproject.toml` headless-clean for Docker and server environments while `.[dev]` installs `.[gui]` for desktop development and PyInstaller builds. |
 | Non-root container user (`appuser`) | Follows container security best practices and least privilege principles. |
 | Python standard-library HEALTHCHECK probe | Queries `/api/health` using `urllib.request` directly, avoiding the need for `curl` or `wget` inside the container image. |
 | Optional HTTP Basic Auth (`XARRTOOLS_AUTH_USER` / `XARRTOOLS_AUTH_PASSWORD`) | Provides security when exposing the web interface and REST APIs on local networks or behind basic reverse proxies, while remaining optional so desktop usage is unaffected. |

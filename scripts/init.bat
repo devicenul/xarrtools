@@ -79,19 +79,10 @@ if not exist "%VENV_DIR%\Scripts\python.exe" (
 
 :: 4. Install runtime and test/development dependencies
 if "!SKIP_DEPS!"=="0" (
-    echo [Init] Installing runtime dependencies from requirements.txt...
-    "%VENV_DIR%\Scripts\pip.exe" install -r requirements.txt
+    echo [Init] Installing development dependencies from pyproject.toml...
+    "%VENV_DIR%\Scripts\pip.exe" install -e ".[dev]"
     if errorlevel 1 (
-        echo [Error] Failed to install runtime requirements.
-        if "!NO_PAUSE!"=="0" pause
-        popd
-        exit /b 1
-    )
-
-    echo [Init] Installing test and development dependencies (pytest, pytest-cov, pyinstaller)...
-    "%VENV_DIR%\Scripts\pip.exe" install -r requirements-dev.txt
-    if errorlevel 1 (
-        echo [Error] Failed to install test/development dependencies.
+        echo [Error] Failed to install development requirements.
         if "!NO_PAUSE!"=="0" pause
         popd
         exit /b 1

@@ -49,13 +49,13 @@ Read this file first, then [docs/architecture.md](docs/architecture.md) (how it 
 | `scripts/` (`scripts/build.py`, `build.*`, `init.*`, `run.*`) | Build, environment setup and launchers (sh / ps1 / bat) |
 | `.github/workflows/` (`ci.yml`, `release.yml`) | GitHub Actions CI matrix, multi-arch Docker image, and release packaging |
 | `Dockerfile`, `docker-compose.yml` | Multi-stage container build and compose orchestration |
-| `requirements.txt`, `requirements-gui.txt`, `requirements-dev.txt` | Runtime, GUI-only (`pywebview`), and development dependencies |
+| `pyproject.toml` | Build configuration, packaging metadata, runtime dependencies and dev/gui extras |
 | `tests/` | pytest suite (~1190 tests) |
 
 ## Everyday commands
 
 ```bash
-./scripts/init.sh                           # create venv, install requirements-dev.txt, create .env, init DB
+./scripts/init.sh                           # create venv, install dev dependencies (pip install -e .[dev]), create .env, init DB
 .venv/bin/python -m pytest tests -q --no-cov   # ~25 s; use the venv path printed by scripts/init.sh if it differs
 mypy src/xarrtools                          # run static type checking (0 errors)
 ./scripts/build.sh                          # PyInstaller binary via scripts/build.py (build.ps1 / build.bat on Windows)
@@ -80,7 +80,7 @@ symlinks); `source scripts/init.sh --env-only` (sourced, as `scripts/build.sh` d
    `[today-30d, today+60d]` window (`past_months`/`future_months` params), so test data must fall inside it.
 5. **Schema changes** go through the `CREATE TABLE` + `expected_cols` pattern in `init_db`, and one-time data
    fixes use a flag in the `settings` table (see `migrated_*`). Keep `add_cached_item` placeholders in sync.
-6. **Add dependencies to `requirements.txt` (runtime) or `requirements-dev.txt` (test/build).**
+6. **Add dependencies to `pyproject.toml` (`dependencies` or `optional-dependencies`).**
 7. Preserve existing comments and docstrings you are not changing; keep commit messages descriptive
    (what changed *and why*).
 8. The Windows scripts (`*.ps1`, `*.bat`) cannot be run in the Linux VM — change them minimally and say so.
