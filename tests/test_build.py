@@ -26,10 +26,24 @@ def test_icons_exist_for_every_platform():
 def test_pyinstaller_args_and_workpath():
     args = build.pyinstaller_args(build.build_settings("linux", cache_dir="/cache/x"))
     assert args[0] == "--onefile" and args[-1] == "main.py"
+    assert "--collect-submodules" in args
+    assert "webview" in args
     assert "web/templates:web/templates" in args
     assert args[args.index("--workpath") + 1] == str(Path("/cache/x") / "pyinstaller-build")
     assert "--workpath" not in build.pyinstaller_args(build.build_settings("linux"))
     assert "web/templates;web/templates" in build.pyinstaller_args(build.build_settings("win32"))
+
+
+def test_stamp_version(tmp_path):
+    version_file = ROOT / "core" / "_version.py"
+    try:
+        ver = build.stamp_version("v1.2.3")
+        assert ver == "1.2.3"
+        assert version_file.is_file()
+        assert '__version__ = "1.2.3"' in version_file.read_text(encoding="utf-8")
+    finally:
+        if version_file.exists():
+            version_file.unlink()
 
 
 def test_main_success_and_failure(capsys):

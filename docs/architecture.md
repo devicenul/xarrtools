@@ -145,6 +145,22 @@ Node-based test suites exercise compiled modules: `tests/test_frontend_filters.p
 - **Cross-environment backup portability**:
   - Backups (both full ZIP and JSON) store purely relative references without environment-specific paths or host credentials, enabling seamless migration between Docker and standalone desktop/server installations.
 
+## CI/CD Pipeline & Distribution Architecture
+
+- **Continuous Integration (`.github/workflows/ci.yml`)**:
+  - Triggers on pushes and pull requests to `main` (skipping docs-only markdown changes via `paths-ignore`).
+  - Cross-platform test matrix spanning Ubuntu (Python 3.10 and 3.12), macOS (Python 3.12), and Windows (Python 3.12).
+  - TypeScript compilation (`npm ci && npm run build`), static type verification (`mypy`), and full test suite execution (`pytest`).
+  - Docker container smoke testing: builds the local image, runs an unprivileged container with `/config` volume mapping, and verifies unauthenticated `GET /api/health` probes.
+- **Automated Releases (`.github/workflows/release.yml`)**:
+  - Triggers on tag pushes (`v*`) and manual dry-run workflow dispatch.
+  - Gated by full test execution on Ubuntu.
+  - Multi-platform binary matrix compiles standalone PyInstaller executables for macOS (Apple Silicon `macos-arm64` and Intel `macos-x64`), Windows (`windows-x64`), and Linux (`linux-x64`).
+  - Binary smoke verification: tests `--help` and live `--server --no-browser` startup with `/api/health` polling.
+  - Standalone archives packaged with SHA256 checksums (`.zip` on macOS/Linux to preserve permissions, `.exe` on Windows).
+  - Multi-architecture Docker publishing (`linux/amd64` and `linux/arm64`) to GitHub Container Registry (`ghcr.io/devicenul/xarrtools`).
+  - GitHub Release creation (`gh release create`) publishing binaries, checksums, and auto-generated release notes (flagged as prerelease if version contains a hyphen).
+
 ## Tests
 
 `pytest tests -q --no-cov`. Many files are named after review "challenge" rounds; they are regular tests.

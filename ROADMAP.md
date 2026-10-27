@@ -6,15 +6,7 @@ This document tracks planned future functionality, architectural changes, and us
 
 ## Planned Enhancements
 
-### 1. GitHub Builds and Releases Setup
-- **Goal**: Automate PyInstaller compilation and packaging workflows on GitHub tag triggers, distributing binary builds directly via GitHub Releases.
-- **Implementation Strategy**:
-  - Create GitHub Actions workflows for multi-platform matrices (Ubuntu, macOS, Windows).
-  - Run `pytest` test suites across platforms before building executables (`init.*` already installs `requirements-dev.txt`; `build.py` is the single build entry point to call).
-  - Generate release artifacts (`.dmg`, `Setup.exe`, standalone binaries) and attach them to GitHub Releases.
-- **Code files involved**: `.github/workflows/build.yml`.
-
-### 2. Free Packaging and Distribution Pipeline
+### 1. Free Packaging and Distribution Pipeline
 - **Goal**: Create cross-platform installation packages and setup distribution channels completely free of charge, avoiding developer registration fees.
 - **Implementation Strategy**:
   - **macOS (Homebrew Tap & DMG)**: Distribute the compiled `.app` bundle inside an unsigned drag-and-drop `.dmg` using `create-dmg` or `dmgbuild`. Create a custom Homebrew Tap repository (`homebrew-xarrtools`) with a Ruby formula to distribute the pre-compiled binary seamlessly via `brew install xarrtools`. Provide clear instructions for Gatekeeper bypass (`xattr -d com.apple.quarantine`).
@@ -23,7 +15,7 @@ This document tracks planned future functionality, architectural changes, and us
   - **Python Package (PyPI)**: Distribute the app as a standard package on PyPI, enabling installation via `pipx install xarrtools` to bypass OS code-signing limitations completely.
 - **Code files involved**: [build.py](build.py), [build.sh](build.sh), [build.bat](build.bat), [build.ps1](build.ps1).
 
-### 3. Frontend Performance Run (Large Sample Set)
+### 2. Frontend Performance Run (Large Sample Set)
 - **Goal**: Determine whether further frontend work is needed for very large release libraries by measuring, not building.
 - **Implementation Strategy**:
   - **Already done:** cards use `content-visibility: auto`, poster images are `loading="lazy"`, and `renderMediaLists` uses an index map plus a single fragment insert (was O(n^2) `indexOf`). Plot text stays clamped with click-to-expand.
@@ -31,16 +23,32 @@ This document tracks planned future functionality, architectural changes, and us
   - Only if the results show a real problem, open a follow-up item (e.g. virtualized grid or event delegation). Otherwise close this item with the measurements.
 - **Code files involved**: [web/static/src/render.ts](web/static/src/render.ts).
 
-### 4. Application Version in Logs and Diagnostics
+### 3. Application Version in Logs and Diagnostics
 - **Goal**: Include the application version string in the startup log line and in the exported logs ZIP file.
 - **Implementation Strategy**:
   - Log `xarrtools v{version}` upon server and GUI initialization in `main.py` and `core/logging_setup.py`.
   - Add version metadata to the generated diagnostics archive (`/api/logs/download`).
 - **Code files involved**: [core/logging_setup.py](core/logging_setup.py), [web/server.py](web/server.py), [main.py](main.py).
 
+### 4. Linux Native GUI Packaging (AppImage / Flatpak)
+- **Goal**: Bundle GTK/WebKit system libraries for Linux desktop environments so the captive window works out-of-the-box on any distribution without relying on host packages.
+- **Implementation Strategy**:
+  - Package `xarrtools` as an AppImage or Flatpak bundle embedding WebKitGTK and native window dependencies.
+- **Code files involved**: [build.py](build.py), [gui/gui.py](gui/gui.py).
+
 ---
 
 ## Completed Features
+
+### ✓ Automated Builds, GitHub Releases & Container Publishing
+- Multi-platform GitHub Actions CI matrix testing Python 3.10 and 3.12 on Ubuntu, macOS, and Windows with pip/npm caching, type checking (`mypy`), and Docker smoke testing.
+- Automated release workflow triggered by `v*` tags and dry-run dispatch:
+  - Gates releases on full test suite execution.
+  - PyInstaller matrix building standalone executables for macOS (Apple Silicon arm64 and Intel x86_64), Windows (x64), and Linux (x64) with `--collect-submodules webview`.
+  - Binary smoke testing (`--help` and live `--server` health checks) before packaging.
+  - SHA256 checksum generation and zip archiving for executable distribution via GitHub Releases.
+  - Multi-arch Docker images (`linux/amd64` and `linux/arm64`) with OCI metadata published to GitHub Container Registry (`ghcr.io/devicenul/xarrtools`).
+  - Stamped versioning module (`core/version.py`) baked into frozen binaries and Docker containers, surfaced on Settings → System and `/api/health`.
 
 ### ✓ Dockerization for NAS/Server Hosting
 - Multi-stage `Dockerfile` with `node:20-alpine` building the TypeScript frontend assets and `python:3.12-slim` providing a secure, musl-free, lightweight runtime.

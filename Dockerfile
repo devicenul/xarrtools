@@ -33,10 +33,20 @@ COPY --from=frontend-builder /build/web/static/dist ./web/static/dist
 # Ensure permissions
 RUN chown -R appuser:appuser /app
 
+ARG VERSION=0.0.0-dev
+
+LABEL org.opencontainers.image.title="xarrtools" \
+      org.opencontainers.image.description="Upcoming and new TV show/movie discovery and triage companion for Radarr and Sonarr" \
+      org.opencontainers.image.url="https://github.com/devicenul/xarrtools" \
+      org.opencontainers.image.source="https://github.com/devicenul/xarrtools" \
+      org.opencontainers.image.version="${VERSION}" \
+      org.opencontainers.image.licenses="GPL-3.0"
+
 # Set default environment variables
 ENV XARRTOOLS_CONFIG_DIR=/config \
     XARRTOOLS_HOST=0.0.0.0 \
     XARRTOOLS_PORT=5000 \
+    XARRTOOLS_VERSION=${VERSION} \
     PYTHONUNBUFFERED=1
 
 EXPOSE 5000

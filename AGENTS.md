@@ -47,6 +47,7 @@ Read this file first, then [docs/architecture.md](docs/architecture.md) (how it 
 | `web/static/src/` | TypeScript frontend modules (`types.ts`, `state.ts`, `render.ts`, `cards.ts`, `filters.ts`, `api.ts`, `settings.ts`, `modals.ts`, `main.ts`) |
 | `cli/cli.py`, `gui/gui.py` | Terminal manager and pywebview shell |
 | `build.py` (+ `build.*`), `init.*`, `run.*` | Build, environment setup and launchers (sh / ps1 / bat) |
+| `.github/workflows/` (`ci.yml`, `release.yml`) | GitHub Actions CI matrix, multi-arch Docker image, and release packaging |
 | `Dockerfile`, `docker-compose.yml` | Multi-stage container build and compose orchestration |
 | `requirements.txt`, `requirements-gui.txt`, `requirements-dev.txt` | Runtime, GUI-only (`pywebview`), and development dependencies |
 | `tests/` | pytest suite (~1190 tests) |

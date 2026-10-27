@@ -185,15 +185,47 @@ python main.py --cli
 ```
 Allows searching and queueing downloads in a direct interactive command-line workflow.
 
+### Pre-Built Binaries (Standalone Executables)
+Pre-compiled standalone binaries with bundled dependencies are published with every GitHub Release:
+- **macOS (Apple Silicon)**: `xarrtools-<version>-macos-arm64.zip`
+- **macOS (Intel)**: `xarrtools-<version>-macos-x64.zip`
+- **Windows (x64)**: `xarrtools-<version>-windows-x64.exe`
+- **Linux (x64)**: `xarrtools-<version>-linux-x64.zip`
+
+Download the archive for your operating system from [GitHub Releases](https://github.com/devicenul/xarrtools/releases), extract it, and launch `xarrtools`.
+
+> [!NOTE]
+> **Unsigned Binaries**: The standalone executables are distributed directly without commercial code-signing certificates.
+> - **macOS (Gatekeeper)**: On first launch, macOS may report that the developer cannot be verified. Remove the quarantine attribute via terminal:
+>   ```bash
+>   xattr -d com.apple.quarantine xarrtools
+>   chmod +x xarrtools
+>   ```
+> - **Windows (SmartScreen)**: Windows Defender SmartScreen may display a warning. Click **More info** followed by **Run anyway**.
+> - **Linux Desktop Window**: PyInstaller bundles Python and application dependencies, but not external GTK/WebKit system libraries. If GTK/WebKit are installed on the host, `xarrtools` launches in a captive native window; otherwise, it falls back gracefully to headless server mode (`--server`) and opens your default web browser.
+
 ### Docker & Container Deployment
 Run xarrtools in a lightweight, unprivileged container on a NAS (Synology, Unraid, QNAP) or homelab server:
+
+#### Using Official GHCR Image (Multi-Arch)
+Pre-built multi-arch images (`linux/amd64` and `linux/arm64`) are published to the GitHub Container Registry:
+```bash
+docker pull ghcr.io/devicenul/xarrtools:latest
+docker run -d \
+  --name xarrtools \
+  -p 5000:5000 \
+  -v "$(pwd)/config:/config" \
+  -e XARRTOOLS_AUTH_USER="admin" \
+  -e XARRTOOLS_AUTH_PASSWORD="your-strong-password" \
+  ghcr.io/devicenul/xarrtools:latest
+```
 
 #### Using Docker Compose (Recommended)
 ```bash
 docker compose up -d
 ```
 
-#### Using Docker Run
+#### Building Container Locally
 ```bash
 docker build -t xarrtools .
 docker run -d \

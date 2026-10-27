@@ -58,14 +58,31 @@ def pyinstaller_args(settings: Dict[str, Any], dist_exists: Optional[bool] = Non
     Returns:
         List of command-line flags and arguments to pass to PyInstaller.
     """
-    args = ["--onefile", "--name", "xarrtools", f"--icon={settings['icon']}",
-            "--add-data", f"{TEMPLATES}{settings['separator']}{TEMPLATES}"]
+    args = [
+        "--onefile",
+        "--name", "xarrtools",
+        f"--icon={settings['icon']}",
+        "--collect-submodules", "webview",
+        "--add-data", f"{TEMPLATES}{settings['separator']}{TEMPLATES}"
+    ]
     has_dist = dist_exists if dist_exists is not None else settings.get("dist_exists", False)
     if has_dist:
         args += ["--add-data", f"web/static/dist{settings['separator']}web/static/dist"]
     if settings.get("workpath"):
         args += ["--workpath", settings["workpath"]]
     return args + ["main.py"]
+
+
+def stamp_version(version: Optional[str] = None) -> Optional[str]:
+    """Writes core/_version.py if a version is specified via argument or XARRTOOLS_VERSION."""
+    ver = version or os.environ.get("XARRTOOLS_VERSION")
+    if not ver:
+        return None
+    ver_clean = ver.lstrip("v")
+    version_file = ROOT / "core" / "_version.py"
+    version_file.write_text(f'"""Stamped release version."""\n__version__ = "{ver_clean}"\n', encoding="utf-8")
+    print(f"Stamped application version: {ver_clean}")
+    return ver_clean
 
 
 def ensure_pyinstaller() -> None:
@@ -128,8 +145,15 @@ def build_frontend(root: Optional[Path] = None) -> bool:
     return True
 
 
-def main() -> int:
+def main(argv: Optional[List[str]] = None) -> int:
     """Execute the PyInstaller build pipeline and return exit code."""
+    raw_args = list(sys.argv[1:] if argv is None else argv)
+    version = None
+    if "--version" in raw_args:
+        idx = raw_args.index("--version")
+        if idx + 1 < len(raw_args):
+            version = raw_args[idx + 1]
+    stamp_version(version)
     os.chdir(ROOT)
     if not build_frontend(ROOT):
         return 1

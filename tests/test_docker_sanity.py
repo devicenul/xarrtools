@@ -20,6 +20,9 @@ def test_dockerfile_sanity():
 
     # Environment and volumes
     assert "ENV XARRTOOLS_CONFIG_DIR=/config" in content
+    assert "XARRTOOLS_VERSION" in content
+    assert "ARG VERSION" in content
+    assert "org.opencontainers.image" in content
     assert "VOLUME [\"/config\"]" in content or "VOLUME /config" in content
     assert "EXPOSE 5000" in content
 

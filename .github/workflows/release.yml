@@ -1,0 +1,309 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Dry run (build artifacts and test without publishing release or pushing images)"
+        required: true
+        type: boolean
+        default: true
+      version:
+        description: "Version string for dry run build (e.g. 0.1.0-dryrun)"
+        required: false
+        type: string
+        default: "0.1.0-dryrun"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  gate:
+    name: Gate Tests
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.meta.outputs.version }}
+      is_prerelease: ${{ steps.meta.outputs.is_prerelease }}
+      dry_run: ${{ steps.meta.outputs.dry_run }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Resolve release metadata
+        id: meta
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            VERSION="${{ inputs.version }}"
+            DRY_RUN="${{ inputs.dry_run }}"
+          else
+            VERSION="${GITHUB_REF_NAME#v}"
+            DRY_RUN="false"
+          fi
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "dry_run=${DRY_RUN}" >> "$GITHUB_OUTPUT"
+          if [[ "$VERSION" == *"-"* ]]; then
+            echo "is_prerelease=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "is_prerelease=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Set up Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: "npm"
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-dev.txt
+
+      - name: Build frontend
+        run: |
+          npm ci
+          npm run build
+
+      - name: Static type checking (mypy)
+        run: |
+          mypy core web cli gui main.py
+
+      - name: Run pytest
+        run: |
+          pytest tests -q --no-cov
+
+  binaries:
+    name: Build (${{ matrix.target }})
+    needs: gate
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            target: macos-arm64
+            binary_name: xarrtools
+            archive_ext: zip
+          - os: macos-15-intel
+            target: macos-x64
+            binary_name: xarrtools
+            archive_ext: zip
+          - os: windows-latest
+            target: windows-x64
+            binary_name: xarrtools.exe
+            archive_ext: exe
+          - os: ubuntu-latest
+            target: linux-x64
+            binary_name: xarrtools
+            archive_ext: zip
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Set up Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: "npm"
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-dev.txt
+
+      - name: Build standalone binary
+        run: |
+          python build.py --version "${{ needs.gate.outputs.version }}"
+
+      - name: Smoke test binary (macOS / Linux)
+        if: runner.os != 'Windows'
+        run: |
+          ./dist/xarrtools --help
+          ./dist/xarrtools --server --no-browser --port 5055 &
+          SERVER_PID=$!
+          for i in $(seq 1 30); do
+            if python3 -c "import urllib.request, json; data=json.load(urllib.request.urlopen('http://127.0.0.1:5055/api/health', timeout=3)); assert data.get('status') == 'ok'" 2>/dev/null; then
+              echo "Binary smoke test passed on attempt $i!"
+              kill $SERVER_PID || true
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "Binary smoke test timed out"
+          kill $SERVER_PID || true
+          exit 1
+
+      - name: Smoke test binary (Windows)
+        if: runner.os == 'Windows'
+        shell: powershell
+        run: |
+          ./dist/xarrtools.exe --help
+          $proc = Start-Process -FilePath "./dist/xarrtools.exe" -ArgumentList "--server", "--no-browser", "--port", "5055" -PassThru
+          $healthy = $false
+          for ($i = 0; $i -lt 30; $i++) {
+            Start-Sleep -Seconds 1
+            try {
+              $res = Invoke-RestMethod -Uri "http://127.0.0.1:5055/api/health" -TimeoutSec 3
+              if ($res.status -eq "ok") {
+                Write-Host "Binary smoke test passed!"
+                $healthy = $true
+                break
+              }
+            } catch {}
+          }
+          Stop-Process -Id $proc.Id -Force
+          if (-not $healthy) {
+            throw "Binary smoke test failed"
+          }
+
+      - name: Package artifact (macOS / Linux)
+        if: runner.os != 'Windows'
+        run: |
+          PKG="xarrtools-${{ needs.gate.outputs.version }}-${{ matrix.target }}"
+          mkdir -p pkg_stage
+          cp dist/xarrtools pkg_stage/xarrtools
+          chmod +x pkg_stage/xarrtools
+          (cd pkg_stage && zip -r "../${PKG}.zip" xarrtools)
+          shasum -a 256 "${PKG}.zip" > "${PKG}.zip.sha256"
+          mkdir -p artifacts
+          mv "${PKG}.zip" "${PKG}.zip.sha256" artifacts/
+
+      - name: Package artifact (Windows)
+        if: runner.os == 'Windows'
+        shell: powershell
+        run: |
+          $pkg = "xarrtools-${{ needs.gate.outputs.version }}-${{ matrix.target }}.exe"
+          Copy-Item "dist/xarrtools.exe" -Destination $pkg
+          $hash = (Get-FileHash -Path $pkg -Algorithm SHA256).Hash.ToLower()
+          "$hash  $pkg" | Out-File -FilePath "${pkg}.sha256" -Encoding ascii
+          New-Item -ItemType Directory -Path artifacts -Force
+          Move-Item $pkg, "${pkg}.sha256" -Destination artifacts/
+
+      - name: Upload binary artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: binary-${{ matrix.target }}
+          path: artifacts/*
+
+  docker:
+    name: Build Docker (multi-arch)
+    needs: gate
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        if: needs.gate.outputs.dry_run == 'false'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/devicenul/xarrtools
+          tags: |
+            type=semver,pattern={{version}},value=${{ needs.gate.outputs.version }}
+            type=semver,pattern={{major}}.{{minor}},value=${{ needs.gate.outputs.version }}
+            type=raw,value=latest,enable=${{ needs.gate.outputs.is_prerelease == 'false' && needs.gate.outputs.dry_run == 'false' }}
+            type=sha
+
+      - name: Build and push multi-arch image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: ${{ needs.gate.outputs.dry_run == 'false' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            VERSION=${{ needs.gate.outputs.version }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Smoke test container locally
+        run: |
+          docker build -t xarrtools:release-smoke --build-arg VERSION="${{ needs.gate.outputs.version }}" .
+          mkdir -p /tmp/release-config && chmod 777 /tmp/release-config
+          docker run -d --name release-smoke -p 5000:5000 -v /tmp/release-config:/config xarrtools:release-smoke
+          for i in $(seq 1 30); do
+            if python3 -c "import urllib.request, json; data=json.load(urllib.request.urlopen('http://127.0.0.1:5000/api/health', timeout=3)); assert data.get('status') == 'ok'" 2>/dev/null; then
+              echo "Release Docker smoke test passed on attempt $i!"
+              docker stop release-smoke || true
+              docker rm release-smoke || true
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "Release Docker smoke test timed out!"
+          docker logs release-smoke
+          docker stop release-smoke || true
+          docker rm release-smoke || true
+          exit 1
+
+  release:
+    name: Publish Release
+    needs: [gate, binaries, docker]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      packages: write
+    steps:
+      - name: Download all binary artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release-artifacts
+          merge-multiple: true
+
+      - name: Inspect artifacts
+        run: |
+          ls -la release-artifacts/
+
+      - name: Handle dry run
+        if: needs.gate.outputs.dry_run == 'true'
+        run: |
+          echo "Dry run completed successfully. Artifacts verified. Skipping GitHub Release publication."
+
+      - name: Create GitHub Release
+        if: needs.gate.outputs.dry_run == 'false'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          PRE_FLAG=""
+          if [ "${{ needs.gate.outputs.is_prerelease }}" = "true" ]; then
+            PRE_FLAG="--prerelease"
+          fi
+          gh release create "$TAG" release-artifacts/* \
+            --title "xarrtools ${TAG}" \
+            --generate-notes \
+            $PRE_FLAG
