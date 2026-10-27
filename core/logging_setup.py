@@ -67,6 +67,9 @@ def _get_configured_secrets() -> Set[str]:
         srv_key = config._get_setting("api_key")
         if srv_key and len(str(srv_key).strip()) >= 4:
             secrets.add(str(srv_key).strip())
+        auth_pw = os.environ.get("XARRTOOLS_AUTH_PASSWORD")
+        if auth_pw and len(str(auth_pw).strip()) >= 4:
+            secrets.add(str(auth_pw).strip())
     except Exception:
         pass
     return secrets

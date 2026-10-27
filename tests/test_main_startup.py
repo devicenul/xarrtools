@@ -47,3 +47,25 @@ def test_run_server_mode_starts_server_and_browser_when_free():
         main.run_server_mode(debug=True, port=5999)
     timer.assert_called_once()
     start.assert_called_once_with(port=5999, debug=True)
+
+
+def test_run_server_mode_no_browser():
+    with patch.object(main, "port_in_use", return_value=False), \
+         patch.object(main, "start_server") as start, patch.object(main, "Timer") as timer:
+        main.run_server_mode(port=5999, no_browser=True)
+    timer.assert_not_called()
+    start.assert_called_once_with(port=5999, debug=False)
+
+
+def test_run_server_mode_custom_host():
+    with patch.object(main, "port_in_use", return_value=False), \
+         patch.object(main, "start_server") as start, patch.object(main, "Timer") as timer:
+        main.run_server_mode(port=5000, host="0.0.0.0", no_browser=True)
+    timer.assert_not_called()
+    start.assert_called_once_with(port=5000, debug=False, host="0.0.0.0")
+
+
+def test_open_browser_custom_host():
+    with patch("webbrowser.open") as mock_open:
+        main.open_browser(port=5000, host="192.168.1.100")
+        mock_open.assert_called_once_with("http://192.168.1.100:5000")

@@ -10,9 +10,11 @@ from typing import Dict, List, Set
 
 from dotenv import load_dotenv
 
-# Try to find and load a .env file in the workspace directory (or executable directory if compiled)
+# Try to find and load a .env file in the workspace directory (or executable directory if compiled, or XARRTOOLS_CONFIG_DIR)
 if getattr(sys, 'frozen', False):
     dotenv_path = Path(sys.executable).resolve().parent / '.env'
+elif os.environ.get("XARRTOOLS_CONFIG_DIR"):
+    dotenv_path = Path(os.environ["XARRTOOLS_CONFIG_DIR"]).resolve() / '.env'
 else:
     dotenv_path = Path(__file__).resolve().parent.parent / '.env'
 

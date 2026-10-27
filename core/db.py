@@ -19,9 +19,11 @@ from core.metadata import evaluate_item_state_transition
 
 logger = logging.getLogger("xarrtools.db")
 
-# Store database in the project root folder (or executable directory if compiled)
+# Store database in the project root folder (or executable directory if compiled, or XARRTOOLS_CONFIG_DIR)
 if getattr(sys, 'frozen', False):
     DB_PATH: Path = Path(sys.executable).resolve().parent / "xarrtools.db"
+elif os.environ.get("XARRTOOLS_CONFIG_DIR"):
+    DB_PATH = Path(os.environ["XARRTOOLS_CONFIG_DIR"]).resolve() / "xarrtools.db"
 else:
     DB_PATH = Path(__file__).resolve().parent.parent / "xarrtools.db"
 
@@ -32,6 +34,7 @@ LETTERBOXD_DEFAULT_URL: str = "https://letterboxd.com/films/popular/this/week/si
 
 def get_db_connection() -> sqlite3.Connection:
     """Establishes and returns a connection to the SQLite database with Row factory."""
+    DB_PATH.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(DB_PATH, timeout=5)
     conn.isolation_level = None
     conn.row_factory = sqlite3.Row
@@ -44,6 +47,7 @@ def get_db_connection() -> sqlite3.Connection:
 def init_db() -> None:
     """Creates settings, cache, and custom_feeds tables, and migrates existing settings/columns."""
     parent_dir = DB_PATH.parent
+    parent_dir.mkdir(parents=True, exist_ok=True)
     if not os.access(parent_dir, os.W_OK):
         logger.error(f"Database parent directory {parent_dir} is not writable. UID: {os.getuid()}, GID: {os.getgid()}")
         print(f"ERROR: Database parent directory {parent_dir} is not writable. UID: {os.getuid()}, GID: {os.getgid()}", file=sys.stderr)

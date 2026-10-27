@@ -1,5 +1,6 @@
 # Development, test and build tooling (installed by init.* alongside requirements.txt)
 -r requirements.txt
+-r requirements-gui.txt
 pytest
 pytest-cov
 pyinstaller

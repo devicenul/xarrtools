@@ -2,6 +2,7 @@
 import os
 import sys
 import json
+import hmac
 import threading
 import logging
 from pathlib import Path
@@ -136,7 +137,28 @@ def is_incomplete_metadata(item: Dict[str, Any]) -> bool:
 
 @app.before_request
 def enforce_api_key() -> Optional[RouteResponse]:
-    """Validates X-API-Key header for state-mutating API requests."""
+    """Validates optional HTTP Basic Auth and X-API-Key header for API requests."""
+    # Health endpoint is always unauthenticated
+    if request.path == "/api/health":
+        return None
+
+    # Check optional HTTP Basic Auth
+    auth_user = os.environ.get("XARRTOOLS_AUTH_USER")
+    auth_password = os.environ.get("XARRTOOLS_AUTH_PASSWORD")
+    if auth_user and auth_password:
+        auth = request.authorization
+        if not auth or auth.type != "basic" or not auth.username or auth.password is None:
+            resp = jsonify({"status": "error", "message": "Unauthorized"})
+            resp.headers["WWW-Authenticate"] = 'Basic realm="xarrtools"'
+            return resp, 401
+
+        user_ok = hmac.compare_digest(auth.username.encode("utf-8"), auth_user.encode("utf-8"))
+        pass_ok = hmac.compare_digest(auth.password.encode("utf-8"), auth_password.encode("utf-8"))
+        if not (user_ok and pass_ok):
+            resp = jsonify({"status": "error", "message": "Unauthorized"})
+            resp.headers["WWW-Authenticate"] = 'Basic realm="xarrtools"'
+            return resp, 401
+
     if request.method in ["POST", "PUT", "DELETE"] and request.path.startswith("/api/"):
         api_key = request.headers.get("X-API-Key")
         server_api_key = config._get_setting("api_key")
@@ -146,9 +168,25 @@ def enforce_api_key() -> Optional[RouteResponse]:
             set_setting("api_key", server_api_key)
             config.refresh()
             
-        if not api_key or api_key != server_api_key:
+        if not api_key or not hmac.compare_digest(api_key, server_api_key):
             return jsonify({"status": "error", "message": "Unauthorized"}), 401
     return None
+
+@app.route("/api/health", methods=["GET"])
+def health_check() -> RouteResponse:
+    """Unauthenticated health check endpoint for container and uptime probes."""
+    try:
+        conn = get_db_connection()
+        try:
+            cursor = conn.cursor()
+            cursor.execute("SELECT 1")
+            cursor.fetchone()
+        finally:
+            conn.close()
+        return jsonify({"status": "ok"}), 200
+    except Exception as e:
+        logger.error(f"Health check database failure: {e}")
+        return jsonify({"status": "error", "message": "Database unavailable"}), 503
 
 @app.route("/")
 def index() -> str:
@@ -1860,17 +1898,19 @@ def restore_default_feeds_route() -> RouteResponse:
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
 
-def start_server(port: int = 5000, debug: bool = False) -> None:
+def start_server(port: int = 5000, debug: bool = False, host: Optional[str] = None) -> None:
     """Starts the Flask web server."""
+    if host is None:
+        host = os.environ.get("XARRTOOLS_HOST", "127.0.0.1")
     from core.logging_setup import setup_logging
     setup_logging(level="DEBUG" if debug else None)
     if debug:
-        logger.info(f"Starting xarrtools server in DEBUG mode at http://localhost:{port}...")
-        app.run(host="127.0.0.1", port=port, debug=True)
+        logger.info(f"Starting xarrtools server in DEBUG mode at http://{host}:{port}...")
+        app.run(host=host, port=port, debug=True)
     else:
-        logger.info(f"Starting xarrtools production server at http://localhost:{port}...")
+        logger.info(f"Starting xarrtools production server at http://{host}:{port}...")
         try:
             from waitress import serve
-            serve(app, host="127.0.0.1", port=port, threads=8)
+            serve(app, host=host, port=port, threads=8)
         except ImportError:
-            app.run(host="127.0.0.1", port=port, debug=False)
+            app.run(host=host, port=port, debug=False)

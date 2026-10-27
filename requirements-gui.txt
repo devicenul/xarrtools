@@ -1,0 +1,2 @@
+# GUI-specific desktop dependencies (pywebview)
+pywebview>=5.0.0

@@ -7,7 +7,10 @@ import ctypes
 import logging
 from pathlib import Path
 from typing import Optional, Any, Dict, Union, Tuple, List, Sequence
-import webview
+try:
+    import webview
+except ImportError:
+    webview = None  # type: ignore
 
 logger = logging.getLogger("xarrtools.gui")
 
@@ -20,6 +23,8 @@ class DesktopApi:
     def save_file(self, url: str, filename: str = "") -> Dict[str, Any]:
         """Prompts the user with a native Save File dialog and streams the file from the local server."""
         try:
+            if webview is None:
+                return {"status": "error", "message": "pywebview is not installed"}
             window = webview.active_window()
             if not window and len(webview.windows) > 0:
                 window = webview.windows[0]
@@ -134,6 +139,8 @@ def get_icon_path() -> Optional[str]:
 
 def ensure_gui_available() -> None:
     """Verifies that a graphical display and a supported pywebview backend exist before starting a server."""
+    if webview is None:
+        raise RuntimeError("pywebview is not installed; install requirements-gui.txt to use the desktop GUI.")
     import os
     import logging
 
