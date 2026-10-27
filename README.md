@@ -254,8 +254,18 @@ The **Settings** dialog includes tools to maintain your setup over time:
 - **Privacy & Credentials**: xarrtools runs entirely on your own hardware. Your API keys, passwords, database, and cached media stay local. The app only communicates with your configured Radarr/Sonarr servers, TMDB (if enabled), and public release feed endpoints.
 - **Network Security**: If you expose xarrtools on your home network or behind a domain, set `XARRTOOLS_AUTH_USER` and `XARRTOOLS_AUTH_PASSWORD` to enable HTTP Basic Authentication, and place the app behind a reverse proxy (such as Nginx, Caddy, or Traefik) configured with HTTPS.
 - **Data Storage**:
-  - In desktop and local source mode, the database (`xarrtools.db`), poster cache (`posters/`), and logs (`logs/`) reside in your project directory (or next to the frozen executable).
-  - In Docker, all persistent state lives inside your mounted `/config` volume.
+  - When installed via `pip` or `pipx` (from a wheel or source distribution), persistent application state (`xarrtools.db`, `.env`, `posters/`, and `logs/`) is automatically stored in your platform-standard user application data directory:
+    - **macOS**: `~/Library/Application Support/xarrtools`
+    - **Windows**: `%APPDATA%\xarrtools` (fallback: `~\AppData\Roaming\xarrtools`)
+    - **Linux / other**: `$XDG_DATA_HOME/xarrtools` (fallback: `~/.local/share/xarrtools`)
+    - You can locate your active data directory at any time by running:
+      ```bash
+      python -c "from xarrtools.core.paths import get_data_dir; print(get_data_dir())"
+      ```
+  - In local development checkouts and editable installs (`pip install -e .`), data files reside directly at the repository root.
+  - In standalone desktop binary mode (PyInstaller), data files reside in the directory containing the executable.
+  - In Docker, all persistent state lives inside your mounted `/config` volume (controlled by `XARRTOOLS_CONFIG_DIR=/config`).
+  - You can override the data directory in any environment by setting the `XARRTOOLS_CONFIG_DIR` environment variable.
   - Log files automatically rotate at ~1MB with a single backup file (`xarrtools.log` and `xarrtools.log.1`), preventing unbounded disk growth.
 
 ---

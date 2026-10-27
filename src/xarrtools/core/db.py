@@ -16,20 +16,14 @@ from typing import Any, Dict, List, Optional, Set, Tuple, Union
 
 from xarrtools.core.locales import slug
 from xarrtools.core.metadata import evaluate_item_state_transition
+from xarrtools.core.paths import get_data_dir
 
 logger = logging.getLogger("xarrtools.db")
 
-# Store database in the project root folder (or executable directory if compiled, or XARRTOOLS_CONFIG_DIR)
-if getattr(sys, 'frozen', False):
-    DB_PATH: Path = Path(sys.executable).resolve().parent / "xarrtools.db"
-elif os.environ.get("XARRTOOLS_CONFIG_DIR"):
-    DB_PATH = Path(os.environ["XARRTOOLS_CONFIG_DIR"]).resolve() / "xarrtools.db"
-else:
-    # In source mode, place xarrtools.db at the repository root (not inside src/
-    # and not inside site-packages).
-    # Note: This source-tree root computation will be revisited when the project
-    # is packaged for pip/wheel distribution (e.g. defaulting to a platform app-data dir).
-    DB_PATH = Path(__file__).resolve().parent.parent.parent.parent / "xarrtools.db"
+# Store database in the application data directory (resolved via get_data_dir:
+# sys.frozen executable dir, XARRTOOLS_CONFIG_DIR override, repository root in source/editable mode,
+# or platform-specific user application data directory when installed as a wheel).
+DB_PATH: Path = get_data_dir() / "xarrtools.db"
 
 TVMAZE_SCHEDULE_URL: str = "https://api.tvmaze.com/schedule/full"
 TMDB_DISCOVER_URL: str = "https://api.themoviedb.org/3/discover/movie"

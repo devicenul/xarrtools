@@ -36,14 +36,16 @@ This document tracks planned future functionality, architectural changes, and us
   - Package `xarrtools` as an AppImage or Flatpak bundle embedding WebKitGTK and native window dependencies.
 - **Code files involved**: [scripts/build.py](scripts/build.py), [src/xarrtools/gui/gui.py](src/xarrtools/gui/gui.py).
 
-### 5. PyPI: Default Data Directory When Installed From a Wheel
-- **Goal**: When installed from a wheel/sdist into a non-editable Python site-packages directory without `XARRTOOLS_CONFIG_DIR` set, default database, logs, posters, and `.env` to a standard platform application data directory (e.g. `~/.local/share/xarrtools` on Linux, `~/Library/Application Support/xarrtools` on macOS, `%APPDATA%\xarrtools` on Windows via `platformdirs`) instead of resolving to site-packages.
-- **Context**: In source checkouts, editable installs (`pip install -e .`), Docker containers (`/config`), and frozen PyInstaller binaries (`sys.executable.parent`), the data directories are correctly positioned and unchanged.
-- **Code files involved**: [src/xarrtools/core/db.py](src/xarrtools/core/db.py), [src/xarrtools/core/logging_setup.py](src/xarrtools/core/logging_setup.py), [src/xarrtools/core/posters.py](src/xarrtools/core/posters.py).
-
----
-
 ## Completed Features
+
+### ✓ PyPI: Default Data Directory When Installed From a Wheel
+- Clean standard-library path resolution ([src/xarrtools/core/paths.py](src/xarrtools/core/paths.py)) with zero external dependencies (`get_data_dir()`).
+- Automatic routing of SQLite database (`xarrtools.db`), configuration (`.env`), poster disk cache (`posters/`), and rotating logs (`logs/`) to platform-standard user application data directories:
+  - macOS: `~/Library/Application Support/xarrtools`
+  - Windows: `%APPDATA%\xarrtools` (with fallback to `~\AppData\Roaming\xarrtools`)
+  - Linux/other: `$XDG_DATA_HOME/xarrtools` (with fallback to `~/.local/share/xarrtools`)
+- Top-precedence preservation for PyInstaller frozen binaries (`sys.executable.parent`), Docker / explicit configuration (`XARRTOOLS_CONFIG_DIR`), and development source checkouts / editable installs (`pip install -e .`) locating files at the repository root.
+- Robust misdetection guards preventing site-packages or virtual environments nested within repository parent folders from falsely resolving to the repository root.
 
 ### ✓ Automated Builds, GitHub Releases & Container Publishing
 - Multi-platform GitHub Actions CI matrix testing Python 3.10 and 3.12 on Ubuntu, macOS, and Windows with pip/npm caching, type checking (`mypy`), and Docker smoke testing.

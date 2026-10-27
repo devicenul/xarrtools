@@ -46,8 +46,8 @@ def get_log_dir() -> Path:
     elif os.environ.get("XARRTOOLS_LOG_DIR"):
         target = Path(os.environ["XARRTOOLS_LOG_DIR"])
     else:
-        from xarrtools.core.db import DB_PATH
-        target = DB_PATH.resolve().parent / "logs"
+        from xarrtools.core.paths import get_data_dir
+        target = get_data_dir() / "logs"
     target.mkdir(parents=True, exist_ok=True)
     return target
 

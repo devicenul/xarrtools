@@ -39,6 +39,7 @@ Read this file first, then [docs/architecture.md](docs/architecture.md) (how it 
 | `src/xarrtools/core/posters.py` | Local poster disk cache, metadata sidecars, and SSRF-safe download helpers |
 | `src/xarrtools/core/metadata.py` | Missing-metadata rules and the auto-archive state machine |
 | `src/xarrtools/core/locales.py` | Language/country normalisation and the Unicode-aware `slug()` title key |
+| `src/xarrtools/core/paths.py` | Application data directory resolution (`get_data_dir`), wheel/pip fallback, and repo root detection |
 | `src/xarrtools/core/scheduler.py` | Background refresh calculation helpers, due-check, and time-of-day parsing |
 | `src/xarrtools/core/logging_setup.py` | Central logging setup, credential redaction filter/formatter, rotation (max 2 files) |
 | `src/xarrtools/core/version.py` | Application version definition and release build stamping |

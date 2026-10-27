@@ -10,16 +10,12 @@ from typing import Dict, List, Set
 
 from dotenv import load_dotenv
 
-# Try to find and load a .env file in the workspace directory (or executable directory if compiled, or XARRTOOLS_CONFIG_DIR)
-if getattr(sys, 'frozen', False):
-    dotenv_path = Path(sys.executable).resolve().parent / '.env'
-elif os.environ.get("XARRTOOLS_CONFIG_DIR"):
-    dotenv_path = Path(os.environ["XARRTOOLS_CONFIG_DIR"]).resolve() / '.env'
-else:
-    # In source mode, locate .env at the repository root (not inside src/).
-    # Note: This source-tree root computation will be revisited when the project
-    # is packaged for pip/wheel distribution.
-    dotenv_path = Path(__file__).resolve().parent.parent.parent.parent / '.env'
+from xarrtools.core.paths import get_data_dir
+
+# Locate and load .env file from the application data directory (resolved via get_data_dir:
+# sys.frozen executable dir, XARRTOOLS_CONFIG_DIR override, repository root in source/editable mode,
+# or platform-specific user application data directory when installed as a wheel).
+dotenv_path: Path = get_data_dir() / '.env'
 
 load_dotenv(dotenv_path=dotenv_path)
 

@@ -51,6 +51,25 @@ display (`date_str`, `date_obj`, `description`, `poster_url`, `trailer`, `genres
 `source_feed_id`. Other tables: `custom_feeds`, `settings` (key/value incl. one-time migration flags and the TMDB
 key). Columns are added to old DBs automatically by `init_db` (`expected_cols`).
 
+## Data Storage and Path Resolution (`src/xarrtools/core/paths.py`)
+
+All persistent application state (`xarrtools.db`, `.env`, `posters/` disk cache, and rotating `logs/`) resolves through `src/xarrtools/core/paths.py::get_data_dir()`.
+
+Resolution precedence order:
+1. **PyInstaller frozen binary** (`sys.frozen`): resolved to the executable directory (`Path(sys.executable).resolve().parent`).
+2. **Explicit environment override** (`XARRTOOLS_CONFIG_DIR`): resolved and created on demand (e.g. `/config` inside Docker containers).
+3. **Source checkout or editable install**: detected by locating `pyproject.toml` and validating that `<repo>/src/xarrtools` matches the executing package. Data files reside directly at the repository root.
+4. **Standard per-user application data directory** (wheel / pip installs in site-packages), created on first use with private permissions (`0o700` on POSIX):
+   - **macOS**: `~/Library/Application Support/xarrtools`
+   - **Windows**: `%APPDATA%\xarrtools` (fallback: `~\AppData\Roaming\xarrtools`)
+   - **Linux / other POSIX**: `$XDG_DATA_HOME/xarrtools` (fallback: `~/.local/share/xarrtools`)
+
+Dependent locations:
+- `xarrtools.core.db.DB_PATH` = `<data_dir>/xarrtools.db`
+- `xarrtools.core.config.dotenv_path` = `<data_dir>/.env`
+- `xarrtools.core.logging_setup.get_log_dir()` = `XARRTOOLS_LOG_DIR` if set, else `<data_dir>/logs`
+- `xarrtools.core.posters.get_posters_dir()` = `Path(DB_PATH).resolve().parent / "posters"`
+
 ## Archiving state machine (`src/xarrtools/core/metadata.py`)
 
 - Auto-archive when **>= 2 of** {title, network, cast, plot} are missing; un-archive (with a "New metadata"
