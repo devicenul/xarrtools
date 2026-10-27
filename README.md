@@ -1,275 +1,300 @@
-# xarrtools 🍿
+# xarrtools
 
-An interactive web-based and CLI media discovery manager designed to scrape upcoming/recent movie and TV releases, enrich them with rich metadata (cast, genre, trailer, studio network), cache them in a local SQLite database, and add them to **Radarr** and **Sonarr** instances.
+xarrtools is a companion app for Radarr and Sonarr. It tracks upcoming and new TV shows and movies across multiple feeds, checks them against your existing library, and lets you triage the list so you can add what you want to your servers in a single click.
 
----
-
-## Key Features
-
-1. **Dual Themes (Dark & Light Modes)**: A modern, premium interface. Toggle between a neomorphic dark cyberpunk theme with glowing cyan/magenta accents and a sleek HSL light theme, complete with optimized light logo assets (`logo_light.png`, `favicon_light.png`). Themes can be switched instantly with a button next to settings and persist in `localStorage`.
-2. **Non-Blocking Background Scanning & Detailed Progress**: Scraping and re-indexing run asynchronously. A bottom-right floating progress toast displays real-time details (e.g., `"Fetching metadata for X (3 of 15)"`) and a progress bar. Hitting scan or starting up doesn't lock the UI, letting you search or archive cached items during updates.
-3. **Collapsible Recent Activity logs**: Recent logs scroll within a dedicated panel that is collapsed by default to save sidebar space, keeping configurations visible.
-4. **Metadata Enrichment & Vector Spinners**: Automatically matches Metacritic and DVD release calendars with TMDB, TVDB, and IMDb IDs—fetching plots, cast, ratings, and trailers. Single card metadata can be refreshed with transparent, circular SVG vector icons that spin cleanly without background boxes.
-5. **Persistent Local Database Cache**: Caches scraped discoveries in a local SQLite database (`xarrtools.db`) to ensure instant load times. Caches are automatically pruned if older than 12 months.
-6. **Missing Data Healing on Scans**: During new scans, the backend automatically detects incomplete cached entries (e.g. missing posters, ratings, or IDs) and re-enriches them from live APIs. A 24-hour rate limit check prevents redundant lookups.
-7. **Interactive Match Selector**: First-click on "Add" initiates a search across indexers, highlights the best matches, and lets you choose the exact movie or series to add.
-8. **Radarr Movie Collection / Box Set Exposure**: Exposes whether a movie belongs to a TMDb collection (e.g., *The Matrix Collection*) with styled badges, allowing you to monitor the entire box set in Radarr via a "Track Collection" option.
-9. **Dynamic & Persistent Library Checking**: Automatically matches discovery items against live Radarr/Sonarr libraries using strict ID matching (matching TVDB/TMDB ID or IMDb ID) to guarantee 100% accuracy. Library statuses are persisted in the local SQLite database cache, defaulting to the cached states when offline or running in Sandbox/Demo mode.
-10. **Archive Feature**: Archive release discoveries to hide clutter without affecting your Sonarr/Radarr indexers.
-11. **Global Search next to status badges**: Locate any movie or show globally using a glowing, cyan-themed navigation button next to the Radarr and Sonarr status badges in the sidebar.
-12. **Interactive Filter Controls**: 
-    - Text search input clear buttons `(x)` to instantly reset search fields.
-    - Vertically stacked multiselect dropdowns for Genres and Studios/Networks, populated dynamically from current discovery lists, with one-click "Clear All" buttons.
-13. **Robust Settings Dialog**: Update server URLs, API keys, default months, default filter behaviors, and perform database maintenance directly from the dashboard. Maintains a stable height and width during tab transitions.
-14. **Rich CLI Version**: A terminal-based version of the tool with rich table layout formatting.
-15. **Standalone Demo Sandbox Mode**: Fully browse, search, and configure addition settings (folders and profiles) using mock data without configuring Radarr or Sonarr servers. Automatically launches Settings modal on unconfigured startups and renders a glowing "Demo Active" badge in the header.
-16. **Clickable Poster Links**: Wrap movie and series poster graphics in deep links to external resources (IMDb/TVDB) in new tabs.
-17. **Interface Theme Sync dropdown**: Add a setting dropdown inside settings view tab to swap dark/light themes, fully synchronized in real-time with the header toggler.
-18. **Background Scheduled Refreshes**: Automatically refresh discoveries from all configured feeds on a customizable interval (1-168h) or daily local time without third-party cron dependencies, with immediate "Run Now" controls, status tracking, and toast notifications when new items arrive.
-19. **Structured Logging & Diagnostics**: Standardized hierarchical logging across all components with automatic credential redaction (masking API keys, tokens, and query credentials). Includes capped log file rotation (~1MB, max 2 files: `xarrtools.log` and `xarrtools.log.1`), configurable live log level (DEBUG/INFO/WARNING/ERROR) via the Settings UI without restarts, and a one-click sanitized log ZIP download.
-
+If you run Radarr or Sonarr at home, you know the drill: finding out about new releases usually means browsing several websites, remembering what you wanted, checking whether you already downloaded it, and manually typing names into search bars. xarrtools puts that whole discovery and intake workflow in one place.
 
 ---
 
-## Codebase Structure
+## What It Does
 
-```
-xarrtools/
-│
-├── main.py                     # Entry point. Launches Desktop GUI, Web Server, or CLI mode
-├── init.sh / init.bat / init.ps1 # Cross-platform project initialization scripts
-├── run.sh / run.bat / run.ps1  # Cross-platform automated startup launchers
-├── build.py                         # Cross-platform PyInstaller build logic
-├── build.sh / build.bat / build.ps1 # Thin wrappers: ensure the venv (init.*) then run build.py
-├── Dockerfile                  # Multi-stage container build (Node.js + Python 3.12-slim)
-├── docker-compose.yml          # Container orchestration template with /config volume
-├── requirements.txt            # Runtime dependencies (headless-clean)
-├── requirements-gui.txt        # Desktop GUI dependencies (pywebview)
-├── requirements-dev.txt        # Test + build tooling (pytest, pytest-cov, pyinstaller)
-├── README.md                   # System documentation
-├── ROADMAP.md                  # Project roadmap and completed features log
-├── .gitignore                  # Git untracked pattern definitions
-│
-├── core/                       # Shared Domain Logic & Database layer
-│   ├── __init__.py
-│   ├── backup.py               # Full archive ZIP export/import and checksum verifier
-│   ├── client.py               # Radarr & Sonarr REST API wrappers
-│   ├── config.py               # Dynamic settings accessor (DB with .env fallback)
-│   ├── db.py                   # SQLite Cache & Settings database manager
-│   ├── enricher.py             # Metadata crawler (TVDB, TMDB, IMDb matching)
-│   ├── logging_setup.py        # Central structured logging, credential masking & rotation
-│   ├── posters.py              # Poster disk cache and SSRF-safe download helpers
-│   ├── scheduler.py            # Background refresh calculations and due-checks
-│   └── scraper.py              # Metacritic / Release calendar HTML scrapers
-│
-├── web/                        # Web Backend (Flask) & Frontend Assets
-│   ├── __init__.py
-│   ├── server.py               # Flask web server and API controllers
-│   ├── static/                 # Frontend TypeScript source and compiled dist assets
-│   │   └── src/                # Modular TypeScript frontend source
-│   └── templates/              # Web Frontend HTML, CSS, images
-│       ├── index.html          # Dashboard skeleton structure and overlays
-│       ├── style.css           # Premium glassmorphism styles and transitions
-│       ├── logo_light.png      # Light theme cropped logo
-│       └── favicon_light.png   # Light theme cropped favicon
-│
-└── cli/                        # Command Line Interface (CLI) application
-    ├── __init__.py
-    └── cli.py                  # Rich Console terminal implementation
-```
+- **Discovers upcoming and new media**: Scrapes TV premieres, DVD and streaming release dates, and optional TMDB lists into a clean, searchable feed.
+- **Enriches with metadata**: Pulls in plots, cast, genres, networks, trailers, and ratings from IMDb, Metacritic, and Rotten Tomatoes.
+- **Spots what you already have**: Matches incoming titles against your live Radarr and Sonarr libraries by unique IDs (TMDB, TVDB, IMDb) so your existing media stays hidden by default.
+- **Filters the noise**: Hide returning seasons to focus on brand-new shows, filter by genre, network, country, or language, and archive anything you are not interested in.
+- **One-click intake**: Pick your quality profile and root folder, then send titles directly to Radarr or Sonarr to start monitoring and searching right away.
 
 ---
 
-## Detailed Component Guide
+## 1. Get It Running
 
-### [main.py](file:///d:/Workspaces/Projects/xarrtools/main.py)
-Determines whether to start the server or launch CLI mode based on input flags. By default, it schedules a timer to open your default browser to `http://localhost:5000` and starts the Flask server.
+You can run xarrtools as a desktop app on your computer, as a Docker container on your NAS or home server, or directly from source.
 
-### [core/db.py](file:///d:/Workspaces/Projects/xarrtools/core/db.py)
-Performs database initialization (`init_db`) creating the `settings` and `cache` tables. 
-- If the settings table is empty, it migrates variables from `.env` to seed the database.
-- Implements settings getter/setter, cache search, and archiving states.
-- Automatically cleans expired cache entries older than 365 days on launch (`clean_expired_cache`).
+### Desktop App (macOS, Windows, Linux)
 
-### [core/config.py](file:///d:/Workspaces/Projects/xarrtools/core/config.py)
-Provides a global configuration manager. Properties like `radarr_url` and `sonarr_api_key` retrieve settings dynamically from the SQLite `settings` table, falling back to local environment variables if settings are missing or uninitialized.
+Grab the latest standalone package for your operating system from [GitHub Releases](https://github.com/devicenul/xarrtools/releases):
 
-### [core/client.py](file:///d:/Workspaces/Projects/xarrtools/core/client.py)
-Implements robust wrappers (`RadarrClient` and `SonarrClient`) to perform CRUD actions against Radarr and Sonarr instances. Employs `get_library()` to obtain whole libraries in single queries, accelerating status resolution. `RadarrClient.add_movie` supports collection tracking using the `"monitor": "movieAndCollection"` flag.
-
-### [core/scraper.py](file:///d:/Workspaces/Projects/xarrtools/core/scraper.py)
-Scrapes TV premiers from Metacritic's calendars and movie schedules from DVD Release calendars. Normalizes scraped titles for matching.
-
-### [core/enricher.py](file:///d:/Workspaces/Projects/xarrtools/core/enricher.py)
-Uses public metadata sources (TMDB/TVDB/Wikipedia/YouTube) to find best-fit IDs, network/studio info, cast lists, genre taggings, ratings (IMDb, Metacritic, Rotten Tomatoes), and trailer URLs.
-
-### [web/server.py](file:///d:/Workspaces/Projects/xarrtools/web/server.py)
-The web server module. Exposes:
-- `GET /api/config`: Resolves target root folders and profiles from Radarr/Sonarr.
-- `GET/POST /api/settings`: Manages DB configurations.
-- `POST /api/archive`: Persists archiving selections.
-- `GET /api/discover`: Aggregates, heals, and filters scraper outputs against DB cache records.
-- `GET /api/scan/progress`: Exposes thread-safe progress metrics of running background scans.
-- `POST /api/cache/refresh`: Forces live API metadata re-enrichment for a single cache item.
-- `POST /api/cache/prune`: Manually triggers pruning of cache entries older than 12 months.
-- `POST /api/cache/clear`: Manually wipes all cache records.
-- `GET /api/lookup`: Searches indexers for a title.
-- `POST /api/add`: Deploys media items (optionally collections) to Radarr or Sonarr.
-
-### [cli/cli.py](file:///d:/Workspaces/Projects/xarrtools/cli/cli.py)
-Interactive command line interface built using the `rich` library. Supports searching, listing configuration status, discovering new releases, and bulk adding items to Radarr or Sonarr directly from the terminal.
-
----
-
-## Quick Start (Cross-Platform Initialization & Launch)
-
-### 1. Initialize the Project
-Run the initialization script for your platform to create the Python virtual environment (with automatic `$HOME/.cache` `ext4` fallback on Android/FUSE shared storage), install runtime, test and build dependencies (`requirements.txt` plus `requirements-dev.txt`: `pytest`, `pytest-cov`, `pyinstaller`), generate `.env` from `.env.example`, and initialize the SQLite database (`xarrtools.db`):
-
-- **Linux / macOS / Android Linux VM (Bash)**:
-  ```bash
-  ./init.sh
-  ```
-- **Windows (Command Prompt / Batch)**:
-  ```cmd
-  init.bat
-  ```
-- **PowerShell (Windows PowerShell / Cross-Platform `pwsh`)**:
-  ```powershell
-  ./init.ps1
-  ```
-
-### 2. Launch the Application
-Use the platform launcher script (which automatically runs initialization if needed and forwards any CLI flags to `main.py`):
-
-- **Linux / macOS / Android Linux VM (Bash)**:
-  ```bash
-  ./run.sh            # Default standalone GUI (with browser fallback)
-  ./run.sh --server   # Web server mode
-  ./run.sh --cli      # Interactive Rich terminal CLI mode
-  ```
-- **Windows (Command Prompt / Batch)**:
-  ```cmd
-  run.bat
-  ```
-- **PowerShell**:
-  ```powershell
-  ./run.ps1
-  ```
-
----
-
-## Usage Modes
-
-### Web Interface Mode
-Launch the application:
-```bash
-python main.py --server
-```
-Open [http://localhost:5000](http://localhost:5000) in your browser.
-- **Scanning**: Use the sliders in the left panel to configure the date ranges, and click **Scan New Releases**. Background progress displays in the pop-over toast.
-- **Theme toggler**: Click the ☀️/🌙 icon in the header to switch between light mode and dark mode.
-- **Settings**: Click the ⚙️ icon in the top left header to view or update settings.
-- **Recent Activity**: Click the header in the sidebar panel to toggle log collapse states.
-- **Global Search**: Click the 🔎 **Search** navigation badge button next to the Radarr and Sonarr status indicators in the header to search the indexers directly.
-- **Filters & Search**: 
-  - Clear search queries quickly with the `(x)` clear buttons inside the inputs.
-  - Apply dynamic multi-select filters for Genres and Studios/Networks (stacked vertically in the sidebar) to narrow down card lists.
-  - Filter using default toggles (Show Returning Seasons, Show Library Items, Show Archived Items).
-- **Card Actions**: Click **Trailer** to preview, **Archive** to hide the card, refresh using the circular arrow icon, or **Add** to fetch indexer matches and open the download options modal (which defaults to "Add and Search").
-
-### CLI Mode
-Launch the CLI interface:
-```bash
-python main.py --cli
-```
-Allows searching and queueing downloads in a direct interactive command-line workflow.
-
-### Pre-Built Binaries (Standalone Executables)
-Pre-compiled standalone binaries with bundled dependencies are published with every GitHub Release:
 - **macOS (Apple Silicon)**: `xarrtools-<version>-macos-arm64.zip`
 - **macOS (Intel)**: `xarrtools-<version>-macos-x64.zip`
 - **Windows (x64)**: `xarrtools-<version>-windows-x64.exe`
 - **Linux (x64)**: `xarrtools-<version>-linux-x64.zip`
 
-Download the archive for your operating system from [GitHub Releases](https://github.com/devicenul/xarrtools/releases), extract it, and launch `xarrtools`.
+Extract the archive and run the executable.
 
 > [!NOTE]
-> **Unsigned Binaries**: The standalone executables are distributed directly without commercial code-signing certificates.
-> - **macOS (Gatekeeper)**: On first launch, macOS may report that the developer cannot be verified. Remove the quarantine attribute via terminal:
+> **First-Launch Notes for Unsigned Binaries**
+> 
+> Because release binaries are built directly on GitHub Actions without commercial code-signing certificates, your operating system may ask for confirmation on first launch:
+> 
+> - **macOS (Gatekeeper)**: macOS might report that the developer cannot be verified. Open Terminal, navigate to the extracted folder, and clear the quarantine attribute:
 >   ```bash
 >   xattr -d com.apple.quarantine xarrtools
 >   chmod +x xarrtools
 >   ```
-> - **Windows (SmartScreen)**: Windows Defender SmartScreen may display a warning. Click **More info** followed by **Run anyway**.
-> - **Linux Desktop Window**: PyInstaller bundles Python and application dependencies, but not external GTK/WebKit system libraries. If GTK/WebKit are installed on the host, `xarrtools` launches in a captive native window; otherwise, it falls back gracefully to headless server mode (`--server`) and opens your default web browser.
+> - **Windows (SmartScreen)**: Windows Defender SmartScreen may display a warning prompt. Click **More info**, then click **Run anyway**.
+> - **Linux**: If your desktop has GTK and WebKit libraries installed, xarrtools opens in a dedicated app window. If those system libraries are missing, it falls back to server mode and opens the interface in your default web browser.
 
-### Docker & Container Deployment
-Run xarrtools in a lightweight, unprivileged container on a NAS (Synology, Unraid, QNAP) or homelab server:
+### Docker & Docker Compose (NAS / Homelab)
 
-#### Using Official GHCR Image (Multi-Arch)
-Pre-built multi-arch images (`linux/amd64` and `linux/arm64`) are published to the GitHub Container Registry:
+If you run a home server or NAS (such as Unraid, TrueNAS, or Synology), Docker is the easiest way to run xarrtools.
+
+Pre-built multi-architecture images (`linux/amd64` and `linux/arm64`) are published to the GitHub Container Registry.
+
+#### Using Docker Run
+
 ```bash
-docker pull ghcr.io/devicenul/xarrtools:latest
 docker run -d \
   --name xarrtools \
   -p 5000:5000 \
-  -v "$(pwd)/config:/config" \
+  -v ./config:/config \
   -e XARRTOOLS_AUTH_USER="admin" \
   -e XARRTOOLS_AUTH_PASSWORD="your-strong-password" \
   ghcr.io/devicenul/xarrtools:latest
 ```
 
-#### Using Docker Compose (Recommended)
+#### Using Docker Compose
+
+Create a `docker-compose.yml` file (or use the one in this repository):
+
+```yaml
+services:
+  xarrtools:
+    image: ghcr.io/devicenul/xarrtools:latest
+    container_name: xarrtools
+    restart: unless-stopped
+    ports:
+      - "5000:5000"
+    volumes:
+      - ./config:/config
+    environment:
+      - XARRTOOLS_HOST=0.0.0.0
+      - XARRTOOLS_PORT=5000
+      - XARRTOOLS_CONFIG_DIR=/config
+      - XARRTOOLS_AUTH_USER=${XARRTOOLS_AUTH_USER:-}
+      - XARRTOOLS_AUTH_PASSWORD=${XARRTOOLS_AUTH_PASSWORD:-}
+```
+
+Run it with:
+
 ```bash
 docker compose up -d
 ```
 
-#### Building Container Locally
-```bash
-docker build -t xarrtools .
-docker run -d \
-  --name xarrtools \
-  -p 5000:5000 \
-  -v "$(pwd)/config:/config" \
-  -e XARRTOOLS_AUTH_USER="admin" \
-  -e XARRTOOLS_AUTH_PASSWORD="your-strong-password" \
-  xarrtools
-```
+Open your browser to `http://<your-server-ip>:5000`.
 
-#### Container Configuration
-- **Persistent Storage (`/config`)**: Maps your host storage to `/config` inside the container. The database (`xarrtools.db`), custom `.env` overrides, cached posters (`/config/posters`), and logs (`/config/logs`) are preserved here.
-- **Port Mapping**: Default port is `5000` (override via `XARRTOOLS_PORT`).
-- **Optional Basic Authentication**: When `XARRTOOLS_AUTH_USER` and `XARRTOOLS_AUTH_PASSWORD` environment variables are provided, all web routes and API endpoints (except `/api/health`) require HTTP Basic Authentication.
-- **Container Healthcheck**: Built-in Python health probe checks `/api/health` every 30 seconds to confirm database readiness without requiring external tools.
-- **Backup Portability**: Full ZIP and JSON backups can be imported and exported interchangeably between Docker containers and standalone desktop/CLI installations.
+**Docker configuration details:**
+- **Persistent storage (`/config`)**: Maps your host storage to `/config` in the container. The database (`xarrtools.db`), custom `.env` overrides, cached posters (`/config/posters`), and logs (`/config/logs`) are preserved here.
+- **Port**: Default port is `5000`. Adjust your port mapping or set `XARRTOOLS_PORT` if needed.
+- **Optional Basic Authentication**: When `XARRTOOLS_AUTH_USER` and `XARRTOOLS_AUTH_PASSWORD` environment variables are set, all web pages and API routes require HTTP Basic Authentication (the container health check probe at `/api/health` stays accessible without credentials).
 
----
+### Running from Source
 
-## Running Tests 🧪
+If you want to run directly from the repository:
 
-To execute the unit and integration tests with coverage:
+1. **Prerequisites**: Python 3.10+ (or 3.12) and Node.js 20+.
+2. **Initialize the environment**:
+   - **Linux / macOS**: `./init.sh`
+   - **Windows (Command Prompt)**: `init.bat`
+   - **Windows (PowerShell)**: `./init.ps1`
+   This sets up the Python virtual environment, installs runtime and development dependencies, creates your `.env` configuration file if needed, initializes the database, and compiles the frontend TypeScript assets.
+3. **Launch the application**:
+   - **Desktop window**: `./run.sh` (or `python main.py`)
+   - **Web server**: `./run.sh --server` (or `python main.py --server`)
+   - **Terminal CLI**: `./run.sh --cli` (or `python main.py --cli`)
 
-1. **Linux / macOS / Android Linux VM**:
-   ```bash
-   source ./init.sh --env-only
-   "$VENV_DIR/bin/pytest" --cov=core --cov=web --cov=cli tests/ --cov-report=term-missing
-   ```
-2. **Windows**:
-   ```cmd
-   .venv\Scripts\pytest --cov=core --cov=web --cov=cli tests/ --cov-report=term-missing
-   ```
-3. This runs the comprehensive test suite (testing all scrapers, config accessors, database helpers, Flask API controllers, and Rich CLI logic) against a temporary SQLite database with all external REST integrations mocked for clean, hermetic execution.
+Helpful startup flags for `main.py`:
+- `--gui` / `-g`: Launch the desktop window (default).
+- `--server` / `-s`: Start the web server and open your default browser.
+- `--cli` / `-c`: Start the interactive terminal manager.
+- `--host <ip>`: Bind to a specific network interface (default: `127.0.0.1` or `XARRTOOLS_HOST`).
+- `--port <port>` / `-p <port>`: Bind to a specific port (default: `5000` or `XARRTOOLS_PORT`).
+- `--no-browser`: Start the server without automatically opening your browser.
+- `--debug` / `-d`: Enable debug logging output.
 
 ---
 
-## Static Type Checking 🔍
+## 2. First-Time Setup
 
-Run `mypy` across all modules:
+When you first open xarrtools, click the **Settings** cog (⚙️) in the top-right corner. If servers have not been configured yet, xarrtools starts in a demo sandbox mode and will display the settings dialog automatically.
+
+1. **Connect Radarr & Sonarr** (under the **Servers** tab):
+   - Enter your **Radarr URL** (e.g. `http://192.168.1.50:7878/`) and **Radarr API Key**.
+   - Enter your **Sonarr URL** (e.g. `http://192.168.1.50:8989/`) and **Sonarr API Key**.
+   - You can copy your API keys from Radarr and Sonarr under **Settings → General → Security**.
+2. **Set Default Paths & Profiles**:
+   - Once connected, xarrtools automatically queries your servers to load your available root folders and quality profiles.
+   - Choose your preferred **Default Root Folder** and **Default Quality Profile** for each application. These defaults pre-populate download options so you can add media in a single click.
+3. **Optional TMDB API Key / Token**:
+   - Under the same tab, you can provide a TMDB Read Access Token (or API key).
+   - TMDB is completely optional. Without it, xarrtools still discovers releases from DVD release calendars, TVmaze, and Metacritic. Providing a token unlocks broader movie discovery feeds, high-resolution posters, and movie collection tracking.
+4. **Save and Check Status**:
+   - Click **Save Settings**. The Radarr and Sonarr connection badges in the top header will turn green once connected.
+
+---
+
+## 3. Find What's Coming
+
+Once configured, discovering new releases is straightforward:
+
+### Manual Scans
+
+In the left panel:
+1. Adjust the **Months in Past** (0 to 12) and **Months in Future** (0 to 12) sliders. A common setup is 1 month back and 2 months ahead to catch recent premieres and upcoming release dates.
+2. Click **Scan New Releases**.
+3. A progress card appears in the lower-right corner showing real-time status as scrapers query calendars and fetch metadata.
+4. Scanning runs in the background, so you can continue browsing, searching, or archiving existing cached titles while the scan proceeds.
+
+### Scheduled Refreshes
+
+You can set xarrtools to keep your discoveries updated automatically:
+1. Open **Settings → Scheduler**.
+2. Check **Enable Automatic Background Refreshes**.
+3. Set your preferred **Refresh Interval** in hours (1 to 168 hours; default is 24).
+4. Optionally, specify a local **Time of Day** in 24-hour format (e.g. `03:00` for 3:00 AM).
+5. Scans then run on that schedule in the background. You can also kick one off immediately with **Run Refresh Now**.
+
+### Filter and Sort the Feed
+
+Use the sidebar controls to narrow down the view:
+- **View Tabs**: Quickly switch between **All Releases**, **TV Shows**, or **New Movies**.
+- **Instant Search**: Type into the search input to filter titles, cast members, or networks on the fly. Click the `(x)` button to clear.
+- **Multiselect Dropdowns**: Filter by **Genres**, **Studios/Networks**, **Country**, and **Language**. Each dropdown includes **Clear All** and **Invert** buttons so you can exclude or focus on specific items with one click.
+- **Visibility Checkboxes**:
+  - **Show Returning Seasons**: Unchecked by default, keeping returning season 2+ shows hidden so you can focus on brand-new series premieres.
+  - **Show Library Items**: Unchecked by default to keep releases you already own out of the way.
+  - **Show Archived Items**: Unchecked by default to keep discarded items hidden.
+- **Sort By**: Reorder releases by Release Date (ascending or descending), Title (A-Z or Z-A), or Studio/Network.
+
+### Rich Media Cards
+
+Each card provides key details to help you decide whether to add a title:
+- Poster art (cached locally for fast loading) with deep links to external databases (IMDb or TVDB) when clicked.
+- Premiere dates, network or studio name, country and language tags, and genre pills.
+- Expandable plot overviews and cast lists.
+- Rating badges for IMDb, Metacritic, and Rotten Tomatoes when available.
+- A **Trailer** button to watch official YouTube previews in a pop-up modal.
+- A circular refresh button to re-fetch live metadata for an individual title if details change.
+
+---
+
+## 4. Triage Your Releases
+
+Keep your feed clean by sorting through incoming titles:
+
+- **Archive noise**: Click **Archive** on any card you do not want. It disappears from your active view immediately.
+- **Bulk archive**: Want to skip a category? Filter your view (such as selecting a specific genre or language), then click **Archive all filtered** in the sidebar. All matching items are archived in one operation.
+- **Sticky manual archives**: When you manually archive an item, that decision is permanent. Future background scans or metadata refreshes will never un-archive it. It only returns if you choose to un-archive it yourself.
+- **Automatic cleanup for incomplete items**: If an incoming title is missing essential information (two or more of title, network, cast, and plot), xarrtools temporarily auto-archives it so low-quality entries do not clutter your view. When future scans find complete details, xarrtools un-archives the item and marks it with a **New metadata** badge.
+- **Library matching**: xarrtools checks items against your Radarr and Sonarr libraries using strict TMDB, TVDB, or IMDb identifiers, plus title matching. If a match is found, the card is tagged as "In Library" and hidden from your triage view. If a title variation prevents an automatic match, click "Mark In Library" from the Add dialog to link it manually.
+
+---
+
+## 5. Add to Radarr and Sonarr
+
+When you find something you want to download:
+
+1. Click **Add** on the card.
+2. **Select the Match**: xarrtools queries your Radarr or Sonarr search API and shows candidate matches with release years and IDs. Select the correct title.
+3. **Choose Download Options**:
+   - Your configured **Default Root Folder** and **Default Quality Profile** are pre-selected.
+   - The app remembers your most recently used folders and profiles if you change them.
+   - Leave **Monitor Release** checked so the server tracks the show or movie.
+4. **Choose How to Add**:
+   - **Add and Search**: Adds the media to your server and immediately commands Radarr or Sonarr to search indexers and start downloading.
+   - **Add Only**: Adds the media in a monitored state without starting an immediate search, allowing your server's regular RSS sync to pick it up when available.
+5. **Radarr Box Sets & Collections**:
+   - When a movie is part of a known franchise (such as *The Lord of the Rings* or *John Wick*), a collection badge appears on the card.
+   - In the download modal, check **Track Collection / Add Box Set** to monitor the whole movie collection in Radarr at the same time.
+6. **Global Search**:
+   - Need to add something that is not on the release feeds? Click the 🔎 **Search** button in the header next to the connection badges.
+   - Enter any movie or series title to search your servers' indexers directly and add it through the same guided modal.
+
+---
+
+## 6. Keep It Healthy
+
+The **Settings** dialog includes tools to maintain your setup over time:
+
+### Custom Feeds (Settings → Custom Feeds)
+
+- **Manage built-in feeds**: Toggle default feeds on or off (Metacritic TV, Metacritic Movies, DVD Releases, TVmaze Premieres & Specials, and TMDB Movies).
+- **Add your own feeds**: Support for RSS/XML feeds, JSON APIs, and HTML web pages.
+- **Field mapping**: Define custom HTTP headers, media types, CSS selectors, or JSON path mappings.
+- **Test before saving**: Use the **Test Mappings** button to preview sample parsed output before saving changes, or click **Restore Defaults** if you want to reset to the factory configuration.
+
+### Backup and Restore (Settings → System)
+
+- **Export Backup (JSON)**: Creates a lightweight `.json` export of your settings, custom feeds, and cached titles, protected by a SHA-256 integrity checksum.
+- **Full Backup with Posters (ZIP)**: Creates a complete `.zip` archive containing your database records, custom feeds, a verified manifest, and all downloaded poster images.
+- **Moving between Docker and Desktop**: Backup files are self-contained and use portable, relative paths. You can export a backup from a desktop install and restore it into Docker on your NAS (or vice-versa) with your custom feeds, sticky archives, and cached posters intact.
+- **Import Backup**: Upload either a `.json` or `.zip` backup file to restore your configuration in a clean, single-transaction database import.
+
+### Maintenance and Diagnostics (Settings → System)
+
+- **Prune Expired Cache**: Safely remove cached release records older than 12 months with one click.
+- **Wipe Discovery Cache**: Clear all discovery cache rows if you want a clean slate.
+- **Live Log Level**: Switch logging levels (`DEBUG`, `INFO`, `WARNING`, `ERROR`) on the fly without restarting the server.
+- **Download Sanitized Logs**: Click **Download logs (ZIP)** to retrieve current log files (`xarrtools.log` and `xarrtools.log.1`). API tokens, server keys, and passwords are automatically redacted by in-flight log filters before ever touching disk or console.
+- **Version Display**: View the running application version under System diagnostics (and at `/api/health`).
+
+---
+
+## Good to Know
+
+- **Privacy & Credentials**: xarrtools runs entirely on your own hardware. Your API keys, passwords, database, and cached media stay local. The app only communicates with your configured Radarr/Sonarr servers, TMDB (if enabled), and public release feed endpoints.
+- **Network Security**: If you expose xarrtools on your home network or behind a domain, set `XARRTOOLS_AUTH_USER` and `XARRTOOLS_AUTH_PASSWORD` to enable HTTP Basic Authentication, and place the app behind a reverse proxy (such as Nginx, Caddy, or Traefik) configured with HTTPS.
+- **Data Storage**:
+  - In desktop and local source mode, the database (`xarrtools.db`), poster cache (`posters/`), and logs (`logs/`) reside in your project directory (or next to the frozen executable).
+  - In Docker, all persistent state lives inside your mounted `/config` volume.
+  - Log files automatically rotate at ~1MB with a single backup file (`xarrtools.log` and `xarrtools.log.1`), preventing unbounded disk growth.
+
+---
+
+## Contributing and Development
+
+Contributions are welcome! If you want to build or modify xarrtools locally:
+
+- Read [AGENTS.md](AGENTS.md) for project guidelines, architecture patterns, and conventions.
+- Read [docs/architecture.md](docs/architecture.md) for component data flow and internal structure.
+- Read [docs/decisions.md](docs/decisions.md) for architectural trade-offs and rationale behind design decisions.
+
+### Common Developer Commands
 
 ```bash
-source ./init.sh --env-only
-"$VENV_DIR/bin/mypy" core web cli gui main.py
+# Setup environment and install dev dependencies
+./init.sh
+
+# Run the full test suite
+.venv/bin/python -m pytest tests -q --no-cov
+
+# Run static type checking
+mypy core web cli gui main.py
+
+# Compile the modular TypeScript frontend
+npm run build
+
+# Build a standalone single-file PyInstaller binary
+./build.sh
 ```
-(On Windows: `.venv\Scripts\mypy core web cli gui main.py`)
-All modules pass static analysis with 0 errors.
+
+---
+
+## Roadmap
+
+Planned improvements—including easier installs (a Homebrew tap, WinGet, a macOS disk image, PyPI) and a performance check with a very large library—are tracked in [ROADMAP.md](ROADMAP.md).
+
+---
+
+## License
+
+xarrtools is free and open-source software licensed under the **GNU General Public License v3.0 (GPLv3)**. See the [LICENSE](LICENSE) file for details.
