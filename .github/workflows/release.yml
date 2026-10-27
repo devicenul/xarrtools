@@ -281,6 +281,7 @@ jobs:
       - name: Download all binary artifacts
         uses: actions/download-artifact@v4
         with:
+          pattern: binary-*
           path: release-artifacts
           merge-multiple: true
 
