@@ -308,6 +308,8 @@ jobs:
             PRE_FLAG="--prerelease"
           fi
           gh release create "$TAG" release-artifacts/* \
+            --repo "$GITHUB_REPOSITORY" \
+            --verify-tag \
             --title "xarrtools ${TAG}" \
             --generate-notes \
             $PRE_FLAG
