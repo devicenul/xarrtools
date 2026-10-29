@@ -36,6 +36,13 @@ This document tracks planned future functionality, architectural changes, and us
   - Package `xarrtools` as an AppImage or Flatpak bundle embedding WebKitGTK and native window dependencies.
 - **Code files involved**: [scripts/build.py](scripts/build.py), [src/xarrtools/gui/gui.py](src/xarrtools/gui/gui.py).
 
+### 5. Reorganize the Test Suite Layout (Future)
+- **Goal**: Make `tests/` easier to navigate. It is a flat folder of ~48 files, and about a dozen are named after past review rounds (`*_challenge`, `*_adversarial*`, `test_reaudit_*`, `test_tier5_*`) rather than the feature they cover.
+- **Implementation Strategy**:
+  - Group tests by area (for example `tests/unit/`, `tests/frontend/`, `tests/integration/`) and fold the round-named files into topic-based test modules or rename them.
+  - Keep `tests/conftest.py` real-database protection working, and update path-based tests, docs, and CI references.
+- **Priority**: Low. Cosmetic and readability only; do it when it starts to hurt.
+
 ## Completed Features
 
 ### ✓ PyPI: Default Data Directory When Installed From a Wheel
