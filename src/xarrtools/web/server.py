@@ -39,6 +39,8 @@ from xarrtools.core.db import (
 
 # Initialize Database and Prune Expired cache entries
 init_db()
+# The global config was built at import time, possibly before the schema existed (fresh DB).
+config.refresh()
 clean_expired_cache()
 
 # Resolve template directory path inside the package folder

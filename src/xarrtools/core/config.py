@@ -44,7 +44,13 @@ class Config:
         except Exception as e:
             # We catch generic Exception because get_all_settings could throw sqlite3.Error, 
             # or we could just be in a state where DB isn't fully ready
-            logger.error(f"Error while refreshing config from database: {e}")
+            if "no such table" in str(e):
+                # Expected on a brand-new database: this module builds the global Config at import
+                # time, before init_db() has created the schema. Settings are also read straight
+                # from the DB on demand, and web/server.py refreshes right after init_db().
+                logger.debug(f"Settings table not created yet; starting with an empty config cache: {e}")
+            else:
+                logger.error(f"Error while refreshing config from database: {e}")
             self._cache = {}
 
     def _get_setting(self, key: str, default: str = "") -> str:

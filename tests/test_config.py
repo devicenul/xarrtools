@@ -92,3 +92,63 @@ def test_config_placeholder_api_keys():
         assert "RADARR_API_KEY" in config.get_missing_radarr_vars()
         assert "SONARR_API_KEY" in config.get_missing_sonarr_vars()
 
+
+
+def _capture_config_logs():
+    """Attach a list-collecting handler directly to the config logger.
+
+    caplog listens on the root logger, which other tests can cut off by setting
+    propagate=False on the 'xarrtools' logger, so capture on the logger itself.
+    """
+    import logging
+
+    records = []
+
+    class _Collector(logging.Handler):
+        def emit(self, record):
+            records.append(record)
+
+    handler = _Collector(level=logging.DEBUG)
+    logger = logging.getLogger("xarrtools.config")
+    old_level = logger.level
+    logger.addHandler(handler)
+    logger.setLevel(logging.DEBUG)
+
+    def restore():
+        logger.removeHandler(handler)
+        logger.setLevel(old_level)
+
+    return records, restore
+
+
+def test_refresh_missing_settings_table_is_not_an_error():
+    """A brand-new DB has no settings table yet; that must not be logged as an error."""
+    import logging
+    import sqlite3
+    from unittest.mock import patch
+    from xarrtools.core.config import Config
+
+    records, restore = _capture_config_logs()
+    try:
+        with patch("xarrtools.core.db.get_all_settings", side_effect=sqlite3.OperationalError("no such table: settings")):
+            cfg = Config()
+    finally:
+        restore()
+    assert cfg._cache == {}
+    assert not [r for r in records if r.levelno >= logging.ERROR]
+
+
+def test_refresh_other_db_errors_are_still_logged():
+    """Unexpected DB failures keep being reported as errors."""
+    import logging
+    import sqlite3
+    from unittest.mock import patch
+    from xarrtools.core.config import Config
+
+    records, restore = _capture_config_logs()
+    try:
+        with patch("xarrtools.core.db.get_all_settings", side_effect=sqlite3.OperationalError("database is locked")):
+            Config()
+    finally:
+        restore()
+    assert any(r.levelno >= logging.ERROR and "database is locked" in r.getMessage() for r in records)
