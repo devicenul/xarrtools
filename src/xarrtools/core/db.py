@@ -23,6 +23,16 @@ logger = logging.getLogger("xarrtools.db")
 # Store database in the application data directory (resolved via get_data_dir:
 # sys.frozen executable dir, XARRTOOLS_CONFIG_DIR override, repository root in source/editable mode,
 # or platform-specific user application data directory when installed as a wheel).
+# Credential and auth setting keys excluded from backups and public settings API
+AUTH_SETTINGS_KEYS: Set[str] = {
+    "auth_username",
+    "auth_password_hash",
+    "auth_session_secret",
+    "auth_session_version",
+    "auth_disabled",
+    "auth_is_existing_install",
+}
+
 DB_PATH: Path = get_data_dir() / "xarrtools.db"
 
 TVMAZE_SCHEDULE_URL: str = "https://api.tvmaze.com/schedule/full"
@@ -215,9 +225,15 @@ def init_db() -> None:
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_cache_type_date_obj ON cache(type, date_obj)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_cache_missing_poster ON cache(id) WHERE poster_url IS NULL OR poster_url = ''")
     
-    # 4. Migrate from .env if settings table is empty
+    # 3.5 Check if DB is brand new prior to seeding settings
     cursor.execute("SELECT COUNT(*) FROM settings")
-    if cursor.fetchone()[0] == 0:
+    prior_settings_count = cursor.fetchone()[0]
+    cursor.execute("SELECT COUNT(*) FROM cache")
+    prior_cache_count = cursor.fetchone()[0]
+    is_brand_new_db = (prior_settings_count == 0 and prior_cache_count == 0)
+
+    # 4. Migrate from .env if settings table is empty
+    if prior_settings_count == 0:
         # Import config dynamically to bypass circular dependency
         from xarrtools.core.config import config
         env_settings = {
@@ -269,6 +285,13 @@ def init_db() -> None:
         WHERE (key = 'radarr_api_key' AND value = 'your_radarr_api_key_here')
            OR (key = 'sonarr_api_key' AND value = 'your_sonarr_api_key_here')
     """)
+
+    # 5.5 Flag existing installations for auth upgrade safety (never locked out on upgrade)
+    cursor.execute("SELECT 1 FROM settings WHERE key = 'migrated_auth_v1'")
+    if not cursor.fetchone():
+        if not is_brand_new_db:
+            cursor.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('auth_is_existing_install', '1')")
+        cursor.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('migrated_auth_v1', '1')")
             
     # 6. Ensure default feeds are seeded if the table is empty
     cursor.execute("SELECT COUNT(*) FROM custom_feeds")
@@ -408,13 +431,17 @@ def set_setting(key: str, value: str) -> None:
     conn.close()
 
 def get_all_settings() -> Dict[str, str]:
-    """Returns all settings as a flat dictionary."""
+    """Returns all non-auth settings as a flat dictionary (auth credentials strictly excluded)."""
     conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute("SELECT key, value FROM settings")
     rows = cursor.fetchall()
     conn.close()
-    return {row["key"]: row["value"] for row in rows}
+    return {
+        row["key"]: row["value"]
+        for row in rows
+        if not row["key"].startswith("auth_") and row["key"] not in AUTH_SETTINGS_KEYS
+    }
 
 def clean_tv_title(title: str) -> str:
     """Strips season descriptors, years, or format suffixes from TV show titles."""
@@ -894,9 +921,13 @@ def export_to_dict(include_media: bool = True) -> Dict[str, Any]:
     conn = get_db_connection()
     cursor = conn.cursor()
     
-    # 1. Fetch settings
+    # 1. Fetch settings (auth credentials strictly excluded)
     cursor.execute("SELECT key, value FROM settings")
-    settings = {row["key"]: row["value"] for row in cursor.fetchall()}
+    settings = {
+        row["key"]: row["value"]
+        for row in cursor.fetchall()
+        if not row["key"].startswith("auth_") and row["key"] not in AUTH_SETTINGS_KEYS
+    }
     
     data: Dict[str, Any] = {
         "format_version": 1,
@@ -953,9 +984,11 @@ def import_from_dict(data: Dict[str, Any]) -> Tuple[int, int]:
     try:
         cursor = conn.cursor()
         
-        # 1. Import settings
+        # 1. Import settings (never allow restore to overwrite auth credentials)
         settings_data = data.get("settings", {})
         for key, val in settings_data.items():
+            if key.startswith("auth_") or key in AUTH_SETTINGS_KEYS:
+                continue
             cursor.execute("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", (key, str(val)))
             settings_count += 1
             

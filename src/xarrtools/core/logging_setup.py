@@ -25,12 +25,14 @@ ALLOWED_LOG_LEVELS: Tuple[str, ...] = ("DEBUG", "INFO", "WARNING", "ERROR")
 
 # Credential masking patterns
 REDACTION_PATTERNS: List[Pattern[str]] = [
-    # Query parameters & header keys: apikey=..., api_key=..., access_token=..., token=..., secret=...
-    re.compile(r"(?i)([?&](?:api[_-]?key|apikey|access_token|token|secret|password)=)([^&\s'\"`]+)"),
+    # Query parameters & header keys: apikey=..., api_key=..., access_token=..., token=..., secret=..., password=...
+    re.compile(r"(?i)([?&](?:api[_-]?key|apikey|access_token|token|secret|password|confirm_password|current_password|new_password)=)([^&\s'\"`]+)"),
     # Header format: X-Api-Key: ... or X-Api-Key=...
     re.compile(r"(?i)(X-Api-Key\s*[:=]\s*)([^\s'\"`]+)"),
-    # General api_key / apikey key-value pairs (e.g. in JSON, dicts, or logs)
-    re.compile(r"(?i)(['\"]?(?:api[_-]?key|apikey|token|access_token)['\"]?\s*[:=]\s*['\"]?)([^&\s'\"`,}]+)"),
+    # General api_key / apikey / password key-value pairs (e.g. in JSON, dicts, or logs)
+    re.compile(r"(?i)(['\"]?(?:api[_-]?key|apikey|token|access_token|password|confirm_password|current_password|new_password|auth_password_hash|auth_session_secret)['\"]?\s*[:=]\s*['\"]?)([^&\s'\"`,}]+)"),
+    # Session cookie: xarrtools_session=...
+    re.compile(r"(?i)(xarrtools_session=)([^;\s'\"`]+)"),
     # Bearer authorization tokens
     re.compile(r"(?i)(Bearer\s+)([A-Za-z0-9_\-\.]+)"),
     # Standard Authorization headers
@@ -70,6 +72,13 @@ def _get_configured_secrets() -> Set[str]:
         auth_pw = os.environ.get("XARRTOOLS_AUTH_PASSWORD")
         if auth_pw and len(str(auth_pw).strip()) >= 4:
             secrets.add(str(auth_pw).strip())
+        from xarrtools.core.db import get_setting
+        auth_hash = get_setting("auth_password_hash")
+        if auth_hash and len(str(auth_hash).strip()) >= 4:
+            secrets.add(str(auth_hash).strip())
+        session_secret = get_setting("auth_session_secret")
+        if session_secret and len(str(session_secret).strip()) >= 4:
+            secrets.add(str(session_secret).strip())
     except Exception:
         pass
     return secrets

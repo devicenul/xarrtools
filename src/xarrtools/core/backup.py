@@ -12,7 +12,12 @@ from typing import Any, Dict, IO, List, Optional, Set, Tuple, Union
 logger = logging.getLogger("xarrtools.backup")
 
 import xarrtools.core.db
-from xarrtools.core.db import get_db_connection, get_cached_item, normalize_title
+from xarrtools.core.db import (
+    AUTH_SETTINGS_KEYS,
+    get_db_connection,
+    get_cached_item,
+    normalize_title,
+)
 from xarrtools.core.posters import (
     get_cached_poster,
     store_poster,
@@ -63,9 +68,13 @@ def export_full_backup(
     conn = get_db_connection()
     cursor = conn.cursor()
     
-    # 1. Fetch settings
+    # 1. Fetch settings (auth credentials strictly excluded)
     cursor.execute("SELECT key, value FROM settings")
-    settings = {row["key"]: row["value"] for row in cursor.fetchall()}
+    settings = {
+        row["key"]: row["value"]
+        for row in cursor.fetchall()
+        if not row["key"].startswith("auth_") and row["key"] not in AUTH_SETTINGS_KEYS
+    }
     
     # 2. Fetch custom feeds
     cursor.execute("SELECT * FROM custom_feeds")
@@ -287,8 +296,10 @@ def import_full_backup(fileobj: Union[str, Path, IO[bytes]]) -> Dict[str, Union[
         try:
             cursor = conn.cursor()
             
-            # 1. Restore settings
+            # 1. Restore settings (never allow restore to overwrite auth credentials)
             for key, val in backup_data.get("settings", {}).items():
+                if key.startswith("auth_") or key in AUTH_SETTINGS_KEYS:
+                    continue
                 cursor.execute("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", (key, str(val)))
                 settings_count += 1
                 
