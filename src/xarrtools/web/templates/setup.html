@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Setup Login - xarrtools</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/style.css">
+    <link rel="icon" href="/static/favicon.png" type="image/png">
+    <style>
+        .auth-container {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            padding: 24px;
+        }
+        .auth-card {
+            width: 100%;
+            max-width: 440px;
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 16px;
+            padding: 32px;
+            box-shadow: var(--shadow-premium);
+            backdrop-filter: blur(20px);
+        }
+        .auth-header {
+            text-align: center;
+            margin-bottom: 24px;
+        }
+        .auth-logo {
+            width: 48px;
+            height: 48px;
+            margin-bottom: 12px;
+        }
+        .auth-title {
+            font-size: 20px;
+            font-weight: 700;
+            color: var(--text-primary);
+            margin-bottom: 6px;
+        }
+        .auth-subtitle {
+            font-size: 13px;
+            color: var(--text-secondary);
+        }
+        .auth-form {
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+        .form-group {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+        .form-group label {
+            font-size: 13px;
+            font-weight: 500;
+            color: var(--text-primary);
+        }
+        .form-input {
+            width: 100%;
+            padding: 10px 14px;
+            border-radius: 8px;
+            border: 1px solid var(--border-color);
+            background: rgba(0, 0, 0, 0.25);
+            color: var(--text-primary);
+            font-size: 14px;
+            font-family: inherit;
+            outline: none;
+            transition: var(--transition-smooth);
+        }
+        .form-input:focus {
+            border-color: var(--accent-blue);
+            box-shadow: 0 0 0 2px rgba(0, 210, 255, 0.2);
+        }
+        body.light-theme .form-input {
+            background: rgba(255, 255, 255, 0.9);
+            border-color: rgba(0, 0, 0, 0.15);
+        }
+        .auth-error {
+            background: rgba(255, 42, 133, 0.1);
+            border: 1px solid rgba(255, 42, 133, 0.3);
+            color: var(--accent-magenta);
+            padding: 10px 14px;
+            border-radius: 8px;
+            font-size: 13px;
+        }
+        .auth-divider {
+            display: flex;
+            align-items: center;
+            text-align: center;
+            margin: 20px 0;
+            color: var(--text-secondary);
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        .auth-divider::before, .auth-divider::after {
+            content: '';
+            flex: 1;
+            border-bottom: 1px solid var(--border-color);
+        }
+        .auth-divider:not(:empty)::before {
+            margin-right: .5em;
+        }
+        .auth-divider:not(:empty)::after {
+            margin-left: .5em;
+        }
+        .skip-warning {
+            background: rgba(255, 204, 0, 0.08);
+            border: 1px solid rgba(255, 204, 0, 0.25);
+            color: #ffcc00;
+            padding: 12px;
+            border-radius: 8px;
+            font-size: 12px;
+            line-height: 1.4;
+            margin-bottom: 12px;
+        }
+        body.light-theme .skip-warning {
+            background: rgba(230, 160, 0, 0.08);
+            border-color: rgba(230, 160, 0, 0.3);
+            color: #b37400;
+        }
+        .btn-full {
+            width: 100%;
+            padding: 11px 16px;
+            font-size: 14px;
+            font-weight: 600;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: var(--transition-smooth);
+            text-align: center;
+            border: none;
+        }
+        .btn-primary {
+            background: linear-gradient(135deg, var(--accent-blue), var(--accent-purple));
+            color: #ffffff;
+        }
+        .btn-primary:hover {
+            opacity: 0.9;
+            transform: translateY(-1px);
+        }
+        .btn-secondary-link {
+            background: transparent;
+            color: var(--text-secondary);
+            border: 1px solid var(--border-color);
+        }
+        .btn-secondary-link:hover {
+            background: rgba(255, 255, 255, 0.05);
+            color: var(--text-primary);
+        }
+        body.light-theme .btn-secondary-link:hover {
+            background: rgba(0, 0, 0, 0.05);
+        }
+    </style>
+</head>
+<body>
+    <div class="auth-container">
+        <div class="auth-card">
+            <div class="auth-header">
+                <img src="/static/favicon.png" alt="xarrtools logo" class="auth-logo">
+                <h1 class="auth-title">Welcome to xarrtools</h1>
+                <p class="auth-subtitle">Create your admin login credentials to secure your server.</p>
+            </div>
+
+            <div id="error-container" class="auth-error" style="display: none; margin-bottom: 16px;"></div>
+
+            <form id="setup-form" class="auth-form">
+                <div class="form-group">
+                    <label for="username">Username</label>
+                    <input type="text" id="username" name="username" class="form-input" required autocomplete="username" placeholder="e.g. admin" autofocus>
+                </div>
+                <div class="form-group">
+                    <label for="password">Password</label>
+                    <input type="password" id="password" name="password" class="form-input" required autocomplete="new-password" minlength="8" placeholder="Minimum 8 characters">
+                </div>
+                <div class="form-group">
+                    <label for="confirm-password">Confirm Password</label>
+                    <input type="password" id="confirm-password" name="confirm_password" class="form-input" required autocomplete="new-password" minlength="8" placeholder="Re-enter password">
+                </div>
+                <button type="submit" id="btn-submit" class="btn-full btn-primary">Create Login & Continue</button>
+            </form>
+
+            <div class="auth-divider">or</div>
+
+            <div class="skip-warning">
+                <strong>⚠️ Warning:</strong> Your server is accessible from the network. If you continue without a login, anyone on your network can view your library, add downloads, and edit settings.
+            </div>
+            <button type="button" id="btn-skip" class="btn-full btn-secondary-link">Continue without a login</button>
+        </div>
+    </div>
+    <script>
+        // Apply persisted light theme if previously selected
+        if (localStorage.getItem("xarrtools_theme") === "light") {
+            document.body.classList.add("light-theme");
+        }
+
+        const form = document.getElementById("setup-form");
+        const errorBox = document.getElementById("error-container");
+        const btnSubmit = document.getElementById("btn-submit");
+        const btnSkip = document.getElementById("btn-skip");
+
+        function showError(msg) {
+            errorBox.textContent = msg;
+            errorBox.style.display = "block";
+        }
+
+        form.addEventListener("submit", async (e) => {
+            e.preventDefault();
+            errorBox.style.display = "none";
+            const username = document.getElementById("username").value.trim();
+            const password = document.getElementById("password").value;
+            const confirm = document.getElementById("confirm-password").value;
+
+            if (!username) {
+                showError("Username is required.");
+                return;
+            }
+            if (password.length < 8) {
+                showError("Password must be at least 8 characters long.");
+                return;
+            }
+            if (password !== confirm) {
+                showError("Passwords do not match.");
+                return;
+            }
+
+            btnSubmit.disabled = true;
+            btnSubmit.textContent = "Creating...";
+
+            try {
+                const res = await fetch("/api/setup", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ username, password, confirm_password: confirm })
+                });
+                const data = await res.json();
+                if (res.ok) {
+                    window.location.href = "/";
+                } else {
+                    showError(data.message || "Failed to create login.");
+                    btnSubmit.disabled = false;
+                    btnSubmit.textContent = "Create Login & Continue";
+                }
+            } catch (err) {
+                showError("Network error: " + err.message);
+                btnSubmit.disabled = false;
+                btnSubmit.textContent = "Create Login & Continue";
+            }
+        });
+
+        btnSkip.addEventListener("click", async () => {
+            if (!confirm("Are you sure you want to continue without authentication? Anyone on your network will have full access.")) {
+                return;
+            }
+            btnSkip.disabled = true;
+            try {
+                const res = await fetch("/api/setup", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ disable: true })
+                });
+                if (res.ok) {
+                    window.location.href = "/";
+                } else {
+                    const data = await res.json();
+                    showError(data.message || "Failed to skip setup.");
+                    btnSkip.disabled = false;
+                }
+            } catch (err) {
+                showError("Network error: " + err.message);
+                btnSkip.disabled = false;
+            }
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sign In - xarrtools</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/style.css">
+    <link rel="icon" href="/static/favicon.png" type="image/png">
+    <style>
+        .auth-container {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            padding: 24px;
+        }
+        .auth-card {
+            width: 100%;
+            max-width: 400px;
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 16px;
+            padding: 32px;
+            box-shadow: var(--shadow-premium);
+            backdrop-filter: blur(20px);
+        }
+        .auth-header {
+            text-align: center;
+            margin-bottom: 24px;
+        }
+        .auth-logo {
+            width: 48px;
+            height: 48px;
+            margin-bottom: 12px;
+        }
+        .auth-title {
+            font-size: 20px;
+            font-weight: 700;
+            color: var(--text-primary);
+            margin-bottom: 6px;
+        }
+        .auth-subtitle {
+            font-size: 13px;
+            color: var(--text-secondary);
+        }
+        .auth-form {
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+        .form-group {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+        .form-group label {
+            font-size: 13px;
+            font-weight: 500;
+            color: var(--text-primary);
+        }
+        .form-input {
+            width: 100%;
+            padding: 10px 14px;
+            border-radius: 8px;
+            border: 1px solid var(--border-color);
+            background: rgba(0, 0, 0, 0.25);
+            color: var(--text-primary);
+            font-size: 14px;
+            font-family: inherit;
+            outline: none;
+            transition: var(--transition-smooth);
+        }
+        .form-input:focus {
+            border-color: var(--accent-blue);
+            box-shadow: 0 0 0 2px rgba(0, 210, 255, 0.2);
+        }
+        body.light-theme .form-input {
+            background: rgba(255, 255, 255, 0.9);
+            border-color: rgba(0, 0, 0, 0.15);
+        }
+        .auth-error {
+            background: rgba(255, 42, 133, 0.1);
+            border: 1px solid rgba(255, 42, 133, 0.3);
+            color: var(--accent-magenta);
+            padding: 10px 14px;
+            border-radius: 8px;
+            font-size: 13px;
+        }
+        .btn-full {
+            width: 100%;
+            padding: 11px 16px;
+            font-size: 14px;
+            font-weight: 600;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: var(--transition-smooth);
+            text-align: center;
+            border: none;
+        }
+        .btn-primary {
+            background: linear-gradient(135deg, var(--accent-blue), var(--accent-purple));
+            color: #ffffff;
+        }
+        .btn-primary:hover {
+            opacity: 0.9;
+            transform: translateY(-1px);
+        }
+    </style>
+</head>
+<body>
+    <div class="auth-container">
+        <div class="auth-card">
+            <div class="auth-header">
+                <img src="/static/favicon.png" alt="xarrtools logo" class="auth-logo">
+                <h1 class="auth-title">Sign In</h1>
+                <p class="auth-subtitle">Enter your credentials to access xarrtools.</p>
+            </div>
+
+            <div id="error-container" class="auth-error" style="display: none; margin-bottom: 16px;"></div>
+
+            <form id="login-form" class="auth-form">
+                <div class="form-group">
+                    <label for="username">Username</label>
+                    <input type="text" id="username" name="username" class="form-input" required autocomplete="username" placeholder="Username" autofocus>
+                </div>
+                <div class="form-group">
+                    <label for="password">Password</label>
+                    <input type="password" id="password" name="password" class="form-input" required autocomplete="current-password" placeholder="Password">
+                </div>
+                <button type="submit" id="btn-submit" class="btn-full btn-primary">Sign In</button>
+            </form>
+        </div>
+    </div>
+    <script>
+        if (localStorage.getItem("xarrtools_theme") === "light") {
+            document.body.classList.add("light-theme");
+        }
+
+        const form = document.getElementById("login-form");
+        const errorBox = document.getElementById("error-container");
+        const btnSubmit = document.getElementById("btn-submit");
+
+        function showError(msg) {
+            errorBox.textContent = msg;
+            errorBox.style.display = "block";
+        }
+
+        form.addEventListener("submit", async (e) => {
+            e.preventDefault();
+            errorBox.style.display = "none";
+            const username = document.getElementById("username").value.trim();
+            const password = document.getElementById("password").value;
+
+            if (!username || !password) {
+                showError("Username and password are required.");
+                return;
+            }
+
+            btnSubmit.disabled = true;
+            btnSubmit.textContent = "Signing In...";
+
+            try {
+                const res = await fetch("/api/auth/login", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ username, password })
+                });
+                const data = await res.json();
+                if (res.ok) {
+                    const params = new URLSearchParams(window.location.search);
+                    const next = params.get("next") || "/";
+                    window.location.href = next;
+                } else {
+                    showError(data.message || "Invalid username or password.");
+                    btnSubmit.disabled = false;
+                    btnSubmit.textContent = "Sign In";
+                }
+            } catch (err) {
+                showError("Network error: " + err.message);
+                btnSubmit.disabled = false;
+                btnSubmit.textContent = "Sign In";
+            }
+        });
+    </script>
+</body>
+</html>

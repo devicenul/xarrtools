@@ -7,7 +7,8 @@ import threading
 import logging
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Tuple, Union, TypedDict
-from flask import Flask, jsonify, request, render_template, send_from_directory, Response
+from flask import Flask, jsonify, request, render_template, send_from_directory, Response, redirect
+from werkzeug.wrappers import Response as WerkzeugResponse
 from datetime import datetime, timedelta, timezone
 
 logger = logging.getLogger("xarrtools.server")
@@ -19,6 +20,7 @@ from xarrtools.core.scraper import get_discoveries, safe_fetch_feed, parse_custo
 from xarrtools.core.enricher import enrich_tv_show, enrich_movie
 from xarrtools.core.scheduler import validate_time_of_day, compute_next_run, is_due
 from xarrtools.core.db import (
+    AUTH_SETTINGS_KEYS,
     init_db,
     clean_expired_cache,
     get_cached_item,
@@ -36,9 +38,35 @@ from xarrtools.core.db import (
     export_to_dict,
     import_from_dict
 )
+from xarrtools.core.auth import (
+    SESSION_COOKIE_NAME,
+    MIN_PASSWORD_LENGTH,
+    hash_password,
+    verify_password,
+    validate_password_strength,
+    create_session_token,
+    verify_session_token,
+    rotate_session_version,
+    login_throttle,
+    sanitize_next_url,
+    is_network_exposed,
+    is_env_auth_enabled,
+    is_auth_disabled,
+    is_auth_configured,
+    is_existing_install_exempt,
+    needs_setup,
+    should_show_unauthenticated_banner,
+    get_auth_mode,
+    set_user_credentials,
+    disable_auth_login,
+    reset_auth,
+)
 
 # Initialize Database and Prune Expired cache entries
 init_db()
+if os.environ.get("XARRTOOLS_RESET_AUTH", "").strip().lower() in ("1", "true", "yes", "on"):
+    reset_auth()
+    logger.info("XARRTOOLS_RESET_AUTH is set; authentication credentials have been reset.")
 # The global config was built at import time, possibly before the schema existed (fresh DB).
 config.refresh()
 clean_expired_cache()
@@ -71,7 +99,8 @@ app = Flask(
     static_url_path="/static"
 )
 
-RouteResponse = Union[Response, str, Tuple[Any, int], Tuple[str, int, Dict[str, str]]]
+ResponseValue = Union[Response, WerkzeugResponse]
+RouteResponse = Union[ResponseValue, str, Tuple[Any, int], Tuple[str, int, Dict[str, str]]]
 
 @app.route("/static/dist/<path:filename>")
 def serve_dist(filename: str) -> RouteResponse:
@@ -151,18 +180,62 @@ def is_incomplete_metadata(item: Dict[str, Any]) -> bool:
     
     return is_title_missing and is_cast_missing and is_plot_missing
 
+def get_effective_bind_host() -> str:
+    """Returns the server's configured or resolved bind host interface."""
+    return str(app.config.get("SERVER_BIND_HOST") or os.environ.get("XARRTOOLS_HOST", "127.0.0.1"))
+
+
+def is_request_secure() -> bool:
+    """Returns True if the request is over HTTPS or behind an HTTPS reverse proxy."""
+    if request.is_secure:
+        return True
+    return request.headers.get("X-Forwarded-Proto", "").strip().lower() == "https"
+
+
+def set_session_cookie(response: ResponseValue, token: str) -> None:
+    """Attaches signed session cookie with HttpOnly, SameSite=Lax, and conditional Secure flag."""
+    response.set_cookie(
+        SESSION_COOKIE_NAME,
+        token,
+        max_age=30 * 86400,
+        httponly=True,
+        samesite="Lax",
+        secure=is_request_secure(),
+        path="/",
+    )
+
+
+def clear_session_cookie(response: ResponseValue) -> None:
+    """Clears the session cookie from the client."""
+    response.set_cookie(
+        SESSION_COOKIE_NAME,
+        "",
+        max_age=0,
+        httponly=True,
+        samesite="Lax",
+        secure=is_request_secure(),
+        path="/",
+    )
+
+
 @app.before_request
 def enforce_api_key() -> Optional[RouteResponse]:
-    """Validates optional HTTP Basic Auth and X-API-Key header for API requests."""
-    # Health endpoint is always unauthenticated
-    if request.path == "/api/health":
+    """Enforces authentication gate, setup wizard redirection, and CSRF API key checks."""
+    path = request.path
+
+    # 1. Health endpoint is always open and unauthenticated
+    if path == "/api/health":
         return None
 
-    # Check optional HTTP Basic Auth
-    auth_user = os.environ.get("XARRTOOLS_AUTH_USER")
-    auth_password = os.environ.get("XARRTOOLS_AUTH_PASSWORD")
-    if auth_user and auth_password:
+    # 2. Static assets and favicons are always open
+    if path.startswith("/static/") or path in ("/favicon.ico", "/favicon.png", "/favicon_light.png"):
+        return None
+
+    # 3. Environment variable authentication (HTTP Basic Auth) - highest precedence
+    if is_env_auth_enabled():
         auth = request.authorization
+        auth_user = os.environ.get("XARRTOOLS_AUTH_USER", "")
+        auth_password = os.environ.get("XARRTOOLS_AUTH_PASSWORD", "")
         if not auth or auth.type != "basic" or not auth.username or auth.password is None:
             resp = jsonify({"status": "error", "message": "Unauthorized"})
             resp.headers["WWW-Authenticate"] = 'Basic realm="xarrtools"'
@@ -175,7 +248,57 @@ def enforce_api_key() -> Optional[RouteResponse]:
             resp.headers["WWW-Authenticate"] = 'Basic realm="xarrtools"'
             return resp, 401
 
-    if request.method in ["POST", "PUT", "DELETE"] and request.path.startswith("/api/"):
+    # 4. If not env-auth, check explicit opt-out
+    elif is_auth_disabled():
+        # Authentication disabled: no setup, no login challenge
+        if path == "/login":
+            from flask import redirect
+            return redirect("/")
+
+    # 5. Check if first-run setup is required
+    elif needs_setup(get_effective_bind_host()):
+        if path in ("/setup", "/api/setup"):
+            return None
+        if path.startswith("/api/"):
+            return jsonify({"status": "error", "message": "Setup required", "setup_required": True}), 403
+        from flask import redirect
+        return redirect("/setup")
+
+    # 6. Form login authentication check (when credentials exist in DB)
+    elif is_auth_configured():
+        session_cookie = request.cookies.get(SESSION_COOKIE_NAME)
+        session_user = verify_session_token(session_cookie)
+        if session_user:
+            # Authenticated session
+            if path in ("/login", "/setup"):
+                from flask import redirect
+                return redirect("/")
+        else:
+            # Unauthenticated session
+            if path in ("/login", "/api/auth/login"):
+                return None
+            if path == "/setup":
+                from flask import redirect
+                return redirect("/login")
+            if path.startswith("/api/"):
+                return jsonify({"status": "error", "message": "Unauthorized"}), 401
+            from flask import redirect
+            from urllib.parse import quote
+            next_param = quote(request.full_path if request.query_string else request.path)
+            return redirect(f"/login?next={next_param}")
+
+    # 7. Unauthenticated loopback or exempt existing install
+    else:
+        if path == "/login":
+            from flask import redirect
+            return redirect("/")
+
+    # 8. Mutating API request CSRF check (X-API-Key)
+    if request.method in ["POST", "PUT", "DELETE"] and path.startswith("/api/"):
+        # Endpoints exempt from X-API-Key (public login, setup, and logout):
+        if path in ("/api/setup", "/api/auth/login", "/api/auth/logout"):
+            return None
+
         api_key = request.headers.get("X-API-Key")
         server_api_key = config._get_setting("api_key")
         if not server_api_key:
@@ -183,9 +306,10 @@ def enforce_api_key() -> Optional[RouteResponse]:
             server_api_key = secrets.token_hex(16)
             set_setting("api_key", server_api_key)
             config.refresh()
-            
+
         if not api_key or not hmac.compare_digest(api_key, server_api_key):
             return jsonify({"status": "error", "message": "Unauthorized"}), 401
+
     return None
 
 @app.route("/api/health", methods=["GET"])
@@ -217,6 +341,204 @@ def index() -> str:
     if not dist_built:
         print("[xarrtools] WARNING: Frontend dist directory is missing or unbuilt. Run 'npm install && npm run build'.", file=sys.stderr)
     return render_template("index.html", api_key=server_api_key, dist_built=dist_built)
+
+@app.route("/setup", methods=["GET"])
+def setup_page() -> RouteResponse:
+    """Serves the first-run login setup page."""
+    if is_auth_configured():
+        from flask import redirect
+        session_cookie = request.cookies.get(SESSION_COOKIE_NAME)
+        if verify_session_token(session_cookie):
+            return redirect("/")
+        return redirect("/login")
+    return render_template("setup.html")
+
+
+@app.route("/api/setup", methods=["POST"])
+def api_setup() -> RouteResponse:
+    """Processes first-run setup: creates login credentials or explicitly disables auth."""
+    if is_env_auth_enabled():
+        return jsonify({"status": "error", "message": "Authentication is managed by environment variables."}), 400
+    if is_auth_configured():
+        return jsonify({"status": "error", "message": "Authentication has already been configured."}), 400
+
+    data = request.json or {}
+    if data.get("disable") or data.get("action") == "disable":
+        disable_auth_login()
+        return jsonify({"status": "success", "message": "Authentication disabled."}), 200
+
+    username = str(data.get("username", "")).strip()
+    password = str(data.get("password", ""))
+    confirm = str(data.get("confirm_password", ""))
+
+    if not username:
+        return jsonify({"status": "error", "message": "Username is required."}), 400
+    if not password:
+        return jsonify({"status": "error", "message": "Password is required."}), 400
+    if password != confirm:
+        return jsonify({"status": "error", "message": "Passwords do not match."}), 400
+
+    valid, msg = validate_password_strength(password)
+    if not valid:
+        return jsonify({"status": "error", "message": msg}), 400
+
+    success, msg = set_user_credentials(username, password)
+    if not success:
+        return jsonify({"status": "error", "message": msg}), 400
+
+    token = create_session_token(username)
+    resp = jsonify({"status": "success", "message": "Login created successfully."})
+    set_session_cookie(resp, token)
+    return resp, 200
+
+
+@app.route("/login", methods=["GET"])
+def login_page() -> RouteResponse:
+    """Serves the user login page."""
+    from flask import redirect
+    if not is_auth_configured():
+        return redirect("/")
+    session_cookie = request.cookies.get(SESSION_COOKIE_NAME)
+    if verify_session_token(session_cookie):
+        next_target = sanitize_next_url(request.args.get("next"))
+        return redirect(next_target)
+    return render_template("login.html")
+
+
+@app.route("/api/auth/login", methods=["POST"])
+def api_login() -> RouteResponse:
+    """Authenticates username and password, issuing a signed session cookie on success."""
+    client_ip = request.headers.get("X-Forwarded-For", request.remote_addr or "127.0.0.1").split(",")[0].strip()
+    throttled, wait_sec = login_throttle.is_throttled(client_ip)
+    if throttled:
+        return jsonify({
+            "status": "error",
+            "message": f"Too many failed login attempts. Please wait {wait_sec} seconds before retrying."
+        }), 429
+
+    data = request.json or {}
+    username = str(data.get("username", "")).strip()
+    password = str(data.get("password", ""))
+
+    if not username or not password:
+        return jsonify({"status": "error", "message": "Username and password are required."}), 400
+
+    stored_user = get_setting("auth_username", "")
+    stored_hash = get_setting("auth_password_hash", "")
+
+    if (
+        is_auth_configured()
+        and stored_user
+        and stored_hash
+        and hmac.compare_digest(username.encode("utf-8"), stored_user.encode("utf-8"))
+        and verify_password(password, stored_hash)
+    ):
+        login_throttle.clear_failures(client_ip)
+        token = create_session_token(username)
+        resp = jsonify({"status": "success", "message": "Logged in successfully."})
+        set_session_cookie(resp, token)
+        return resp, 200
+
+    login_throttle.record_failure(client_ip)
+    return jsonify({"status": "error", "message": "Invalid username or password."}), 401
+
+
+@app.route("/api/auth/logout", methods=["POST"])
+def api_logout() -> RouteResponse:
+    """Invalidates active session token and clears the session cookie."""
+    rotate_session_version()
+    resp = jsonify({"status": "success", "message": "Logged out successfully."})
+    clear_session_cookie(resp)
+    return resp, 200
+
+
+@app.route("/logout", methods=["GET"])
+def logout_page() -> RouteResponse:
+    """Convenience endpoint to log out via link and redirect to login."""
+    from flask import redirect
+    rotate_session_version()
+    resp = redirect("/login")
+    clear_session_cookie(resp)
+    return resp
+
+
+@app.route("/api/auth/status", methods=["GET"])
+def auth_status() -> RouteResponse:
+    """Returns current auth mode, configuration state, and exposure warning status."""
+    host = get_effective_bind_host()
+    mode = get_auth_mode()
+    configured = is_auth_configured()
+    banner = should_show_unauthenticated_banner(host)
+    username = get_setting("auth_username", "") if configured else ""
+    return jsonify({
+        "status": "ok",
+        "auth_mode": mode,
+        "auth_configured": configured,
+        "username": username,
+        "network_exposed": is_network_exposed(host),
+        "unauthenticated_banner": banner,
+        "can_manage": (mode != "env")
+    }), 200
+
+
+@app.route("/api/auth/change_credentials", methods=["POST"])
+def change_credentials() -> RouteResponse:
+    """Updates user credentials (username and/or password) with current password verification."""
+    if is_env_auth_enabled():
+        return jsonify({"status": "error", "message": "Authentication is managed by environment variables."}), 400
+
+    data = request.json or {}
+    new_username = str(data.get("new_username", "")).strip()
+    new_password = str(data.get("new_password", ""))
+    confirm_password = str(data.get("confirm_password", ""))
+    current_password = str(data.get("current_password", ""))
+
+    if is_auth_configured():
+        stored_hash = get_setting("auth_password_hash", "")
+        if not verify_password(current_password, stored_hash):
+            return jsonify({"status": "error", "message": "Current password is incorrect."}), 400
+
+    target_user = new_username or get_setting("auth_username", "")
+    if not target_user:
+        return jsonify({"status": "error", "message": "Username is required."}), 400
+
+    if new_password:
+        if new_password != confirm_password:
+            return jsonify({"status": "error", "message": "New passwords do not match."}), 400
+        valid, msg = validate_password_strength(new_password)
+        if not valid:
+            return jsonify({"status": "error", "message": msg}), 400
+        success, msg = set_user_credentials(target_user, new_password)
+        if not success:
+            return jsonify({"status": "error", "message": msg}), 400
+    else:
+        set_setting("auth_username", target_user)
+        rotate_session_version()
+        config.refresh()
+
+    token = create_session_token(target_user)
+    resp = jsonify({"status": "success", "message": "Credentials updated successfully."})
+    set_session_cookie(resp, token)
+    return resp, 200
+
+
+@app.route("/api/auth/disable", methods=["POST"])
+def disable_auth_endpoint() -> RouteResponse:
+    """Disables authentication from Settings (requires current password verification)."""
+    if is_env_auth_enabled():
+        return jsonify({"status": "error", "message": "Authentication is managed by environment variables."}), 400
+
+    if is_auth_configured():
+        data = request.json or {}
+        current_password = str(data.get("current_password", ""))
+        stored_hash = get_setting("auth_password_hash", "")
+        if not verify_password(current_password, stored_hash):
+            return jsonify({"status": "error", "message": "Current password is incorrect."}), 400
+
+    disable_auth_login()
+    resp = jsonify({"status": "success", "message": "Authentication disabled successfully."})
+    clear_session_cookie(resp)
+    return resp, 200
 
 def sync_library_cache() -> None:
     """Fetches Radarr and Sonarr libraries to refresh in-memory ID and title cache."""
@@ -376,6 +698,8 @@ def manage_settings() -> RouteResponse:
             data["log_level"] = val
 
         for key, val in data.items():
+            if key.startswith("auth_") or key in AUTH_SETTINGS_KEYS:
+                continue
             set_setting(key, str(val))
         config.refresh()
         if "log_level" in data:
@@ -1918,8 +2242,14 @@ def start_server(port: int = 5000, debug: bool = False, host: Optional[str] = No
     """Starts the Flask web server."""
     if host is None:
         host = os.environ.get("XARRTOOLS_HOST", "127.0.0.1")
+    app.config["SERVER_BIND_HOST"] = host
     from xarrtools.core.logging_setup import setup_logging
     setup_logging(level="DEBUG" if debug else None)
+    if is_network_exposed(host) and not is_auth_configured() and not is_env_auth_enabled():
+        logger.warning(
+            f"Server is bound to network-exposed host '{host}' without authentication. "
+            f"Anyone on the network can access xarrtools. Configure a login at http://{host}:{port}/setup or in Settings > Security."
+        )
     if debug:
         logger.info(f"Starting xarrtools server in DEBUG mode at http://{host}:{port}...")
         app.run(host=host, port=port, debug=True)

@@ -64,9 +64,16 @@ def main(argv: Optional[list] = None) -> int:
     parser.add_argument("--host", default=None, help="Host/interface to bind the web server to (default: 127.0.0.1 or XARRTOOLS_HOST)")
     parser.add_argument("--port", "-p", type=int, default=None, help="Port to bind the web server to (default: 5000 or XARRTOOLS_PORT)")
     parser.add_argument("--no-browser", action="store_true", help="Do not automatically open the web browser on startup")
+    parser.add_argument("--reset-auth", action="store_true", help="Clear stored authentication credentials and state, then exit")
 
     # Use parse_known_args to ignore PyInstaller/system flags safely
     args, unknown = parser.parse_known_args(argv)
+
+    if args.reset_auth:
+        from xarrtools.core.auth import reset_auth
+        reset_auth()
+        print("Authentication credentials and state successfully reset. Next startup on a network-exposed host will show the setup screen.")
+        return 0
 
     from xarrtools.core.logging_setup import setup_logging
     setup_logging(level="DEBUG" if args.debug else None)

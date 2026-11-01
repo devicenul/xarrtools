@@ -25,6 +25,11 @@
         console.error("[xarrtools] Frontend TypeScript modules (/static/dist/) are not built. Please run 'npm install && npm run build'.");
     </script>
     {% endif %}
+    <div id="banner-unauthenticated" class="unauthenticated-banner hidden" role="alert">
+        <span class="banner-icon">⚠️</span>
+        <span class="banner-text">This server is reachable from your network without a login.</span>
+        <a href="/setup" class="banner-action-link">Set one up</a>
+    </div>
     <div class="app-container">
         <!-- Sidebar / Header -->
         <header class="app-header">
@@ -37,6 +42,7 @@
                 <div class="logo-actions" style="display: flex; gap: 8px; align-items: center; margin-left: auto;">
                     <button id="btn-theme-toggle" class="btn-theme-toggle" data-tooltip="Toggle Theme" aria-label="Toggle Theme" style="background: transparent; border: none; cursor: pointer; font-size: 16px; padding: 4px; display: flex; align-items: center; justify-content: center; transition: var(--transition-smooth); outline: none;">☀️</button>
                     <button id="btn-settings" class="btn-settings-trigger" data-tooltip="Settings" aria-label="Settings"><span class="settings-cog-icon">⚙️</span></button>
+                    <button id="btn-logout" class="btn-logout-trigger hidden" data-tooltip="Sign Out" aria-label="Sign Out" style="background: transparent; border: none; cursor: pointer; font-size: 16px; padding: 4px; display: flex; align-items: center; justify-content: center; transition: var(--transition-smooth); outline: none;"><span class="logout-icon">🚪</span></button>
                 </div>
             </div>
             
@@ -332,6 +338,7 @@
                     <button type="button" class="settings-tab-btn" data-tab="panel-scheduler">⏰ Scheduler</button>
                     <button type="button" class="settings-tab-btn" data-tab="panel-view">👁️ View</button>
                     <button type="button" class="settings-tab-btn" data-tab="panel-feeds">🌐 Custom Feeds</button>
+                    <button type="button" class="settings-tab-btn" data-tab="panel-security">🔒 Security</button>
                     <button type="button" class="settings-tab-btn" data-tab="panel-system">⚙️ System</button>
                 </div>
                 
@@ -610,6 +617,80 @@
                                 </div>
                                 <div id="feed-test-results" style="font-size: 11px; max-height: 80px; overflow-y: auto; color: var(--text-secondary); font-family: monospace; white-space: pre-wrap; padding-right: 2px;"></div>
                             </div>
+                        </div>
+                    </div>
+
+                    <!-- Tab Panel: Security -->
+                    <div id="panel-security" class="settings-tab-panel hidden">
+                        <div id="security-env-notice" class="hidden" style="background: rgba(0, 210, 255, 0.08); border: 1px solid rgba(0, 210, 255, 0.25); color: var(--text-primary); padding: 14px; border-radius: 8px; font-size: 13px; line-height: 1.5; margin-bottom: 16px;">
+                            <strong>ℹ️ Managed by Environment:</strong> Authentication is configured via environment variables (<code>XARRTOOLS_AUTH_USER</code>). To change credentials or disable authentication, update your environment configuration or container settings.
+                        </div>
+
+                        <div id="security-unconfigured-section" class="hidden">
+                            <h3 style="font-family:'Outfit', sans-serif; font-size:14px; color:var(--accent-blue); text-transform:uppercase; margin-bottom:12px; border-bottom:1px solid var(--border-color); padding-bottom:4px;">Enable Authentication</h3>
+                            <p style="font-size: 13px; color: var(--text-secondary); margin-bottom: 14px;">No login is currently configured. Create an admin account to protect this server.</p>
+                            <div style="display: flex; flex-direction: column; gap: 12px; max-width: 360px;">
+                                <div class="form-group">
+                                    <label for="sec-create-username" style="font-size: 12px; font-weight: 500;">Username</label>
+                                    <input type="text" id="sec-create-username" autocomplete="username" placeholder="Username">
+                                </div>
+                                <div class="form-group">
+                                    <label for="sec-create-password" style="font-size: 12px; font-weight: 500;">Password (min 8 characters)</label>
+                                    <input type="password" id="sec-create-password" autocomplete="new-password" placeholder="Password">
+                                </div>
+                                <div class="form-group">
+                                    <label for="sec-create-confirm" style="font-size: 12px; font-weight: 500;">Confirm Password</label>
+                                    <input type="password" id="sec-create-confirm" autocomplete="new-password" placeholder="Confirm password">
+                                </div>
+                                <div id="sec-create-error" class="hidden" style="color: var(--accent-magenta); font-size: 12px;"></div>
+                                <button type="button" id="btn-sec-create" class="btn btn-success" style="padding: 8px 16px; font-size: 13px; font-weight: 600; width: fit-content;">Enable Authentication</button>
+                            </div>
+                        </div>
+
+                        <div id="security-configured-section" class="hidden">
+                            <h3 style="font-family:'Outfit', sans-serif; font-size:14px; color:var(--accent-blue); text-transform:uppercase; margin-bottom:12px; border-bottom:1px solid var(--border-color); padding-bottom:4px;">Account Settings</h3>
+                            <p style="font-size: 13px; color: var(--text-secondary); margin-bottom: 14px;">Logged in as: <strong id="sec-current-user" style="color: var(--text-primary);">admin</strong></p>
+
+                            <div style="display: flex; flex-direction: column; gap: 12px; max-width: 360px; margin-bottom: 24px;">
+                                <div class="form-group">
+                                    <label for="sec-edit-username" style="font-size: 12px; font-weight: 500;">Username</label>
+                                    <input type="text" id="sec-edit-username" autocomplete="username">
+                                </div>
+                                <div class="form-group">
+                                    <label for="sec-current-pw" style="font-size: 12px; font-weight: 500;">Current Password</label>
+                                    <input type="password" id="sec-current-pw" autocomplete="current-password" placeholder="Enter current password to save changes">
+                                </div>
+                                <div class="form-group">
+                                    <label for="sec-new-pw" style="font-size: 12px; font-weight: 500;">New Password (optional)</label>
+                                    <input type="password" id="sec-new-pw" autocomplete="new-password" placeholder="Leave blank to keep current password">
+                                </div>
+                                <div class="form-group">
+                                    <label for="sec-confirm-pw" style="font-size: 12px; font-weight: 500;">Confirm New Password</label>
+                                    <input type="password" id="sec-confirm-pw" autocomplete="new-password" placeholder="Confirm new password">
+                                </div>
+                                <div id="sec-update-error" class="hidden" style="color: var(--accent-magenta); font-size: 12px;"></div>
+                                <button type="button" id="btn-sec-update" class="btn btn-success" style="padding: 8px 16px; font-size: 13px; font-weight: 600; width: fit-content;">Save Account Changes</button>
+                            </div>
+
+                            <h3 style="font-family:'Outfit', sans-serif; font-size:14px; color:var(--accent-magenta); text-transform:uppercase; margin-bottom:12px; border-bottom:1px solid var(--border-color); padding-bottom:4px;">Disable Authentication</h3>
+                            <div style="background: rgba(255, 42, 133, 0.08); border: 1px solid rgba(255, 42, 133, 0.25); color: var(--text-primary); padding: 12px; border-radius: 8px; font-size: 12px; line-height: 1.4; margin-bottom: 12px;">
+                                <strong>⚠️ Warning:</strong> Disabling authentication allows anyone on your network to view and manage your xarrtools library and settings without entering a password.
+                            </div>
+                            <div style="display: flex; flex-direction: column; gap: 10px; max-width: 360px; margin-bottom: 24px;">
+                                <div class="form-group">
+                                    <label for="sec-disable-pw" style="font-size: 12px; font-weight: 500;">Current Password</label>
+                                    <input type="password" id="sec-disable-pw" autocomplete="current-password" placeholder="Enter current password to disable">
+                                </div>
+                                <label style="display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text-secondary); cursor: pointer;">
+                                    <input type="checkbox" id="sec-disable-confirm-checkbox">
+                                    <span>I understand that anyone on my network will have full access</span>
+                                </label>
+                                <div id="sec-disable-error" class="hidden" style="color: var(--accent-magenta); font-size: 12px;"></div>
+                                <button type="button" id="btn-sec-disable" class="btn" style="background: rgba(255, 42, 133, 0.15); border: 1px solid rgba(255, 42, 133, 0.35); color: var(--accent-magenta); font-size: 12px; padding: 8px 16px; font-weight: 600; width: fit-content;" disabled>Turn Off Authentication</button>
+                            </div>
+
+                            <h3 style="font-family:'Outfit', sans-serif; font-size:14px; color:var(--text-secondary); text-transform:uppercase; margin-bottom:12px; border-bottom:1px solid var(--border-color); padding-bottom:4px;">Session</h3>
+                            <button type="button" id="btn-sec-logout" class="btn btn-secondary" style="font-size: 13px; padding: 8px 16px; width: fit-content;">🚪 Sign Out</button>
                         </div>
                     </div>
 
