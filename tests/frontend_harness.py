@@ -109,6 +109,11 @@ def get_module_injection_code() -> str:
     globalThis.moduleRestoreDefaultFeeds = _distApi.restoreDefaultFeeds;
     globalThis.moduleTriggerFileDownload = _distApi.triggerFileDownload;
     globalThis.moduleDownloadLogs = _distApi.downloadLogs;
+    globalThis.moduleFetchAuthStatus = _distApi.fetchAuthStatus;
+    globalThis.moduleSetupAuth = _distApi.setupAuth;
+    globalThis.moduleUpdateAuthCredentials = _distApi.updateAuthCredentials;
+    globalThis.moduleDisableAuth = _distApi.disableAuth;
+    globalThis.moduleLogout = _distApi.logout;
 
     // cards.js exports
     globalThis.moduleEscapeHtml = _distCards.escapeHtml;

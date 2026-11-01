@@ -66,7 +66,12 @@ import {{
   runSchedulerNow,
   getLogsDownloadUrl,
   downloadLogs,
-  triggerFileDownload
+  triggerFileDownload,
+  fetchAuthStatus,
+  setupAuth,
+  updateAuthCredentials,
+  disableAuth,
+  logout
 }} from {json.dumps(DIST_API.as_uri())};
 
 (async () => {{
@@ -408,3 +413,58 @@ def test_download_logs_triggers_zip():
     assert res["ok"] is True
     assert res["downloadedUrl"] == "/api/logs/download"
     assert res["downloadedFilename"] == "xarrtools_logs.zip"
+
+
+def test_auth_api():
+    res = run_api_test("""
+      mockResponses["GET /api/auth/status"] = {
+        status: 200,
+        json: {
+          status: "ok",
+          auth_mode: "form",
+          auth_configured: true,
+          username: "admin",
+          network_exposed: true,
+          unauthenticated_banner: false,
+          can_manage: true
+        }
+      };
+      mockResponses["POST /api/setup"] = { status: 200, json: { status: "success", message: "Created" } };
+      mockResponses["POST /api/auth/change_credentials"] = { status: 200, json: { status: "success", message: "Updated" } };
+      mockResponses["POST /api/auth/disable"] = { status: 200, json: { status: "success", message: "Disabled" } };
+      mockResponses["POST /api/auth/logout"] = { status: 200, json: { status: "success", message: "Logged out" } };
+
+      const status = await fetchAuthStatus();
+      const setupRes = await setupAuth({ username: "admin", password: "Password123", confirm_password: "Password123" });
+      const updateRes = await updateAuthCredentials({ new_username: "admin2", current_password: "Password123" });
+      const disableRes = await disableAuth({ current_password: "Password123" });
+      const logoutRes = await logout();
+
+      console.log(JSON.stringify({
+        calls,
+        status,
+        setupRes,
+        updateRes,
+        disableRes,
+        logoutRes
+      }));
+    """)
+
+    assert res["status"]["auth_mode"] == "form"
+    assert res["status"]["username"] == "admin"
+    assert res["setupRes"]["status"] == "success"
+    assert res["updateRes"]["status"] == "success"
+    assert res["disableRes"]["status"] == "success"
+    assert res["logoutRes"]["status"] == "success"
+
+    urls = [c["url"] for c in res["calls"]]
+    methods = [c["method"] for c in res["calls"]]
+    assert urls == [
+        "/api/auth/status",
+        "/api/setup",
+        "/api/auth/change_credentials",
+        "/api/auth/disable",
+        "/api/auth/logout"
+    ]
+    assert methods == ["GET", "POST", "POST", "POST", "POST"]
+
