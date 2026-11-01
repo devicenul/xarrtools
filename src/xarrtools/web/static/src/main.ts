@@ -8,7 +8,8 @@ import {
   fetchConfig,
   fetchScanProgress,
   fetchDiscoveries,
-  getSchedulerStatus
+  getSchedulerStatus,
+  logout as apiLogout
 } from "./api.js";
 import { initTheme, toggleTheme, updateThemeToggleUI } from "./theme.js";
 import { addNotification } from "./notifications.js";
@@ -46,7 +47,9 @@ import {
   restoreDefaultFeeds,
   populateSettingsSelect,
   loadSchedulerStatus,
-  triggerSchedulerRunNow
+  triggerSchedulerRunNow,
+  loadSecurityStatus,
+  initializeSecurityHandlers
 } from "./settings-ui.js";
 import {
   openAddModal,
@@ -431,6 +434,8 @@ export function setupEventListeners(): void {
         loadCustomFeeds();
       } else if (targetTab === "panel-scheduler") {
         loadSchedulerStatus();
+      } else if (targetTab === "panel-security") {
+        loadSecurityStatus();
       }
     });
   });
@@ -656,6 +661,20 @@ export function setupEventListeners(): void {
       renderMediaLists();
     });
   }
+
+  initializeSecurityHandlers();
+
+  const btnHeaderLogout = document.getElementById("btn-logout");
+  if (btnHeaderLogout) {
+    btnHeaderLogout.addEventListener("click", async () => {
+      try {
+        await apiLogout();
+      } catch {
+        // Continue redirecting on error
+      }
+      window.location.href = "/login";
+    });
+  }
 }
 
 // Global window assignments for inline HTML handlers, backwards compatibility, and test suites
@@ -726,6 +745,7 @@ if (typeof document !== "undefined") {
     initTheme();
     loadSettingsAndConfig();
     setupEventListeners();
+    loadSecurityStatus();
     pollSchedulerStatus();
     setInterval(pollSchedulerStatus, 60000);
   });

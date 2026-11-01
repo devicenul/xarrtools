@@ -32,7 +32,12 @@ import {
   getSchedulerStatus as apiGetSchedulerStatus,
   runSchedulerNow as apiRunSchedulerNow,
   downloadLogs as apiDownloadLogs,
-  triggerFileDownload as apiTriggerFileDownload
+  triggerFileDownload as apiTriggerFileDownload,
+  fetchAuthStatus as apiFetchAuthStatus,
+  setupAuth as apiSetupAuth,
+  updateAuthCredentials as apiUpdateAuthCredentials,
+  disableAuth as apiDisableAuth,
+  logout as apiLogout
 } from "./api.js";
 import { addNotification } from "./notifications.js";
 import { emit, on } from "./events.js";
@@ -218,6 +223,7 @@ export function openSettingsModal(): void {
   loadCacheStats();
   loadSchedulerStatus();
   loadSystemVersion();
+  loadSecurityStatus();
 
   const settingsOverlay = document.getElementById("settings-overlay");
   if (settingsOverlay) settingsOverlay.classList.remove("hidden");
@@ -804,5 +810,206 @@ export async function triggerSchedulerRunNow(): Promise<void> {
     const msg = e instanceof Error ? e.message : String(e);
     addNotification(`Failed to start refresh: ${msg}`, "error");
     await loadSchedulerStatus();
+  }
+}
+
+export async function loadSecurityStatus(): Promise<void> {
+  if (typeof document === "undefined") return;
+  try {
+    const status = await apiFetchAuthStatus();
+    const envNotice = document.getElementById("security-env-notice");
+    const unconfSection = document.getElementById("security-unconfigured-section");
+    const confSection = document.getElementById("security-configured-section");
+    const currentUserEl = document.getElementById("sec-current-user");
+    const editUsernameEl = document.getElementById("sec-edit-username") as HTMLInputElement | null;
+    const bannerEl = document.getElementById("banner-unauthenticated");
+    const headerLogoutBtn = document.getElementById("btn-logout");
+
+    if (bannerEl) {
+      if (status.unauthenticated_banner) {
+        bannerEl.classList.remove("hidden");
+      } else {
+        bannerEl.classList.add("hidden");
+      }
+    }
+
+    if (headerLogoutBtn) {
+      if (status.auth_mode === "form") {
+        headerLogoutBtn.classList.remove("hidden");
+      } else {
+        headerLogoutBtn.classList.add("hidden");
+      }
+    }
+
+    if (status.auth_mode === "env") {
+      envNotice?.classList.remove("hidden");
+      unconfSection?.classList.add("hidden");
+      confSection?.classList.add("hidden");
+    } else if (status.auth_configured) {
+      envNotice?.classList.add("hidden");
+      unconfSection?.classList.add("hidden");
+      confSection?.classList.remove("hidden");
+      if (currentUserEl) currentUserEl.textContent = status.username || "admin";
+      if (editUsernameEl) editUsernameEl.value = status.username || "";
+    } else {
+      envNotice?.classList.add("hidden");
+      unconfSection?.classList.remove("hidden");
+      confSection?.classList.add("hidden");
+    }
+  } catch (e) {
+    console.error("Failed to load security status:", e);
+  }
+}
+
+export function initializeSecurityHandlers(): void {
+  if (typeof document === "undefined") return;
+
+  const btnCreate = document.getElementById("btn-sec-create");
+  const createErr = document.getElementById("sec-create-error");
+  if (btnCreate) {
+    btnCreate.addEventListener("click", async () => {
+      if (createErr) createErr.classList.add("hidden");
+      const username = (document.getElementById("sec-create-username") as HTMLInputElement | null)?.value.trim() || "";
+      const password = (document.getElementById("sec-create-password") as HTMLInputElement | null)?.value || "";
+      const confirm = (document.getElementById("sec-create-confirm") as HTMLInputElement | null)?.value || "";
+
+      if (!username) {
+        if (createErr) { createErr.textContent = "Username is required."; createErr.classList.remove("hidden"); }
+        return;
+      }
+      if (password.length < 8) {
+        if (createErr) { createErr.textContent = "Password must be at least 8 characters long."; createErr.classList.remove("hidden"); }
+        return;
+      }
+      if (password !== confirm) {
+        if (createErr) { createErr.textContent = "Passwords do not match."; createErr.classList.remove("hidden"); }
+        return;
+      }
+
+      btnCreate.setAttribute("disabled", "true");
+      try {
+        const res = await apiSetupAuth({ username, password, confirm_password: confirm });
+        if ((res.ok ?? true) && res.status === "success") {
+          addNotification("Authentication enabled successfully.", "success");
+          await loadSecurityStatus();
+        } else {
+          if (createErr) { createErr.textContent = res.message || "Failed to enable authentication."; createErr.classList.remove("hidden"); }
+        }
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        if (createErr) { createErr.textContent = msg; createErr.classList.remove("hidden"); }
+      } finally {
+        btnCreate.removeAttribute("disabled");
+      }
+    });
+  }
+
+  const btnUpdate = document.getElementById("btn-sec-update");
+  const updateErr = document.getElementById("sec-update-error");
+  if (btnUpdate) {
+    btnUpdate.addEventListener("click", async () => {
+      if (updateErr) updateErr.classList.add("hidden");
+      const newUsername = (document.getElementById("sec-edit-username") as HTMLInputElement | null)?.value.trim() || "";
+      const currentPw = (document.getElementById("sec-current-pw") as HTMLInputElement | null)?.value || "";
+      const newPw = (document.getElementById("sec-new-pw") as HTMLInputElement | null)?.value || "";
+      const confirmPw = (document.getElementById("sec-confirm-pw") as HTMLInputElement | null)?.value || "";
+
+      if (!newUsername) {
+        if (updateErr) { updateErr.textContent = "Username cannot be empty."; updateErr.classList.remove("hidden"); }
+        return;
+      }
+      if (!currentPw) {
+        if (updateErr) { updateErr.textContent = "Current password is required."; updateErr.classList.remove("hidden"); }
+        return;
+      }
+      if (newPw) {
+        if (newPw.length < 8) {
+          if (updateErr) { updateErr.textContent = "New password must be at least 8 characters long."; updateErr.classList.remove("hidden"); }
+          return;
+        }
+        if (newPw !== confirmPw) {
+          if (updateErr) { updateErr.textContent = "New passwords do not match."; updateErr.classList.remove("hidden"); }
+          return;
+        }
+      }
+
+      btnUpdate.setAttribute("disabled", "true");
+      try {
+        const res = await apiUpdateAuthCredentials({
+          new_username: newUsername,
+          current_password: currentPw,
+          new_password: newPw,
+          confirm_password: confirmPw
+        });
+        if ((res.ok ?? true) && res.status === "success") {
+          addNotification("Account settings saved successfully.", "success");
+          const curPwInput = document.getElementById("sec-current-pw") as HTMLInputElement | null;
+          const newPwInput = document.getElementById("sec-new-pw") as HTMLInputElement | null;
+          const confPwInput = document.getElementById("sec-confirm-pw") as HTMLInputElement | null;
+          if (curPwInput) curPwInput.value = "";
+          if (newPwInput) newPwInput.value = "";
+          if (confPwInput) confPwInput.value = "";
+          await loadSecurityStatus();
+        } else {
+          if (updateErr) { updateErr.textContent = res.message || "Failed to update account."; updateErr.classList.remove("hidden"); }
+        }
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        if (updateErr) { updateErr.textContent = msg; updateErr.classList.remove("hidden"); }
+      } finally {
+        btnUpdate.removeAttribute("disabled");
+      }
+    });
+  }
+
+  const chkDisable = document.getElementById("sec-disable-confirm-checkbox") as HTMLInputElement | null;
+  const btnDisable = document.getElementById("btn-sec-disable") as HTMLButtonElement | null;
+  const disableErr = document.getElementById("sec-disable-error");
+  if (chkDisable && btnDisable) {
+    chkDisable.addEventListener("change", () => {
+      btnDisable.disabled = !chkDisable.checked;
+    });
+  }
+
+  if (btnDisable) {
+    btnDisable.addEventListener("click", async () => {
+      if (disableErr) disableErr.classList.add("hidden");
+      const currentPw = (document.getElementById("sec-disable-pw") as HTMLInputElement | null)?.value || "";
+      if (!currentPw) {
+        if (disableErr) { disableErr.textContent = "Current password is required."; disableErr.classList.remove("hidden"); }
+        return;
+      }
+
+      btnDisable.disabled = true;
+      try {
+        const res = await apiDisableAuth({ current_password: currentPw });
+        if ((res.ok ?? true) && res.status === "success") {
+          addNotification("Authentication has been turned off.", "info");
+          const disablePwInput = document.getElementById("sec-disable-pw") as HTMLInputElement | null;
+          if (disablePwInput) disablePwInput.value = "";
+          if (chkDisable) chkDisable.checked = false;
+          await loadSecurityStatus();
+        } else {
+          if (disableErr) { disableErr.textContent = res.message || "Failed to disable authentication."; disableErr.classList.remove("hidden"); }
+          btnDisable.disabled = false;
+        }
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        if (disableErr) { disableErr.textContent = msg; disableErr.classList.remove("hidden"); }
+        btnDisable.disabled = false;
+      }
+    });
+  }
+
+  const btnLogout = document.getElementById("btn-sec-logout");
+  if (btnLogout) {
+    btnLogout.addEventListener("click", async () => {
+      try {
+        await apiLogout();
+      } catch {
+        // Continue redirecting on error
+      }
+      window.location.href = "/login";
+    });
   }
 }

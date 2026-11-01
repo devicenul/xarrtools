@@ -25,7 +25,8 @@ import {
   SaveFeedResponse,
   TestFeedPayload,
   TestFeedResponse,
-  SchedulerStatusResponse
+  SchedulerStatusResponse,
+  AuthStatusResponse
 } from "./types.js";
 
 async function parseResponse<T extends ApiResponse>(response: Response): Promise<T> {
@@ -370,6 +371,66 @@ export async function getSchedulerStatus(): Promise<SchedulerStatusResponse> {
  */
 export async function runSchedulerNow(): Promise<ApiResponse> {
   const response = await fetch("/api/scheduler/run-now", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" }
+  });
+  return parseResponse<ApiResponse>(response);
+}
+
+/**
+ * Fetch authentication configuration status and exposure warning.
+ * GET /api/auth/status
+ */
+export async function fetchAuthStatus(): Promise<AuthStatusResponse> {
+  const response = await fetch("/api/auth/status");
+  return parseResponse<AuthStatusResponse>(response);
+}
+
+/**
+ * Process initial setup (create credentials or continue without login).
+ * POST /api/setup
+ */
+export async function setupAuth(payload: Record<string, unknown>): Promise<ApiResponse> {
+  const response = await fetch("/api/setup", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload)
+  });
+  return parseResponse<ApiResponse>(response);
+}
+
+/**
+ * Update user authentication credentials.
+ * POST /api/auth/change_credentials
+ */
+export async function updateAuthCredentials(payload: Record<string, unknown>): Promise<ApiResponse> {
+  const response = await fetch("/api/auth/change_credentials", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload)
+  });
+  return parseResponse<ApiResponse>(response);
+}
+
+/**
+ * Disable authentication from settings.
+ * POST /api/auth/disable
+ */
+export async function disableAuth(payload: { current_password: string }): Promise<ApiResponse> {
+  const response = await fetch("/api/auth/disable", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload)
+  });
+  return parseResponse<ApiResponse>(response);
+}
+
+/**
+ * Log out active session.
+ * POST /api/auth/logout
+ */
+export async function logout(): Promise<ApiResponse> {
+  const response = await fetch("/api/auth/logout", {
     method: "POST",
     headers: { "Content-Type": "application/json" }
   });

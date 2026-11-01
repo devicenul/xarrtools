@@ -100,6 +100,15 @@ export interface ConfigResponse extends ApiResponse {
   sonarr: ServiceConfig;
 }
 
+export interface AuthStatusResponse extends ApiResponse {
+  auth_mode: "env" | "form" | "none";
+  auth_configured: boolean;
+  username: string;
+  network_exposed: boolean;
+  unauthenticated_banner: boolean;
+  can_manage: boolean;
+}
+
 export interface SettingsResponse extends ApiResponse {
   radarr_url?: string;
   radarr_api_key?: string;
