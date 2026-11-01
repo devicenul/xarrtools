@@ -37,6 +37,7 @@ Read this file first, then [docs/architecture.md](docs/architecture.md) (how it 
 | `src/xarrtools/core/db.py` | SQLite schema, migrations, cache CRUD, settings, backup/restore |
 | `src/xarrtools/core/backup.py` | Full archive ZIP export/import, manifest integrity, and backup checksum verification |
 | `src/xarrtools/core/posters.py` | Local poster disk cache, metadata sidecars, and SSRF-safe download helpers |
+| `src/xarrtools/core/auth.py` | Authentication, password hashing (scrypt), session tokens, throttling, setup mode, and auth recovery |
 | `src/xarrtools/core/metadata.py` | Missing-metadata rules and the auto-archive state machine |
 | `src/xarrtools/core/locales.py` | Language/country normalisation and the Unicode-aware `slug()` title key |
 | `src/xarrtools/core/paths.py` | Application data directory resolution (`get_data_dir`), wheel/pip fallback, and repo root detection |

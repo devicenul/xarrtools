@@ -79,6 +79,17 @@ This document tracks planned future functionality, architectural changes, and us
 - Contextual block and inline comments clarifying non-trivial business logic, regex pattern matching, deduplication heuristics, threading/locking boundaries, and database query optimizations.
 - Zero-error `mypy` static type checking configured in `pyproject.toml` (`[tool.mypy]`) and tracked in `pyproject.toml` (`dev` extra).
 
+### ✓ First-Run Setup Wizard and Session Authentication
+- First-run setup wizard (`/setup`) automatically triggered when server is bound to a network-exposed host (`0.0.0.0`) without credentials.
+- Forms login with signed `HttpOnly`, `SameSite=Lax` session cookie (`xarrtools_session`) replacing dated HTTP Basic auth popups for UI users.
+- Salted `hashlib.scrypt` password hashing and verification in standard library (`core/auth.py`).
+- Upgrade protection: existing unauthenticated installations are never locked out on upgrade, showing a persistent UI warning banner and startup log line instead.
+- Disaster recovery: `--reset-auth` CLI command and `XARRTOOLS_RESET_AUTH=true` startup environment variable to clear stored credentials if locked out.
+- Settings > Security modal tab (`panel-security`) to create credentials, change username/password, and turn off authentication.
+- In-memory failed login throttling per client IP address.
+- Open-redirect sanitization and backup exclusion/restore protections for all auth credentials.
+- *(Future consideration)*: Optional `XARRTOOLS_SETUP_TOKEN` environment variable requiring a pre-shared token to claim initial setup on untrusted shared networks.
+
 ### ✓ Structured Logging Architecture
 - Centralized `core/logging_setup.py` with idempotent `setup_logging(level=None)` attaching console and `RotatingFileHandler` to the `xarrtools` hierarchy root.
 - Log rotation strictly capped at a maximum of 2 files (`xarrtools.log` and `xarrtools.log.1`, `backupCount=1`, ~1MB).

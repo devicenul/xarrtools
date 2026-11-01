@@ -57,10 +57,10 @@ docker run -d \
   --name xarrtools \
   -p 5000:5000 \
   -v ./config:/config \
-  -e XARRTOOLS_AUTH_USER="admin" \
-  -e XARRTOOLS_AUTH_PASSWORD="your-strong-password" \
   ghcr.io/devicenul/xarrtools:latest
 ```
+
+*(Optional: pass `-e XARRTOOLS_AUTH_USER="admin" -e XARRTOOLS_AUTH_PASSWORD="your-password"` if you prefer HTTP Basic Auth over UI-managed login.)*
 
 #### Using Docker Compose
 
@@ -95,7 +95,11 @@ Open your browser to `http://<your-server-ip>:5000`.
 **Docker configuration details:**
 - **Persistent storage (`/config`)**: Maps your host storage to `/config` in the container. The database (`xarrtools.db`), custom `.env` overrides, cached posters (`/config/posters`), and logs (`/config/logs`) are preserved here.
 - **Port**: Default port is `5000`. Adjust your port mapping or set `XARRTOOLS_PORT` if needed.
-- **Optional Basic Authentication**: When `XARRTOOLS_AUTH_USER` and `XARRTOOLS_AUTH_PASSWORD` environment variables are set, all web pages and API routes require HTTP Basic Authentication (the container health check probe at `/api/health` stays accessible without credentials).
+- **First-Run Login Setup**: When network-exposed (e.g. bound to `0.0.0.0` in Docker), opening the web UI for the first time prompts you to create an admin username and password (min 8 characters). You can also explicitly choose to run without authentication.
+- **Optional Basic Authentication**: When `XARRTOOLS_AUTH_USER` and `XARRTOOLS_AUTH_PASSWORD` environment variables are set, they take precedence and enforce HTTP Basic Authentication across all routes (the container health check probe at `/api/health` stays open). Set `XARRTOOLS_AUTH_DISABLED=true` to explicitly bypass authentication (e.g. behind an authenticating reverse proxy or Authelia/Authentik).
+- **Authentication Recovery**: If you forget your login credentials or need to reset auth:
+  - In Docker: restart the container once with `-e XARRTOOLS_RESET_AUTH=true` (or set `XARRTOOLS_RESET_AUTH: "true"` in `docker-compose.yml`), then remove the flag. The setup screen will reappear on the next visit.
+  - Native / CLI: run `python -m xarrtools --reset-auth` to clear stored authentication credentials.
 
 ### Running from Source
 

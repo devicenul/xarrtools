@@ -147,6 +147,21 @@ Node-based test suites exercise compiled modules: `tests/test_frontend_filters.p
 - **Log Export**:
   - `GET /api/logs/download` streams an in-memory ZIP archive of pre-redacted logs (`xarrtools.log` and `xarrtools.log.1`). If no logs are present, it gracefully returns a ZIP containing an explanatory README.txt file.
 
+## Authentication & Access Control Architecture (`src/xarrtools/core/auth.py`)
+
+- **Three-Tier Precedence**:
+  1. **Environment Credentials (`XARRTOOLS_AUTH_USER` / `XARRTOOLS_AUTH_PASSWORD`)**: Enforces HTTP Basic Auth over all endpoints (except `/api/health` and static assets). This accommodates headless automation and existing Docker Compose environments. `XARRTOOLS_AUTH_DISABLED=true` provides an explicit bypass for reverse-proxy SSO setups.
+  2. **UI-Managed Authentication (Form Login)**: Stored in the SQLite `settings` table as a salted `hashlib.scrypt` hash (`scrypt$16384$8$1$<salt>$<key>`). Authenticated sessions use an HMAC-SHA256 signed session cookie (`xarrtools_session`) with `HttpOnly`, `SameSite=Lax`, and conditional `Secure` flags. Sessions include a server-side session version token that allows instantaneous invalidation across all clients upon logout or password modification.
+  3. **First-Run Setup Gate**: When bound to a network-exposed address (such as `0.0.0.0` or a LAN IP) and no authentication is configured, all requests redirect to `/setup` (allowing only `/setup`, its API, `/api/health`, and static assets). The setup wizard requires creating an admin username and password (>= 8 characters) or explicitly opting to run without authentication.
+- **Upgrade Safety**: Existing databases from prior versions without authentication state are never locked out upon upgrade. They display a persistent UI warning banner and a startup warning log line instead, prompting the user to configure credentials in Settings > Security.
+- **Login Throttling**: In-memory rate limiting (`LoginThrottle`) enforces exponential/lockout backoff per client IP address after 5 failed login attempts to prevent brute-force attacks.
+- **Open Redirect Guard**: `sanitize_next_url` validates post-login redirect targets to prevent open redirect vulnerabilities.
+- **CSRF & Mutating API Protection**: Retains the `X-API-Key` header requirement for all mutating API routes (`POST`, `PUT`, `DELETE`). The key is only embedded into pages served to authenticated sessions.
+- **Backup Exclusion & Integrity**: Password hashes and session keys are strictly excluded from JSON and ZIP backups and `/api/settings` responses, and restores never overwrite them.
+- **Recovery Mechanisms**: If locked out, authentication can be reset using:
+  - CLI: `python -m xarrtools --reset-auth`
+  - Docker: `XARRTOOLS_RESET_AUTH=true` environment variable on container startup.
+
 ## Container Architecture & Deployment (`Dockerfile`, `docker-compose.yml`)
 
 - **Multi-stage build**:

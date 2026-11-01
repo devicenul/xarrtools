@@ -11,6 +11,9 @@ services:
       - XARRTOOLS_HOST=0.0.0.0
       - XARRTOOLS_PORT=5000
       - XARRTOOLS_CONFIG_DIR=/config
+      # Optional: set env credentials to enforce HTTP Basic Auth.
+      # If omitted, network-exposed instances will prompt for first-run login setup in the UI.
+      # Set XARRTOOLS_RESET_AUTH=true on container restart to wipe stored credentials if locked out.
       - XARRTOOLS_AUTH_USER=${XARRTOOLS_AUTH_USER:-}
       - XARRTOOLS_AUTH_PASSWORD=${XARRTOOLS_AUTH_PASSWORD:-}
 
